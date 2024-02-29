@@ -6,7 +6,7 @@
 using namespace std;
 extern "C"
 {
-void load_ldp_kernel(float*);
+void load_ldp_kernel(float*, int, int);
 }
 #ifdef NEON
 #include "asm/cpufp_kernel_armv8.c"
@@ -14,9 +14,8 @@ void load_ldp_kernel(float*);
 #ifdef SVE
 #include "asm/cpufp_kernel_armv9.c"
 #endif
-extern "C"
-{
-    
+// extern "C"
+// {
 // #ifdef NEON
 // void cpufp_kernel_armv8_fmla_f32(int64_t looptime);
 // void cpufp_kernel_armv8_fmla_f64(int64_t looptime);
@@ -25,7 +24,7 @@ extern "C"
 // void cpufp_kernel_armv9_fmla_f32(int64_t looptime);
 // void cpufp_kernel_armv9_fmla_f64(int64_t looptime);
 // #endif
-}
+// }
 
 static void parse_thread_pool(char *sets,
     vector<int> &set_of_threads)

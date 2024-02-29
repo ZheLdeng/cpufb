@@ -33,7 +33,7 @@ else
         mkdir output
     fi
     cd output 
-    gcc -c ../arm/ldp_asm.s 
+    gcc -c ../asm/ldp_asm.s 
     g++ -g -O3 -c ../arm/cpuid_arm.cpp -DNEON
     g++ -g -O3 -o cpuid_gen_arm cpuid_arm.o
     ./cpuid_gen_arm

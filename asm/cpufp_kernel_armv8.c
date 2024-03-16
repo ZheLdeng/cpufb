@@ -1,14 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include<time.h>
 #include<arm_neon.h>
-static double get_time(struct timespec *start,
-	struct timespec *end)
-{
-	return end->tv_sec - start->tv_sec +
-		(end->tv_nsec - start->tv_nsec) * 1e-9;
-}
 void cpufp_kernel_armv8_fmla_f32(int64_t looptime)
 {
     for (int i = 0; i < looptime; i++) {
@@ -117,36 +110,7 @@ void cpufp_kernel_neon_bandwith_l1cache(int64_t looptime)
 
 void cpufp_kernel_neon_bandwith_l2cache(int64_t looptime)
 {
-    int data_size = 2048 * 1024;
+    int data_size = 512 * 1024;
     int inner_loop = data_size / sizeof(float) / (4 * 32);
-    for (int i = 0; i < looptime; i++) {
-        for (int j = 0; j <  inner_loop; j++) {     
-            asm volatile(           
-                "ldp q0, q1, [x0, #0]\n\t"
-                "ldp q2, q3, [x0, #32]\n\t"
-                "ldp q4, q5, [x0, #64]\n\t"
-                "ldp q6, q7, [x0, #96]\n\t"
-                "ldp q8, q9, [x0, #128]\n\t"
-
-                "ldp q10, q11, [x0, #160]\n\t"
-                "ldp q12, q13, [x0, #192]\n\t"
-                "ldp q14, q15, [x0, #224]\n\t"
-                "ldp q16, q17, [x0, #256]\n\t"
-                "ldp q18, q19, [x0, #288]\n\t"
-
-                "ldp q20, q21, [x0, #320]\n\t"
-                "ldp q22, q23, [x0, #352]\n\t"
-                "ldp q24, q25, [x0, #384]\n\t"
-                "ldp q26, q27, [x0, #416]\n\t"
-                "ldp q28, q29, [x0, #448]\n\t"
-
-                "ldp q30, q31, [x0, #480]\n\t"
-
-                :
-                :"r"(&cache_data[32 * 4 * j])
-                :
-            );
-            
-        }
-    }
+    load_ldp_kernel(cache_data, inner_loop, looptime);
 }        

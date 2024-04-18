@@ -13,8 +13,14 @@
 #include <cstdio>
 #include <fstream>
 
+#include <stdlib.h>
+#include <sys/syscall.h>
+#include <linux/perf_event.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+
 using namespace std;
-uint64_t freq = 2.6;
+uint64_t freq = 0;
 extern "C"
 {
 #ifdef _ASIMD_
@@ -81,11 +87,14 @@ static double get_time(struct timespec *start,
 		(end->tv_nsec - start->tv_nsec) * 1e-9;
 }
 
+static long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags) {
+    return syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
+}
+
 static void get_cpu_freq(std::vector<int> &set_of_threads)
 {
     //get CPU frequency
 #ifdef __linux__
-    int cpu_freq;
     FILE *fp = NULL;
     char buf[100]={0};
     string read_freq = "cat /sys/devices/system/cpu/cpu"+ std::to_string(set_of_threads[0]) +"/cpufreq/scaling_max_freq";
@@ -94,11 +103,56 @@ static void get_cpu_freq(std::vector<int> &set_of_threads)
         int ret = fread(buf,1,sizeof(buf)-1,fp);
         pclose(fp);
         freq = std::stoull(buf);
-    }
-    std::cout << "Thread" << set_of_threads[0] << " max frequency is" << freq << endl;
+        return;
+    } 
 #endif
-}
+    // calculate the cpu frequency 
+    struct perf_event_attr pe;
+    long long count;
+    int fd;
+    struct timespec start, end;
+    double time_used;
+    int64_t looptime= 100000000;
+    // Initialize perf_event_attr structure
+    memset(&pe, 0, sizeof(struct perf_event_attr));
+    pe.type = PERF_TYPE_HARDWARE;
+    pe.size = sizeof(struct perf_event_attr);
+    pe.config = PERF_COUNT_HW_CPU_CYCLES; // Measure CPU cycles
+    pe.disabled = 1;
+    pe.exclude_kernel = 1;
+    pe.exclude_hv = 1;
 
+    // Open a file descriptor to the PMU
+    fd = perf_event_open(&pe, 0, -1, -1, 0);
+    if (fd == -1) {
+        perror("perf_event_open");
+        exit(EXIT_FAILURE);
+    }
+
+    // Enable the PMU
+    ioctl(fd, PERF_EVENT_IOC_RESET, 0);
+    ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
+    
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    syscall(SYS_gettid);
+
+    asimd_fmla_vv_f64f64f64(looptime);
+
+    syscall(SYS_gettid);
+    // Disable the PMU
+    ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
+
+    // Read the number of CPU cycles
+    read(fd, &count, sizeof(long long));
+    // printf("CPU cycles: %lld\n", count);
+    close(fd);
+
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    time_used = get_time(&start, &end);
+    freq = (double)count/time_used * 1e-3;
+    // printf("time = %.10f,  CPU_freq = %.2f\n", time_used,(double)count/time_used);
+    return;
+}
 
 static void reg_new_isa(std::string isa,
     std::string type,

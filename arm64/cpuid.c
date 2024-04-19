@@ -1,14 +1,17 @@
 #include <stdio.h>
 #include <stdint.h>
-#ifdef __APPLE__
-#include	<sys/types.h>
-#include	<sys/sysctl.h>
-#else
-#include <asm/hwcap.h>
-#include <sys/auxv.h>
+#ifndef CROSS_COMPILE
+    #ifdef __APPLE__
+    #include	<sys/types.h>
+    #include	<sys/sysctl.h>
+    #else
+    #include <asm/hwcap.h>
+    #include <sys/auxv.h>
+    #endif
 #endif
 
-int native_compile()
+#ifndef CROSS_COMPILE
+int get_cpuid()
 {
 #ifdef __APPLE__
     int64_t ret = 0;
@@ -65,26 +68,22 @@ int native_compile()
 
     return 0;
 }
-
-int cross_compile()
+#else
+int get_cpuid()
 {
-    printf("_I8MM_\n");
-    printf("_BF16_\n");
-    printf("_ASIMD_DP_\n");
-    printf("_ASIMD_HP_\n");
+    // printf("_I8MM_\n");
+    // printf("_BF16_\n");
+    // printf("_ASIMD_DP_\n");
+    // printf("_ASIMD_HP_\n");
     printf("_ASIMD_\n");
     printf("_LDP_\n");
     return 0;
 }
-
+#endif
 
 int main()
 {
-#ifdef CROSS_COMPILE
-    cross_compile();
-#else
-    native_compile();
-#endif
+    get_cpuid();
     return 0;
 }
 

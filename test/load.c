@@ -22,8 +22,8 @@ static double get_time(struct timespec *start,
 }
 void load_ldp_kernel(float*, int ,int);
 
-int start_perf_monitoring(struct perf_event_attr *pe, int *fd) {
-    *fd = perf_event_open(pe, 0, -1, -1, 0);
+int start_perf_monitoring(struct perf_event_attr *l1_access, int *fd) {
+    *fd = perf_event_open(l1_access, 0, -1, -1, 0);
     if (*fd == -1) {
         perror("perf_event_open failed");
         return -1;
@@ -36,50 +36,68 @@ int start_perf_monitoring(struct perf_event_attr *pe, int *fd) {
 
 int main() {
     struct timespec start, end;
-    struct perf_event_attr pe;
-    long long count;
-    int fd;
+    struct perf_event_attr l1_access,l1_miss;
+    long long count1,count2;
+    int fd1,fd2;
     // Configure the perf_event for L1 cache load misses
-    memset(&pe, 0, sizeof(struct perf_event_attr));
-    pe.type = PERF_TYPE_HW_CACHE;
-    pe.size = sizeof(struct perf_event_attr);
-    pe.config =  ((PERF_COUNT_HW_CACHE_L1D) | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16)) ;
-    pe.disabled = 1;
-    pe.exclude_kernel = 1;
-    pe.exclude_hv = 1;
+    memset(&l1_access, 0, sizeof(struct perf_event_attr));
+    l1_access.type = PERF_TYPE_HW_CACHE;
+    l1_access.size = sizeof(struct perf_event_attr);
+    l1_access.config =  ((PERF_COUNT_HW_CACHE_L1D) | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16)) ;
+    l1_access.disabled = 1;
+    l1_access.exclude_kernel = 1;
+    l1_access.exclude_hv = 1;
+
+    memset(&l1_miss, 0, sizeof(struct perf_event_attr));
+    l1_miss.type = PERF_TYPE_HW_CACHE;
+    l1_miss.size = sizeof(struct perf_event_attr);
+    l1_miss.config =  ((PERF_COUNT_HW_CACHE_L1D) | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16)) ;
+    l1_miss.disabled = 1;
+    l1_miss.exclude_kernel = 1;
+    l1_miss.exclude_hv = 1;
+
     double time_used;
-    int long long data_size = 128 * 1024;
-    float* data = (float*)malloc(data_size);
-    
-    // memset(tail, 0, 4);
+    // for(int l=256;l<=320;l+=16){
+        int long long data_size = 320 * 1024;
+        float* data = (float*)malloc(data_size);
+        
+        // memset(tail, 0, 4);
 
-    int long long looptime=1000000;
-    int inner_loop = data_size / sizeof(float) / (4 * 32);
-    for (int i = 0; i < data_size/sizeof(float); i++) {
-        data[i] = i;
-        // data2[i] = i;
-    }
-    // load_ldp_kernel(data, inner_loop, looptime);
-    if (start_perf_monitoring(&pe, &fd) != 0) {
-        exit(EXIT_FAILURE);
-    }
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+        int long long looptime=1000000;
+        int inner_loop = data_size / 512;
+        for (int i = 0; i < data_size/sizeof(float); i++) {
+            data[i] = i;
+            // data2[i] = i;
+        }
+        // load_ldp_kernel(data, inner_loop, looptime);
+        if (start_perf_monitoring(&l1_access, &fd1) != 0) {
+            exit(EXIT_FAILURE);
+        }
+        if (start_perf_monitoring(&l1_miss, &fd2) != 0) {
+            exit(EXIT_FAILURE);
+        }
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
-    load_ldp_kernel(data, inner_loop, looptime);
-    
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        load_ldp_kernel(data, inner_loop, looptime);
+        
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 
-    ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
-    read(fd, &count, sizeof(long long));
-    printf("L1 Cache Load : %lld\n", count);
-    printf("Total load = %ld Byte,Total num =%d \n", looptime * data_size);
-    close(fd);
+        ioctl(fd1, PERF_EVENT_IOC_DISABLE, 0);
+        ioctl(fd2, PERF_EVENT_IOC_DISABLE, 0);
+        read(fd1, &count1, sizeof(long long));
+        read(fd2, &count2, sizeof(long long));
+        printf("L1 Cache Load : %lld  L1 Cache Load Miss : %lld \n", count1,count2);
+        printf("Total load = %lld Byte \n", looptime * data_size);
+        close(fd1);
+        close(fd2);
 
 
-    time_used = get_time(&start, &end);
-    free(data);
-    double perf = looptime * data_size /
-        (time_used * 2.6 * 1e9);
-    printf("time = %.10f, perf = %.2f byte/cycle \n", time_used, perf);
+        time_used = get_time(&start, &end);
+        free(data);
+        double perf = looptime * data_size /
+            (time_used * 2.6 * 1e9);
+        printf("time = %.10f, perf = %.2f byte/cycle \n", time_used, perf);
+        // printf("%d, perf = %.2f byte/cycle \n", l, perf);
+    // }
     return 0;
 }

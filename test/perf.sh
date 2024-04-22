@@ -1,0 +1,2 @@
+g++ -O0 -o  way new_way.cpp
+perf stat -e dTLB-load-misses -e  dTLB-loads     -e armv8_pmuv3_0/l1d_cache/  -e  armv8_pmuv3_0/l1d_cache_refill/ -e armv8_pmuv3_0/l2d_cache/ -e  armv8_pmuv3_0/l2d_cache_refill/  ./way 

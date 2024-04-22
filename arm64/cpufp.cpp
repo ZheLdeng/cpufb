@@ -91,23 +91,27 @@ static long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu
     return syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
 }
 
-static void get_cpu_freq(std::vector<int> &set_of_threads)
-{
+void* thread_function_freq(void* arg){
+    int cpuid=*((int *)arg);
+    // Set affinity to the specified core
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(cpuid, &cpuset);
+    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
     //get CPU frequency
 #ifdef __linux__
     FILE *fp = NULL;
     char buf[100]={0};
-    string read_freq = "cat /sys/devices/system/cpu/cpu"+ std::to_string(set_of_threads[0]) +"/cpufreq/scaling_max_freq";
+    string read_freq = "cat /sys/devices/system/cpu/cpu"+ std::to_string(cpuid) +"/cpufreq/scaling_max_freq";
     fp = popen(read_freq.c_str(), "r");
     if(fp) {
         int ret = fread(buf,1,sizeof(buf)-1,fp);
         pclose(fp);
         freq = std::stoull(buf);
-        return;
+        // return;
     } 
 #endif
-    // calculate the cpu frequency 
-    struct perf_event_attr pe;
+   struct perf_event_attr pe;
     long long count;
     int fd;
     struct timespec start, end;
@@ -150,8 +154,25 @@ static void get_cpu_freq(std::vector<int> &set_of_threads)
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
     freq = (double)count/time_used * 1e-3;
-    // printf("time = %.10f,  CPU_freq = %.2f\n", time_used,(double)count/time_used);
-    return;
+    pthread_exit(NULL);
+    
+    // return;
+}
+
+static void get_cpu_freq(std::vector<int> &set_of_threads)
+{
+    int num_thread=set_of_threads.size();
+    
+    pthread_t threads[num_thread];
+    int i=0;
+    for(int i = 0;i<num_thread;i++){
+        pthread_create(&threads[i], NULL, thread_function_freq,  (void*)&set_of_threads[i] );
+    }
+
+    for (int t = 0; t < num_thread; t++) {
+        pthread_join(threads[t], NULL);
+    }
+
 }
 
 static void reg_new_isa(std::string isa,

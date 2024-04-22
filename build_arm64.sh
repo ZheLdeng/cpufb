@@ -9,8 +9,8 @@ BUILD_DIR=build_dir
 OS=$(uname -s)
 CPU=$(uname -m)
 
-CXX=g++
-CC=gcc 
+CXX=clang++
+CC=clang 
 CFLAG=
 
 echo "Operating System  : $OS"
@@ -44,8 +44,8 @@ for SIMD in `$BUILD_DIR/cpuid`;
 do
     SIMD_MACRO="$SIMD_MACRO-D$SIMD "
     SIMD_OBJ="$SIMD_OBJ$BUILD_DIR/$SIMD.o "
-    $CC -g -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
-    #as -g -mcpu=all -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    # $CC -march=native -g -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    as -g -mcpu=all -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
 done
 # compile cpufp
 $CXX -g -O2 -I$COMM $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o 

@@ -58,7 +58,7 @@ int main() {
 
     double time_used;
     // for(int l=256;l<=320;l+=16){
-        int long long data_size = 320 * 1024;
+        int long long data_size = 128 * 1024;
         float* data = (float*)malloc(data_size);
         
         // memset(tail, 0, 4);

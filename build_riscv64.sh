@@ -12,7 +12,7 @@ fi
 
 # build common tools
 g++ -O3 -c $COMM/table.cpp -o $BUILD_DIR/table.o
-g++ -O3 -pthread -c $COMM/smtl.cpp -o $BUILD_DIR/smtl.o
+g++ -O3 -pthread -c $COMM/thread_pool.cpp -o $BUILD_DIR/thread_pool.o
 
 # gen benchmark macro according to cpuid feature
 gcc $SRC/cpuid.c -o $BUILD_DIR/cpuid
@@ -27,4 +27,4 @@ done
 
 # compile cpufp
 g++ -O3 -march=rv64gcv_zfh -I$COMM $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
-g++ -O3 -z noexecstack -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/smtl.o $BUILD_DIR/table.o $SIMD_OBJ
+g++ -O3 -z noexecstack -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ

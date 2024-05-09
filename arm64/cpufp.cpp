@@ -1,5 +1,5 @@
 #include "table.hpp"
-#include "smtl.hpp"
+#include "thread_pool.hpp"
 
 #include <unistd.h>
 #include <cstdint>
@@ -177,13 +177,14 @@ static void thread_func(void *params)
     bm->bench(bm->loop_time);
 }
 
-static void cahe_thread_func(void *params)
+
+static void cache_thread_func(void *params)
 {
     cache_bm_t *bm = (cache_bm_t*)params;
     bm->bench(bm->cache_data, bm->inner_loop, bm->loop_time);
 }
 
-static void cpubm_arm64_one(smtl_handle sh,
+static void cpubm_arm64_one(tpool_t *tm,
     cpubm_t &item,
     Table &table)
 {
@@ -192,23 +193,19 @@ static void cpubm_arm64_one(smtl_handle sh,
     char perfUnit = 'G';
 
     int i;
-    int num_threads = smtl_num_threads(sh);
+    int num_threads = tm->thread_num;
 
-    // warm up
-    for (i = 0; i < num_threads; i++)
-    {
-        smtl_add_task(sh, thread_func, (void*)&item);
+     // warm up
+    for (i = 0; i < tm->thread_num; i++) {
+        tpool_add_work(tm, thread_func, (void*)&item);
     }
-    smtl_begin_tasks(sh);
-    smtl_wait_tasks_finished(sh);
+    tpool_wait(tm);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    for (i = 0; i < num_threads; i++)
-    {
-        smtl_add_task(sh, thread_func, (void*)&item);
+    for (i = 0; i < tm->thread_num; i++) {
+        tpool_add_work(tm, thread_func, (void*)&item);
     }
-    smtl_begin_tasks(sh);
-    smtl_wait_tasks_finished(sh);
+    tpool_wait(tm);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 
     time_used = get_time(&start, &end);
@@ -235,32 +232,32 @@ static void cpubm_arm64_one(smtl_handle sh,
     table.addOneItem(cont);
 }
 
-static void cpubm_arm_load(smtl_handle sh,
+static void cpubm_arm_load(tpool_t *tm,
     cpubm_t &item,
     Table &table)
 {
     struct timespec start, end;
     double time_used, perf;
     cache_bm_t bm;
-    int num_threads = smtl_num_threads(sh);
+    int num_threads = tm->thread_num;
 
     float* cache_data = (float*)malloc(item.comp_pl * 1024);
-    memset(cache_data, 1, item.comp_pl * 1024/sizeof(float));
+    //Preventing Compiler Optimization
+    for(int i = 0;i < item.comp_pl * 1024/sizeof(float); i++){
+        cache_data[i]=i;
+    }
     int inner_loop = item.comp_pl * 1024 / sizeof(float) / (4 * 32);
     bm.bench = load_ldp_kernel;
     bm.cache_data = cache_data;
     bm.inner_loop = inner_loop;
     bm.loop_time = item.loop_time;
 	// warm up
-    smtl_add_task(sh, cahe_thread_func, (void*)&bm);
-    smtl_begin_tasks(sh);
-    smtl_wait_tasks_finished(sh);
+    tpool_add_work(tm, cache_thread_func, (void*)&bm);
+    tpool_wait(tm);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    smtl_add_task(sh, cahe_thread_func, (void*)&bm);
-    smtl_begin_tasks(sh);
-    smtl_wait_tasks_finished(sh);
-
+    tpool_add_work(tm, cache_thread_func, (void*)&bm);
+    tpool_wait(tm);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
 
@@ -309,18 +306,18 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
         table.addOneItem(ti);
 
         // set thread pool
-        smtl_handle sh;
-        smtl_init(&sh, set_of_threads);
+        tpool_t *tm;
+        tm = tpool_create(set_of_threads);
 
         // traverse task list
-        cpubm_arm64_one(sh, bm_list[0], table);
+        cpubm_arm64_one(tm, bm_list[0], table);
         for (i = 1; i < bm_list.size(); i++)
         {
             sleep(idle_time);
             if(bm_list[i].dim.find("OPS") != std::string::npos) {
-                cpubm_arm64_one(sh, bm_list[i], table);
+                cpubm_arm64_one(tm, bm_list[i], table);
             } else if (bm_list[i].dim.find("Byte/Cycle") != std::string::npos) {
-                cpubm_arm_load(sh, bm_list[i], table);
+                cpubm_arm_load(tm, bm_list[i], table);
             } else {
                 std::cout << "Wrong dimension !" << endl;
                 break;
@@ -329,7 +326,7 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
 
         table.print();
 
-        smtl_fini(sh);
+        tpool_destroy(tm);
     }
     else
     {
@@ -462,9 +459,9 @@ static void cpufp_register_isa()
 #endif
 
     reg_new_isa("LOAD_L1", "ldp(f32)", "Byte/Cycle",
-        0x186A0LL, 32LL, NULL);
+        0x186A00LL, 32LL, NULL);
     reg_new_isa("LOAD_L2", "ldp(f32)", "Byte/Cycle",
-        0x2710LL, 512LL, NULL);
+        0x186A00LL, 128LL, NULL);
     // reg_new_isa("Multiway", "L1cache", "Way",
     //     0x2710LL, 512LL,cpufp_kernel_multiway);
     // reg_new_isa("Multiway", "L2cache", "Way",

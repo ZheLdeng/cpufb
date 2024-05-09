@@ -1,5 +1,5 @@
 #include "table.hpp"
-#include "smtl.hpp"
+#include "thread_pool.hpp"
 
 #include <unistd.h>
 #include <cstdint>
@@ -161,7 +161,7 @@ static void thread_func(void *params)
     }
 }
 
-static void cpubm_x64_one(smtl_handle sh,
+static void cpubm_x64_one(tpool_t *tm,
     cpubm_t &item,
     Table &table)
 {
@@ -170,23 +170,21 @@ static void cpubm_x64_one(smtl_handle sh,
     char perfUnit = 'G';
 
     int i;
-    int num_threads = smtl_num_threads(sh);
+    int num_threads = tm->thread_num;
 
     // warm up
     for (i = 0; i < num_threads; i++)
     {
-        smtl_add_task(sh, thread_func, (void*)&item);
+        tpool_add_work(tm, thread_func, (void*)&item);
     }
-    smtl_begin_tasks(sh);
-    smtl_wait_tasks_finished(sh);
+    tpool_wait(tm);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (i = 0; i < num_threads; i++)
     {
-        smtl_add_task(sh, thread_func, (void*)&item);
+        tpool_add_work(tm, thread_func, (void*)&item);
     }
-    smtl_begin_tasks(sh);
-    smtl_wait_tasks_finished(sh);
+    tpool_wait(tm);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 
     time_used = get_time(&start, &end);
@@ -217,7 +215,7 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
     uint32_t idle_time)
 {
     int i;
-
+    
     if (bm_list.size() > 0)
     {
         int num_threads = set_of_threads.size();
@@ -242,20 +240,20 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
         table.addOneItem(ti);
 
         // set thread pool
-        smtl_handle sh;
-        smtl_init(&sh, set_of_threads);
+        tpool_t *tm;
+        tm = tpool_create(set_of_threads);
 
         // traverse task list
-        cpubm_x64_one(sh, bm_list[0], table);
+        cpubm_x64_one(tm, bm_list[0], table);
         for (i = 1; i < bm_list.size(); i++)
         {
             sleep(idle_time);
-            cpubm_x64_one(sh, bm_list[i], table);
+            cpubm_x64_one(tm, bm_list[i], table);
         }
 
         table.print();
 
-        smtl_fini(sh);
+       tpool_destroy(tm);
     }
 }
 

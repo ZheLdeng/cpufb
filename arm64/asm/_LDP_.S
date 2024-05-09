@@ -14,22 +14,23 @@ load_ldp_kernel:
     mov x3, x1
     mov x29, x0
     1:
-    ldp q0, q1,[x29]
-    ldp q2, q3,[x29]
-    ldp q4, q5,[x29]
-    ldp q6, q7,[x29]
-    ldp q8, q9,[x29]
-    ldp q10, q11,[x29]
-    ldp q12, q13,[x29]
-    ldp q14, q15,[x29]
-    ldp q16, q17,[x29]
-    ldp q18, q19,[x29]
-    ldp q20, q21,[x29]
-    ldp q22, q23,[x29]
-    ldp q24, q25,[x29]
-    ldp q26, q27,[x29]
-    ldp q28, q29,[x29]
-    ldp q30, q31,[x29]
+    ldp q0, q1,[x29, #0]
+    ldp q2, q3,[x29, #32]
+    ldp q4, q5,[x29, #64]
+    ldp q6, q7,[x29, #96]
+    ldp q8, q9,[x29, #128]
+    ldp q10, q11,[x29, #160]
+    ldp q12, q13,[x29, #192]
+    ldp q14, q15,[x29, #224]
+    ldp q16, q17,[x29, #256]
+    ldp q18, q19,[x29, #288]
+    ldp q20, q21,[x29, #320]
+    ldp q22, q23,[x29, #352]
+    ldp q24, q25,[x29, #384]
+    ldp q26, q27,[x29, #416]
+    ldp q28, q29,[x29, #448]
+    ldp q30, q31,[x29, #480]
+    add x29, x29, #512
 
     subs x3, x3, #1
     bne 1b    

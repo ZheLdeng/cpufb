@@ -18,7 +18,9 @@
 #include <linux/perf_event.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
-
+#ifdef __linux__
+#include<perf_event.hpp>
+#endif
 using namespace std;
 uint64_t freq = 0;
 extern "C"
@@ -106,49 +108,16 @@ static void get_cpu_freq(std::vector<int> &set_of_threads)
         return;
     } 
 #endif
-    // calculate the cpu frequency 
-    struct perf_event_attr pe;
-    long long count;
-    int fd;
-    struct timespec start, end;
-    double time_used;
-    int64_t looptime= 100000000;
-    // Initialize perf_event_attr structure
-    memset(&pe, 0, sizeof(struct perf_event_attr));
-    pe.type = PERF_TYPE_HARDWARE;
-    pe.size = sizeof(struct perf_event_attr);
-    pe.config = PERF_COUNT_HW_CPU_CYCLES; // Measure CPU cycles
-    pe.disabled = 1;
-    pe.exclude_kernel = 1;
-    pe.exclude_hv = 1;
-
-    // Open a file descriptor to the PMU
-    fd = perf_event_open(&pe, 0, -1, -1, 0);
-    if (fd == -1) {
-        perror("perf_event_open");
-        exit(EXIT_FAILURE);
-    }
-
-    // Enable the PMU
-    ioctl(fd, PERF_EVENT_IOC_RESET, 0);
-    ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
-    
+    long long count,looptime=10000000;
+    struct timespec start,end;
+    PerfEventCycle pec;
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    syscall(SYS_gettid);
-
+    pec.start();
     asimd_fmla_vv_f64f64f64(looptime);
-
-    syscall(SYS_gettid);
-    // Disable the PMU
-    ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
-
-    // Read the number of CPU cycles
-    read(fd, &count, sizeof(long long));
-    // printf("CPU cycles: %lld\n", count);
-    close(fd);
-
+    pec.stop();
+    count=pec.get_cycle();
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    time_used = get_time(&start, &end);
+    double time_used = get_time(&start, &end);
     freq = (double)count/time_used * 1e-3;
     // printf("time = %.10f,  CPU_freq = %.2f\n", time_used,(double)count/time_used);
     return;

@@ -18,49 +18,16 @@
 #include <linux/perf_event.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+
+#include<load.hpp>
+#include<compute.hpp>
+#include<frequency.hpp>
+
 #ifdef __linux__
 #include<perf_event.hpp>
 #endif
 using namespace std;
-uint64_t freq = 0;
-extern "C"
-{
-#ifdef _ASIMD_
-    void asimd_fmla_vs_f32f32f32(int64_t);
-    void asimd_fmla_vv_f32f32f32(int64_t);
-    void asimd_fmla_vs_f64f64f64(int64_t);
-    void asimd_fmla_vv_f64f64f64(int64_t);
-#endif
-
-#ifdef _ASIMD_HP_
-    void asimd_fmla_vs_fp16fp16fp16(int64_t);
-    void asimd_fmla_vv_fp16fp16fp16(int64_t);
-#endif
-
-#ifdef _ASIMD_DP_
-    void asimd_dp4a_vs_s32s8s8(int64_t);
-    void asimd_dp4a_vv_s32s8s8(int64_t);
-    void asimd_dp4a_vs_u32u8u8(int64_t);
-    void asimd_dp4a_vv_u32u8u8(int64_t);
-#endif
-
-#ifdef _BF16_
-    void asimd_mmla_fp32bf16bf16(int64_t);
-    void asimd_dp2a_vs_fp32bf16bf16(int64_t);
-    void asimd_dp2a_vv_fp32bf16bf16(int64_t);
-#endif
-
-#ifdef _I8MM_
-    void asimd_mmla_s32s8s8(int64_t);
-    void asimd_mmla_u32u8u8(int64_t);
-    void asimd_mmla_s32u8s8(int64_t);
-
-    void asimd_dp4a_vs_s32s8u8(int64_t);
-    void asimd_dp4a_vs_s32u8s8(int64_t);
-    void asimd_dp4a_vv_s32u8s8(int64_t);
-#endif
-    void load_ldp_kernel(float*, int, int64_t);
-}
+extern uint64_t freq;
 
 typedef struct
 {
@@ -87,40 +54,6 @@ static double get_time(struct timespec *start,
 {
 	return end->tv_sec - start->tv_sec +
 		(end->tv_nsec - start->tv_nsec) * 1e-9;
-}
-
-static long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags) {
-    return syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
-}
-
-static void get_cpu_freq(std::vector<int> &set_of_threads)
-{
-    //get CPU frequency
-#ifdef __linux__
-    FILE *fp = NULL;
-    char buf[100]={0};
-    string read_freq = "cat /sys/devices/system/cpu/cpu"+ std::to_string(set_of_threads[0]) +"/cpufreq/scaling_max_freq";
-    fp = popen(read_freq.c_str(), "r");
-    if(fp) {
-        int ret = fread(buf,1,sizeof(buf)-1,fp);
-        pclose(fp);
-        freq = std::stoull(buf);
-        return;
-    } 
-#endif
-    long long count,looptime=10000000;
-    struct timespec start,end;
-    PerfEventCycle pec;
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    pec.start();
-    asimd_fmla_vv_f64f64f64(looptime);
-    pec.stop();
-    count=pec.get_cycle();
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    double time_used = get_time(&start, &end);
-    freq = (double)count/time_used * 1e-3;
-    // printf("time = %.10f,  CPU_freq = %.2f\n", time_used,(double)count/time_used);
-    return;
 }
 
 static void reg_new_isa(std::string isa,

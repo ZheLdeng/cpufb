@@ -1,16 +1,13 @@
 #include <stdio.h>
 #include <stdint.h>
-#ifndef CROSS_COMPILE
-    #ifdef __APPLE__
-    #include	<sys/types.h>
-    #include	<sys/sysctl.h>
-    #else
-    #include <asm/hwcap.h>
-    #include <sys/auxv.h>
-    #endif
+#ifdef __APPLE__
+#include	<sys/types.h>
+#include	<sys/sysctl.h>
+#else
+#include <asm/hwcap.h>
+#include <sys/auxv.h>
 #endif
 
-#ifndef CROSS_COMPILE
 int get_cpuid()
 {
 #ifdef __APPLE__
@@ -68,18 +65,6 @@ int get_cpuid()
 
     return 0;
 }
-#else
-int get_cpuid()
-{
-    // printf("_I8MM_\n");
-    // printf("_BF16_\n");
-    // printf("_ASIMD_DP_\n");
-    // printf("_ASIMD_HP_\n");
-    printf("_ASIMD_\n");
-    printf("_LDP_\n");
-    return 0;
-}
-#endif
 
 int main()
 {

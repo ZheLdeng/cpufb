@@ -2,7 +2,13 @@
 #define _FREQUENCY_HPP
 #include <string>  
 #include <vector>
-
-void get_cpu_freq(std::vector<int> &set_of_threads);
+#include "table.hpp"
+struct FrequencyData {
+    double theory_freq = 0;
+    double caculate_freq = 0;
+    double IPC_fp32 = 0;
+    double IPC_fp64 = 0;
+};
+void get_cpu_freq(std::vector<int> &set_of_threads,Table &table);
 
 #endif

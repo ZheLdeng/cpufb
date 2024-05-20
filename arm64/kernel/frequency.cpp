@@ -11,6 +11,7 @@
 #include "compute.hpp"
 #include "frequency.hpp"
 #include "perf_event.hpp"
+
 #include <string>  
 #include <vector>
 
@@ -30,39 +31,93 @@ static double get_time(struct timespec *start,
 		(end->tv_nsec - start->tv_nsec) * 1e-9;
 }
 using namespace std;
-uint64_t freq = 0;
+vector<double> freq;
 
-static long perf_event_open(struct perf_event_attr *hw_event, pid_t pid, int cpu, int group_fd, unsigned long flags) {
-    return syscall(__NR_perf_event_open, hw_event, pid, cpu, group_fd, flags);
-}
-
-
-void get_cpu_freq(std::vector<int> &set_of_threads)
-{
+void* thread_function_freq(void* arg){
+    int cpuid=*((int *)arg);
+    // Set affinity to the specified core
+    cpu_set_t cpuset;
+    pid_t pid = gettid();
+    CPU_ZERO(&cpuset);
+    CPU_SET(cpuid, &cpuset);
+    if (sched_setaffinity(pid, sizeof(cpu_set_t), &cpuset) < 0) {  
+        printf("Error: cpu id %d sched_setaffinity\n", cpuid);  
+        printf("Warning: performance may be impacted \n");  
+    } 
+    struct FrequencyData data;
     //get CPU frequency
 #ifdef __linux__
     FILE *fp = NULL;
     char buf[100]={0};
-    string read_freq = "cat /sys/devices/system/cpu/cpu"+ std::to_string(set_of_threads[0]) +"/cpufreq/scaling_max_freq";
+    string read_freq = "cat /sys/devices/system/cpu/cpu"+ std::to_string(cpuid) +"/cpufreq/scaling_max_freq";
     fp = popen(read_freq.c_str(), "r");
     if(fp) {
         int ret = fread(buf,1,sizeof(buf)-1,fp);
         pclose(fp);
-        freq = std::stoull(buf);
-        return;
+        data.theory_freq=std::stoull(buf) * 1e-6;
+        // freq = std::stoull(buf);
+        // return;
     } 
 #endif
-    long long count,looptime=10000000;
-    struct timespec start,end;
     PerfEventCycle pec;
+    int64_t looptime= 100000000;
+    struct timespec start, end;
+    double time_used;
+
+    //warm up
+    asimd_fmla_vv_f64f64f64(looptime);
+
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     pec.start();
     asimd_fmla_vv_f64f64f64(looptime);
     pec.stop();
-    count=pec.get_cycle();
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    double time_used = get_time(&start, &end);
-    freq = (double)count/time_used * 1e-3;
-    // printf("time = %.10f,  CPU_freq = %.2f\n", time_used,(double)count/time_used);
-    return;
+    time_used = get_time(&start, &end);
+    double CPU_freq=(double)pec.get_cycle()/time_used;
+    data.caculate_freq = CPU_freq;
+    data.IPC_fp64 = looptime * 24 / (time_used * CPU_freq);
+
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    asimd_fmla_vv_f32f32f32(looptime);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    time_used = get_time(&start, &end);
+    data.IPC_fp32 = looptime * 24 / (time_used * CPU_freq);
+
+    pthread_exit((void *)&data);
+}
+
+void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
+{
+    int num_thread=set_of_threads.size();
+    void *thread_result;
+    FrequencyData *result;
+    freq.resize(num_thread);
+
+    pthread_t threads[num_thread];
+    int i=0;
+    for(int i = 0;i<num_thread;i++){
+        pthread_create(&threads[i], NULL, thread_function_freq,  (void*)&set_of_threads[i] );
+    }
+    
+    for (int t = 0; t < num_thread; t++) {
+        pthread_join(threads[t], &thread_result);
+        result = (FrequencyData *)thread_result;
+        stringstream ss1, ss2, ss3, ss4;
+        ss1 << std::setprecision(2) << result->theory_freq ;
+        ss2 << std::setprecision(2) << result->caculate_freq * 1e-9 ;
+        ss3 << std::setprecision(2) << result->IPC_fp32 ;
+        ss4 << std::setprecision(2) << result->IPC_fp64 ;
+
+        freq[t]=result->theory_freq;
+
+        vector<string> cont;
+        cont.resize(5);
+        cont[0] =to_string(set_of_threads[t]);
+        cont[1] = ss1.str();
+        cont[2] = ss2.str();
+        cont[3] = ss3.str();
+        cont[4] = ss4.str();
+        table.addOneItem(cont);
+    }
+
 }

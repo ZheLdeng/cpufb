@@ -28,7 +28,7 @@
 #include<perf_event.hpp>
 #endif
 using namespace std;
-extern uint64_t freq;
+extern vector<double> freq;
 
 typedef struct
 {
@@ -92,7 +92,7 @@ static void cpubm_arm64_one(tpool_t *tm,
     Table &table)
 {
     struct timespec start, end;
-    double time_used, perf;
+    double time_used, perf, IPC;
     char perfUnit = 'G';
 
     int i;
@@ -124,14 +124,14 @@ static void cpubm_arm64_one(tpool_t *tm,
         perf /= 1e9;
     }
 
-    stringstream ss;
-    ss << std::setprecision(5) << perf << " " << perfUnit << item.dim;
+    stringstream ss1, ss2;
 
+    ss1 << std::setprecision(5) << perf << " " << perfUnit << item.dim;
     vector<string> cont;
     cont.resize(3);
     cont[0] = item.isa;
     cont[1] = item.type;
-    cont[2] = ss.str();
+    cont[2] = ss1.str();
     table.addOneItem(cont);
 }
 
@@ -140,7 +140,7 @@ static void cpubm_arm_load(tpool_t *tm,
     Table &table)
 {
     struct timespec start, end;
-    double time_used, perf;
+    double time_used, perf ,IPC;
     cache_bm_t bm;
     int num_threads = tm->thread_num;
 
@@ -165,18 +165,34 @@ static void cpubm_arm_load(tpool_t *tm,
     time_used = get_time(&start, &end);
 
     perf = (double)item.loop_time * item.comp_pl * 1024 /
-        (time_used * freq * 1e3);
+        (time_used * freq[0] * 1e9);
    
-    stringstream ss;
-    
-    ss << std::setprecision(5) << perf << " " << item.dim;
+    IPC = (double)item.loop_time * inner_loop * 16 / (time_used * freq[0] * 1e9);
+    stringstream ss1, ss2;
 
+    ss1 << std::setprecision(5) << perf << " " << item.dim;
+    ss2 << std::setprecision(2) << IPC ;
     vector<string> cont;
-    cont.resize(3);
-    cont[0] = item.isa;
-    cont[1] = item.type;
-    cont[2] = ss.str();
-    table.addOneItem(cont);
+    if(item.isa == "L1 Cache"){
+        cont.resize(6);
+        cont[0] = item.isa;
+        cont[1] = item.type;
+        cont[2] = ss1.str();
+        cont[3] = "Size";
+        cont[4] = ss2.str();
+        cont[5] = "Way";
+        table.addOneItem(cont);
+    }else{
+        cont.resize(6);
+        cont[0] = item.isa;
+        cont[1] = item.type;
+        cont[2] = ss1.str();
+        cont[3] = "Size";
+        cont[4] = "--";
+        cont[5] = "--";
+        table.addOneItem(cont);
+    }
+    
     free(cache_data);
 }
 
@@ -184,8 +200,6 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
     cpubm_t &item,
     Table &table)
 {
-    
-
     struct timespec start, end;
     double time_used, perf;
     cache_bm_t bm;
@@ -212,8 +226,7 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
     perf = (double)item.loop_time * (inner_loop * item.comp_pl + 4)/
-        (time_used * freq * 1e3);
-   
+        (time_used * freq[0] * 1e9);
     stringstream ss;
     
     ss << std::setprecision(5) << perf << " " << item.dim;
@@ -226,7 +239,53 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
     table.addOneItem(cont);
     free(cache_data);
 }
+//comupte: Instruction Set / Core Computation / Peak Performance / IPC
+//cachesize: cache level / Core Computation / bandwith / size / IPC / way
+//frequency : core id / theory freq / test freq
+//multi issue
+static void init_table(std::vector<Table*> &tables){
+    tables.resize(4);
+    for (int  i = 0; i < 4; i++)
+    {
+        tables[i] = new Table();
+    }
+    
+    
+    vector<string> ti;   
 
+    ti.resize(3);
+    ti[0] = "Instruction Set";
+    ti[1] = "Core Computation";
+    ti[2] = "Peak Performance";
+    tables[0]->setColumnNum(ti.size());
+    tables[0]->addOneItem(ti);
+    
+    ti.resize(6);
+    ti[0] = "Cache Level";
+    ti[1] = "Core Computation";
+    ti[2] = "Bandwith";
+    ti[3] = "Size";
+    ti[4] = "IPC";
+    ti[5] = "Way";
+    tables[1]->setColumnNum(ti.size());
+    tables[1]->addOneItem(ti);
+
+    ti.resize(5);
+    ti[0] = "Core ID";
+    ti[1] = "Theory Frequency";
+    ti[2] = "Test Frequency";
+    ti[3] = "IPC(FSU) fp32";
+    ti[4] = "IPC(FSU) fp64";
+    tables[2]->setColumnNum(ti.size());
+    tables[2]->addOneItem(ti);
+
+    ti.resize(3);
+    ti[0] = "Instruction Set";
+    ti[1] = "Core Computation";
+    ti[2] = "IPC";
+    tables[3]->setColumnNum(ti.size());
+    tables[3]->addOneItem(ti);
+}
 static void cpubm_do_bench(std::vector<int> &set_of_threads,
     uint32_t idle_time)
 {
@@ -243,40 +302,32 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
             printf(" %d", set_of_threads[i]);
         }
         printf("\n");
-
         // set table head
-        vector<string> ti;
-        ti.resize(3);
-        ti[0] = "Instruction Set";
-        ti[1] = "Core Computation";
-        ti[2] = "Peak Performance";
-
-        Table table;
-        table.setColumnNum(3);
-        table.addOneItem(ti);
-
+        std::vector<Table*> tables;
+        init_table(tables);
+        get_cpu_freq(set_of_threads, *tables[2]);
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);
-
+        
         // traverse task list
         // cpubm_arm64_one(tm, bm_list[0], table);
         for (i = 1; i < bm_list.size(); i++)
         {
             sleep(idle_time);
             if(bm_list[i].dim.find("OPS") != std::string::npos) {
-                cpubm_arm64_one(tm, bm_list[i], table);
+                cpubm_arm64_one(tm, bm_list[i], *tables[0]);
             } else if (bm_list[i].dim.find("Byte/Cycle") != std::string::npos) {
-                cpubm_arm_load(tm, bm_list[i], table);
+                cpubm_arm_load(tm, bm_list[i], *tables[1]);
             } else if (bm_list[i].dim.find("IPC") != std::string::npos) {
-                cpubm_arm_multiple_issue(tm, bm_list[i], table);
+                cpubm_arm_multiple_issue(tm, bm_list[i], *tables[3]);
             } else {
                 std::cout << "Wrong dimension !" << endl;
                 break;
             }
         }
-
-        table.print();
+        for(i = 0; i < tables.size(); i++)
+            tables[i]->print();
 
         tpool_destroy(tm);
     }
@@ -410,9 +461,9 @@ static void cpufp_register_isa()
         0x100000LL, 96LL, asimd_fmla_vv_f64f64f64);
 #endif
 
-    reg_new_isa("LOAD_L1", "ldp(f32)", "Byte/Cycle",
+    reg_new_isa("L1 Cache", "ldp(f32)", "Byte/Cycle",
         0x186A00LL, 32LL, NULL);
-    reg_new_isa("LOAD_L2", "ldp(f32)", "Byte/Cycle",
+    reg_new_isa("L2 Cache", "ldp(f32)", "Byte/Cycle",
         0x186A00LL, 128LL, NULL);
     // reg_new_isa("Multiway", "L1cache", "Way",
     //     0x2710LL, 512LL,cpufp_kernel_multiway);
@@ -456,7 +507,7 @@ int main(int argc, char *argv[])
     }
 
     cpufp_register_isa();
-    get_cpu_freq(set_of_threads);
+    
     cpubm_do_bench(set_of_threads, idle_time);
 
     return 0;

@@ -22,6 +22,7 @@
 #include<load.hpp>
 #include<compute.hpp>
 #include<frequency.hpp>
+#include<multiple_issue.hpp>
 
 #ifdef __linux__
 #include<perf_event.hpp>
@@ -179,6 +180,53 @@ static void cpubm_arm_load(tpool_t *tm,
     free(cache_data);
 }
 
+static void cpubm_arm_multiple_issue(tpool_t *tm,
+    cpubm_t &item,
+    Table &table)
+{
+    
+
+    struct timespec start, end;
+    double time_used, perf;
+    cache_bm_t bm;
+    int num_threads = tm->thread_num;
+    int size = 1024;
+    float* cache_data = (float*)malloc(1024);
+    //Preventing Compiler Optimization
+    for(int i = 0;i < size / sizeof(float); i++){
+        cache_data[i]=i;
+    }
+    int inner_loop = 1024;
+    bm.bench = multiple_issue;
+    bm.cache_data = cache_data;
+    bm.inner_loop = inner_loop;
+    bm.loop_time = item.loop_time;
+
+	// warm up
+    tpool_add_work(tm, cache_thread_func, (void*)&bm);
+    tpool_wait(tm);
+
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    tpool_add_work(tm, cache_thread_func, (void*)&bm);
+    tpool_wait(tm);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    time_used = get_time(&start, &end);
+    perf = (double)item.loop_time * (inner_loop * item.comp_pl + 4)/
+        (time_used * freq * 1e3);
+   
+    stringstream ss;
+    
+    ss << std::setprecision(5) << perf << " " << item.dim;
+
+    vector<string> cont;
+    cont.resize(3);
+    cont[0] = item.isa;
+    cont[1] = item.type;
+    cont[2] = ss.str();
+    table.addOneItem(cont);
+    free(cache_data);
+}
+
 static void cpubm_do_bench(std::vector<int> &set_of_threads,
     uint32_t idle_time)
 {
@@ -212,7 +260,7 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
         tm = tpool_create(set_of_threads);
 
         // traverse task list
-        cpubm_arm64_one(tm, bm_list[0], table);
+        // cpubm_arm64_one(tm, bm_list[0], table);
         for (i = 1; i < bm_list.size(); i++)
         {
             sleep(idle_time);
@@ -220,6 +268,8 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
                 cpubm_arm64_one(tm, bm_list[i], table);
             } else if (bm_list[i].dim.find("Byte/Cycle") != std::string::npos) {
                 cpubm_arm_load(tm, bm_list[i], table);
+            } else if (bm_list[i].dim.find("IPC") != std::string::npos) {
+                cpubm_arm_multiple_issue(tm, bm_list[i], table);
             } else {
                 std::cout << "Wrong dimension !" << endl;
                 break;
@@ -368,6 +418,8 @@ static void cpufp_register_isa()
     //     0x2710LL, 512LL,cpufp_kernel_multiway);
     // reg_new_isa("Multiway", "L2cache", "Way",
     //     0x2710LL, 512LL, cpufp_kernel_multiway);
+    reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC",
+        0x186A00LL, 26LL, NULL);
 }
 
 int main(int argc, char *argv[])

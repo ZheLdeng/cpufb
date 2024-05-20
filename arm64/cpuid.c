@@ -62,7 +62,7 @@ int get_cpuid()
     #endif
 #endif
     printf("_LDP_\n");
-
+    printf("_ISSUE_\n");
     return 0;
 }
 

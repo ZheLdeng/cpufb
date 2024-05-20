@@ -38,6 +38,7 @@ do
     SIMD_OBJ="$SIMD_OBJ$BUILD_DIR/$SIMD.o "
     $CC -march=native -g -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     #as -g -mcpu=all -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    
 done
 # compile cpufp
 $CXX -g -O2 -I$COMM -I$KERNEL $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o 

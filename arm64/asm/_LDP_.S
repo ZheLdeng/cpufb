@@ -31,7 +31,7 @@ load_ldp_kernel:
     ldp q28, q29,[x29, #448]
     ldp q30, q31,[x29, #480]
     add x29, x29, #512
-
+    
     subs x3, x3, #1
     bne 1b    
 

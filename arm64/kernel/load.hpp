@@ -5,6 +5,7 @@
 extern "C"
 {
     void load_ldp_kernel(float*, int, int64_t);
+    void load_ldr_kernel(float*, int64_t);
 }
 
 #endif

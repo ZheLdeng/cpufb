@@ -73,4 +73,6 @@ void Table::print()
     
     cout << vLine << endl;
 }
-
+int Table::getCol(){
+    return col;
+}

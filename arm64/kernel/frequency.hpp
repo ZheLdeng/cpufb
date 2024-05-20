@@ -8,6 +8,7 @@ struct FrequencyData {
     double caculate_freq = 0;
     double IPC_fp32 = 0;
     double IPC_fp64 = 0;
+    double IPC_load = 0;
 };
 void get_cpu_freq(std::vector<int> &set_of_threads,Table &table);
 

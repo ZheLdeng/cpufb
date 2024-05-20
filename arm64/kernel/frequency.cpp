@@ -11,6 +11,7 @@
 #include "compute.hpp"
 #include "frequency.hpp"
 #include "perf_event.hpp"
+#include "load.hpp"
 
 #include <string>  
 #include <vector>
@@ -82,7 +83,12 @@ void* thread_function_freq(void* arg){
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
     data.IPC_fp32 = looptime * 24 / (time_used * CPU_freq);
-
+    float* cache_data = (float*)malloc(1024);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    load_ldr_kernel(cache_data, looptime);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    time_used = get_time(&start, &end);
+    data.IPC_load = looptime * 24 / (time_used * CPU_freq);
     pthread_exit((void *)&data);
 }
 
@@ -102,21 +108,23 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
     for (int t = 0; t < num_thread; t++) {
         pthread_join(threads[t], &thread_result);
         result = (FrequencyData *)thread_result;
-        stringstream ss1, ss2, ss3, ss4;
+        stringstream ss1, ss2, ss3, ss4, ss5;
         ss1 << std::setprecision(2) << result->theory_freq ;
         ss2 << std::setprecision(2) << result->caculate_freq * 1e-9 ;
         ss3 << std::setprecision(2) << result->IPC_fp32 ;
         ss4 << std::setprecision(2) << result->IPC_fp64 ;
+        ss5<< std::setprecision(2) << result->IPC_load ;
 
         freq[t]=result->theory_freq;
 
         vector<string> cont;
-        cont.resize(5);
+        cont.resize(table.getCol());
         cont[0] =to_string(set_of_threads[t]);
         cont[1] = ss1.str();
         cont[2] = ss2.str();
         cont[3] = ss3.str();
         cont[4] = ss4.str();
+        cont[5] = ss5.str();
         table.addOneItem(cont);
     }
 

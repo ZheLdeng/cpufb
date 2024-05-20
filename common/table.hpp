@@ -16,6 +16,7 @@ public:
     void setColumnNum(int col);
     void addOneItem(std::vector<std::string> &item);
     void print();
+    int getCol();
 
 private:
     int col;

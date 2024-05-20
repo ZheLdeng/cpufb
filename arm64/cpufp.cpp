@@ -128,7 +128,7 @@ static void cpubm_arm64_one(tpool_t *tm,
 
     ss1 << std::setprecision(5) << perf << " " << perfUnit << item.dim;
     vector<string> cont;
-    cont.resize(3);
+    cont.resize(table.getCol());
     cont[0] = item.isa;
     cont[1] = item.type;
     cont[2] = ss1.str();
@@ -140,7 +140,7 @@ static void cpubm_arm_load(tpool_t *tm,
     Table &table)
 {
     struct timespec start, end;
-    double time_used, perf ,IPC;
+    double time_used, perf ;
     cache_bm_t bm;
     int num_threads = tm->thread_num;
 
@@ -167,29 +167,25 @@ static void cpubm_arm_load(tpool_t *tm,
     perf = (double)item.loop_time * item.comp_pl * 1024 /
         (time_used * freq[0] * 1e9);
    
-    IPC = (double)item.loop_time * inner_loop * 16 / (time_used * freq[0] * 1e9);
-    stringstream ss1, ss2;
+    stringstream ss1;
 
     ss1 << std::setprecision(5) << perf << " " << item.dim;
-    ss2 << std::setprecision(2) << IPC ;
     vector<string> cont;
     if(item.isa == "L1 Cache"){
-        cont.resize(6);
+        cont.resize(table.getCol());
         cont[0] = item.isa;
         cont[1] = item.type;
         cont[2] = ss1.str();
         cont[3] = "Size";
-        cont[4] = ss2.str();
-        cont[5] = "Way";
+        cont[4] = "Way";
         table.addOneItem(cont);
     }else{
-        cont.resize(6);
+        cont.resize(table.getCol());
         cont[0] = item.isa;
         cont[1] = item.type;
         cont[2] = ss1.str();
         cont[3] = "Size";
         cont[4] = "--";
-        cont[5] = "--";
         table.addOneItem(cont);
     }
     
@@ -232,7 +228,7 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
     ss << std::setprecision(5) << perf << " " << item.dim;
 
     vector<string> cont;
-    cont.resize(3);
+    cont.resize(table.getCol());
     cont[0] = item.isa;
     cont[1] = item.type;
     cont[2] = ss.str();
@@ -260,22 +256,22 @@ static void init_table(std::vector<Table*> &tables){
     tables[0]->setColumnNum(ti.size());
     tables[0]->addOneItem(ti);
     
-    ti.resize(6);
+    ti.resize(5);
     ti[0] = "Cache Level";
     ti[1] = "Core Computation";
     ti[2] = "Bandwith";
     ti[3] = "Size";
-    ti[4] = "IPC";
-    ti[5] = "Way";
+    ti[4] = "Way";
     tables[1]->setColumnNum(ti.size());
     tables[1]->addOneItem(ti);
 
-    ti.resize(5);
+    ti.resize(6);
     ti[0] = "Core ID";
-    ti[1] = "Theory Frequency";
-    ti[2] = "Test Frequency";
-    ti[3] = "IPC(FSU) fp32";
-    ti[4] = "IPC(FSU) fp64";
+    ti[1] = "Theory Freq";
+    ti[2] = "Test Freq";
+    ti[3] = "IPC(FSU32)";
+    ti[4] = "IPC(FSU64)";
+    ti[5] = "IPC(LSU ldr)";
     tables[2]->setColumnNum(ti.size());
     tables[2]->addOneItem(ti);
 

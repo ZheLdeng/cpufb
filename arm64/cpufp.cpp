@@ -136,61 +136,40 @@ static void cpubm_arm64_one(tpool_t *tm,
     table.addOneItem(cont);
 }
 
-static void cpubm_arm_load(tpool_t *tm,
-    cpubm_t &item,
+static void cpubm_arm_load(cpubm_t &item,
     Table &table)
 {
-    struct timespec start, end;
-    double time_used, perf ;
-    cache_bm_t bm;
+   
+    double perf ;
+
     vector<string> cont;
     cont.resize(table.getCol());
-    int num_threads = tm->thread_num;
+
     int data_size;
     if (item.isa == "L1 Cache"){
+        int way = get_multiway();
         item.comp_pl = cache_size[0];
+        cont[4] = to_string(way);
     } else {
         item.comp_pl = cache_size[1];
         cont[4] = "--";
     }
+
     data_size = item.comp_pl / 2; 
-    float* cache_data = (float*)malloc(data_size * 1024);
-    //Preventing Compiler Optimization
-    for(int i = 0; i < data_size * 1024/sizeof(float); i++){
-        cache_data[i]=i;
-    }
-    int inner_loop = data_size * 1024 / sizeof(float) / (4 * 32);
-    bm.bench = load_ldp_kernel;
-    bm.cache_data = cache_data;
-    bm.inner_loop = inner_loop;
-    bm.loop_time = item.loop_time;
-	// warm up
-    tpool_add_work(tm, cache_thread_func, (void*)&bm);
-    tpool_wait(tm);
-
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    tpool_add_work(tm, cache_thread_func, (void*)&bm);
-    tpool_wait(tm);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    time_used = get_time(&start, &end);
-
-    perf = (double)item.loop_time * data_size * 1024 /
-        (time_used * freq[0] * 1e9);
-   
+    
+    perf = get_bandwith(item.loop_time, data_size);
+    
     stringstream ss1;
 
     ss1 << std::setprecision(5) << perf << " " << item.dim;
-    
-   
     
     cont[0] = item.isa;
     cont[1] = item.type;
     cont[2] = ss1.str();
     cont[3] = to_string(item.comp_pl) + " KB";
-    cont[4] = "Way";
     table.addOneItem(cont);
     
-    free(cache_data);
+    
 }
 
 static void cpubm_arm_multiple_issue(tpool_t *tm,
@@ -317,7 +296,7 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
             if(bm_list[i].dim.find("OPS") != std::string::npos) {
                 cpubm_arm64_one(tm, bm_list[i], *tables[0]);
             } else if (bm_list[i].dim.find("Byte/Cycle") != std::string::npos) {
-                cpubm_arm_load(tm, bm_list[i], *tables[1]);
+                cpubm_arm_load(bm_list[i], *tables[1]);
             } else if (bm_list[i].dim.find("IPC") != std::string::npos) {
                 cpubm_arm_multiple_issue(tm, bm_list[i], *tables[3]);
             } else {

@@ -43,5 +43,6 @@ done
 # compile cpufp
 $CXX -g -O2 -I$COMM -I$KERNEL $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o 
 $CXX -g -O2 -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/frequency.cpp -o $BUILD_DIR/frequency.o 
-$CXX -g -O2 -z noexecstack -pthread -static -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ 
+$CXX -g -O0 -I$KERNEL -I$COMM -c $KERNEL/load.cpp -o $BUILD_DIR/load.o 
+$CXX -g -O2 -z noexecstack -pthread -static -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ 
 set +x

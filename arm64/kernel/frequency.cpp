@@ -53,7 +53,7 @@ void* thread_function_freq(void* arg){
     string file_path="/sys/devices/system/cpu/cpu"+ std::to_string(cpuid) +"/cpufreq/scaling_max_freq";
     std::ifstream file(file_path);
     if (file) {
-        string read_freq = "cat "+file_path;
+        string read_freq = "cat " + file_path;
         fp = popen(read_freq.c_str(), "r");
         if(fp) {
             int ret = fread(buf, 1, sizeof(buf)-1, fp);
@@ -71,6 +71,7 @@ void* thread_function_freq(void* arg){
     struct timespec start, end;
     double time_used;
 
+    //  待补充 注释，warm up
     //warm up
     asimd_fmla_vv_f64f64f64(looptime);
 
@@ -100,6 +101,7 @@ void* thread_function_freq(void* arg){
     pthread_exit((void *)&data);
 }
 
+// 变量名待修改
 void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
 {
     int num_thread=set_of_threads.size();

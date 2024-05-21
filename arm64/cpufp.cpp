@@ -29,6 +29,7 @@
 #endif
 using namespace std;
 extern vector<double> freq;
+static int cache_size[2];
 
 typedef struct
 {
@@ -142,14 +143,23 @@ static void cpubm_arm_load(tpool_t *tm,
     struct timespec start, end;
     double time_used, perf ;
     cache_bm_t bm;
+    vector<string> cont;
+    cont.resize(table.getCol());
     int num_threads = tm->thread_num;
-
-    float* cache_data = (float*)malloc(item.comp_pl * 1024);
+    int data_size;
+    if (item.isa == "L1 Cache"){
+        item.comp_pl = cache_size[0];
+    } else {
+        item.comp_pl = cache_size[1];
+        cont[4] = "--";
+    }
+    data_size = item.comp_pl / 2; 
+    float* cache_data = (float*)malloc(data_size * 1024);
     //Preventing Compiler Optimization
-    for(int i = 0;i < item.comp_pl * 1024/sizeof(float); i++){
+    for(int i = 0; i < data_size * 1024/sizeof(float); i++){
         cache_data[i]=i;
     }
-    int inner_loop = item.comp_pl * 1024 / sizeof(float) / (4 * 32);
+    int inner_loop = data_size * 1024 / sizeof(float) / (4 * 32);
     bm.bench = load_ldp_kernel;
     bm.cache_data = cache_data;
     bm.inner_loop = inner_loop;
@@ -164,30 +174,21 @@ static void cpubm_arm_load(tpool_t *tm,
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
 
-    perf = (double)item.loop_time * item.comp_pl * 1024 /
+    perf = (double)item.loop_time * data_size * 1024 /
         (time_used * freq[0] * 1e9);
    
     stringstream ss1;
 
     ss1 << std::setprecision(5) << perf << " " << item.dim;
-    vector<string> cont;
-    if(item.isa == "L1 Cache"){
-        cont.resize(table.getCol());
-        cont[0] = item.isa;
-        cont[1] = item.type;
-        cont[2] = ss1.str();
-        cont[3] = "Size";
-        cont[4] = "Way";
-        table.addOneItem(cont);
-    }else{
-        cont.resize(table.getCol());
-        cont[0] = item.isa;
-        cont[1] = item.type;
-        cont[2] = ss1.str();
-        cont[3] = "Size";
-        cont[4] = "--";
-        table.addOneItem(cont);
-    }
+    
+   
+    
+    cont[0] = item.isa;
+    cont[1] = item.type;
+    cont[2] = ss1.str();
+    cont[3] = to_string(item.comp_pl) + " KB";
+    cont[4] = "Way";
+    table.addOneItem(cont);
     
     free(cache_data);
 }
@@ -282,6 +283,7 @@ static void init_table(std::vector<Table*> &tables){
     tables[3]->setColumnNum(ti.size());
     tables[3]->addOneItem(ti);
 }
+
 static void cpubm_do_bench(std::vector<int> &set_of_threads,
     uint32_t idle_time)
 {
@@ -302,6 +304,7 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
         std::vector<Table*> tables;
         init_table(tables);
         get_cpu_freq(set_of_threads, *tables[2]);
+        get_cachesize(cache_size, set_of_threads[0]);
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);

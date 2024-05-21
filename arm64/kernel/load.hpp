@@ -8,4 +8,5 @@ extern "C"
     void load_ldr_kernel(float*, int64_t);
 }
 
+void get_cachesize(int *cache_size, int cpu_id);
 #endif

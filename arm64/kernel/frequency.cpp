@@ -50,7 +50,7 @@ void* thread_function_freq(void* arg){
 #ifdef __linux__
     FILE *fp = NULL;
     char buf[100]={0};
-    string file_path="/sys/devices/system/cpu0/cpu"+ std::to_string(cpuid) +"/cpufreq/scaling_max_freq";
+    string file_path="/sys/devices/system/cpu/cpu"+ std::to_string(cpuid) +"/cpufreq/scaling_max_freq";
     std::ifstream file(file_path);
     if (file) {
         string read_freq = "cat "+file_path;
@@ -66,7 +66,6 @@ void* thread_function_freq(void* arg){
         data.theory_freq = 0;
     }
 #endif
-    std::cout<<data.theory_freq<<std::endl;
     PerfEventCycle pec;
     int64_t looptime= 100000000;
     struct timespec start, end;
@@ -97,7 +96,7 @@ void* thread_function_freq(void* arg){
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
     data.IPC_load = looptime * 24 / (time_used * CPU_freq);
-    
+
     pthread_exit((void *)&data);
 }
 

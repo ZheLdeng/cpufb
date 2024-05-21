@@ -50,16 +50,23 @@ void* thread_function_freq(void* arg){
 #ifdef __linux__
     FILE *fp = NULL;
     char buf[100]={0};
-    string read_freq = "cat /sys/devices/system/cpu/cpu"+ std::to_string(cpuid) +"/cpufreq/scaling_max_freq";
-    fp = popen(read_freq.c_str(), "r");
-    if(fp) {
-        int ret = fread(buf,1,sizeof(buf)-1,fp);
-        pclose(fp);
-        data.theory_freq=std::stoull(buf) * 1e-6;
-        // freq = std::stoull(buf);
-        // return;
-    } 
+    string file_path="/sys/devices/system/cpu0/cpu"+ std::to_string(cpuid) +"/cpufreq/scaling_max_freq";
+    std::ifstream file(file_path);
+    if (file) {
+        string read_freq = "cat "+file_path;
+        fp = popen(read_freq.c_str(), "r");
+        if(fp) {
+            int ret = fread(buf, 1, sizeof(buf)-1, fp);
+            if (ret > 0) {
+                data.theory_freq = std::stod(buf) * 1e-6;
+            } 
+            pclose(fp);
+        } 
+    } else {
+        data.theory_freq = 0;
+    }
 #endif
+    std::cout<<data.theory_freq<<std::endl;
     PerfEventCycle pec;
     int64_t looptime= 100000000;
     struct timespec start, end;
@@ -83,12 +90,14 @@ void* thread_function_freq(void* arg){
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
     data.IPC_fp32 = looptime * 24 / (time_used * CPU_freq);
+
     float* cache_data = (float*)malloc(1024);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     load_ldr_kernel(cache_data, looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
     data.IPC_load = looptime * 24 / (time_used * CPU_freq);
+    
     pthread_exit((void *)&data);
 }
 
@@ -109,8 +118,8 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
         pthread_join(threads[t], &thread_result);
         result = (FrequencyData *)thread_result;
         stringstream ss1, ss2, ss3, ss4, ss5;
-        ss1 << std::setprecision(2) << result->theory_freq ;
-        ss2 << std::setprecision(2) << result->caculate_freq * 1e-9 ;
+        ss1 << std::setprecision(2) << result->theory_freq<<" GHZ" ;
+        ss2 << std::setprecision(2) << result->caculate_freq * 1e-9 <<" GHZ" ;
         ss3 << std::setprecision(2) << result->IPC_fp32 ;
         ss4 << std::setprecision(2) << result->IPC_fp64 ;
         ss5<< std::setprecision(2) << result->IPC_load ;

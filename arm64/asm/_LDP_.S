@@ -89,5 +89,5 @@ load_ldr_kernel:
     
     subs x3, x3, #1
     bne 1b    
-
     ret
+    

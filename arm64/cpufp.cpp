@@ -145,7 +145,7 @@ static void cpubm_arm_load(cpubm_t &item,
     vector<string> cont;
     cont.resize(table.getCol());
 
-    int data_size;
+    double data_size;
     if (item.isa == "L1 Cache"){
         int way = get_multiway();
         item.comp_pl = cache_size[0];
@@ -155,10 +155,10 @@ static void cpubm_arm_load(cpubm_t &item,
         cont[4] = "--";
     }
 
-    data_size = item.comp_pl / 2; 
+    data_size = item.comp_pl * 1.0 / 2; 
     
     perf = get_bandwith(item.loop_time, data_size);
-    
+
     stringstream ss1;
 
     ss1 << std::setprecision(5) << perf << " " << item.dim;
@@ -298,7 +298,7 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
             } else if (bm_list[i].dim.find("Byte/Cycle") != std::string::npos) {
                 cpubm_arm_load(bm_list[i], *tables[1]);
             } else if (bm_list[i].dim.find("IPC") != std::string::npos) {
-                cpubm_arm_multiple_issue(tm, bm_list[i], *tables[3]);
+                // cpubm_arm_multiple_issue(tm, bm_list[i], *tables[3]);
             } else {
                 std::cout << "Wrong dimension !" << endl;
                 break;

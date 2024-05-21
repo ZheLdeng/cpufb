@@ -22,7 +22,7 @@
 #define WINDOW_NUM 2048
 //WINDOW 大小 4MB
 #define WINDOW_SIZE 4*1024*1024
-#define LOOP_TIME 10000000
+#define LOOP_TIME 1000000
 
 #define PTR_BITS 3
 #define MAX_RAND 100000
@@ -44,7 +44,7 @@ static void random_access(vector<double>& time_used) {
     srand(time(NULL));
     struct timespec start, end;
 
-    double pre_time_used = 0;
+    double sum_time_used = 0;
     int i, j, k;
     for(int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
         int64_t *ptr = (int64_t*)malloc(win_size);
@@ -78,17 +78,18 @@ static void random_access(vector<double>& time_used) {
             index = ptr[index];
             
         }
-        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        index = 0;
-        for(k = 0 ; k < LOOP_TIME; k++){
-            index = ptr[index];
+        sum_time_used=0;
+        for(i = 0;i < 100;i++){
+            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+            index = 0;
+            for(k = 0 ; k < LOOP_TIME; k++){
+                index = ptr[index];
+            }
+            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            sum_time_used += get_time(&start, &end);
         }
+        time_used.push_back(sum_time_used / 100);
         
-        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-        time_used.push_back(get_time(&start, &end));
-        
-        // printf("size = %d , time used = %.10f, slope = %.10f\n", win_size / 1024, get_time(&start, &end) / 100, (time_used[time_used.size() - 1] - pre_time_used) / pre_time_used);
-        // pre_time_used = get_time(&start, &end);
         free(ptr);
     }
     return;
@@ -154,7 +155,7 @@ void get_cachesize(int *cache_size, int cpu_id)
 }
 
 
-#define BUFFER_NUM 32
+#define BUFFER_NUM 16
 #define BUFFER_SIZE 1024 * 1024
 int get_multiway(){
     struct timespec start, end;
@@ -162,26 +163,26 @@ int get_multiway(){
     int i, j, k, w;
     int64_t loop_time = 1000000, test_time = 100;
     for(w = 0 ; w < BUFFER_NUM ; w++){
-        uintptr_t *ptr = (uintptr_t*)malloc(BUFFER_SIZE*(w+1));
-        volatile uintptr_t* next;
+        uint64_t *index = (uint64_t*)malloc(BUFFER_SIZE*(w+1));
+        uint64_t next=0;
+        //init
         for( j = 0 ; j < w ; j++){
-            ptr[(j * BUFFER_SIZE) >> 3 ]=(uintptr_t)&ptr[((j + 1) * BUFFER_SIZE) >> 3];
+            index[(j * BUFFER_SIZE) >> 3 ]=((j + 1) * BUFFER_SIZE) >> 3;
         }
-        ptr[(j * BUFFER_SIZE) >> 3] = (uintptr_t)&ptr[0];
-    
+        index[(j * BUFFER_SIZE) >> 3] = 0;
         //warm up
-        next = (uintptr_t*)&ptr[0];
-        for(k = 0 ; k < loop_time ; k++){
-            next = (uintptr_t*)*next;
+        next = 0;
+        for(k=0 ; k<LOOP_TIME ; k++){
+            next = index[next];
         }
 
         pre_time_used=time_used;
         time_used=0;
         for(i = 0; i < test_time ;i++){
             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            next = (uintptr_t*)&ptr[0];
-            for(k = 0 ; k < loop_time ; k++){
-                next = (uintptr_t*)*next;
+             next = 0;
+            for(k=0 ; k<LOOP_TIME ; k++){
+                next = index[next];
             }
             clock_gettime(CLOCK_MONOTONIC_RAW, &end);
             time_used += get_time(&start, &end);
@@ -190,12 +191,12 @@ int get_multiway(){
         if(w > 0 && time_used/pre_time_used - 1 > 1e-1){
             break;
         }
-        free(ptr);
+        free(index);
     }
     return w;
 }
 
-double get_bandwith(uint64_t looptime, int data_size){
+double get_bandwith(uint64_t looptime, double data_size){
     struct timespec start, end;
     double time_used, perf;
 

@@ -12,5 +12,5 @@ extern "C"
 
 void get_cachesize(int *cache_size, int cpu_id);
 int get_multiway();
-double get_bandwith(uint64_t looptime, int data_size);
+double get_bandwith(uint64_t looptime, double data_size);
 #endif

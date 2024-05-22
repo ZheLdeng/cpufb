@@ -1,5 +1,4 @@
 #include <unistd.h>
-#include <linux/perf_event.h>  
 #include <sys/ioctl.h>  
 #include <sys/syscall.h>  
 #include <sys/types.h>   
@@ -35,6 +34,19 @@ using namespace std;
 vector<double> freq;
 
 void* thread_function_freq(void* arg){
+    struct FrequencyData* data = (FrequencyData*)malloc(sizeof(FrequencyData));
+    double CPU_freq;
+    int64_t looptime = 100000000;
+    struct timespec start, end;
+    double time_used;
+    
+#ifdef __APPLE__
+    data->theory_freq = 3.5;
+    data->caculate_freq = 3.5;
+    CPU_freq = 3.5 * 1e9;
+#endif
+#ifdef __linux__
+    PerfEventCycle pec;
     int cpuid=*((int *)arg);
     // Set affinity to the specified core
     cpu_set_t cpuset;
@@ -45,9 +57,7 @@ void* thread_function_freq(void* arg){
         printf("Error: cpu id %d sched_setaffinity\n", cpuid);  
         printf("Warning: performance may be impacted \n");  
     } 
-    struct FrequencyData data;
     //get CPU frequency
-#ifdef __linux__
     FILE *fp = NULL;
     char buf[100]={0};
     string file_path="/sys/devices/system/cpu/cpu"+ std::to_string(cpuid) +"/cpufreq/scaling_max_freq";
@@ -58,47 +68,49 @@ void* thread_function_freq(void* arg){
         if(fp) {
             int ret = fread(buf, 1, sizeof(buf)-1, fp);
             if (ret > 0) {
-                data.theory_freq = std::stod(buf) * 1e-6;
+                data->theory_freq = std::stod(buf) * 1e-6;
             } 
             pclose(fp);
         } 
     } else {
-        data.theory_freq = 0;
+        data->theory_freq = 0;
     }
-#endif
-    PerfEventCycle pec;
-    int64_t looptime= 100000000;
-    struct timespec start, end;
-    double time_used;
-
-    //  待补充 注释，warm up
     //warm up
     asimd_fmla_vv_f64f64f64(looptime);
-
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     pec.start();
     asimd_fmla_vv_f64f64f64(looptime);
     pec.stop();
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    double CPU_freq=(double)pec.get_cycle()/time_used;
-    data.caculate_freq = CPU_freq;
-    data.IPC_fp64 = looptime * 24 / (time_used * CPU_freq);
+    CPU_freq = (double)pec.get_cycle()/time_used;
+    data->caculate_freq = CPU_freq * 1e-9;
+#endif
+
+    //  待补充 注释，warm up
+    //warm up
+    asimd_fmla_vv_f64f64f64(looptime);
+
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    asimd_fmla_vv_f64f64f64(looptime);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    time_used = get_time(&start, &end);
+    data->IPC_fp64 = looptime * 24 / (time_used * CPU_freq);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     asimd_fmla_vv_f32f32f32(looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    data.IPC_fp32 = looptime * 24 / (time_used * CPU_freq);
+    data->IPC_fp32 = looptime * 24 / (time_used * CPU_freq);
 
     float* cache_data = (float*)malloc(1024);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     load_ldr_kernel(cache_data, looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    data.IPC_load = looptime * 24 / (time_used * CPU_freq);
+    data->IPC_load = looptime * 24 / (time_used * CPU_freq);
 
-    pthread_exit((void *)&data);
+    pthread_exit((void *)data);
 }
 
 // 变量名待修改
@@ -117,15 +129,15 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
     
     for (int t = 0; t < num_thread; t++) {
         pthread_join(threads[t], &thread_result);
-        result = (FrequencyData *)thread_result;
+        result = (struct FrequencyData *)thread_result;
         stringstream ss1, ss2, ss3, ss4, ss5;
-        ss1 << std::setprecision(2) << result->theory_freq<<" GHZ" ;
-        ss2 << std::setprecision(2) << result->caculate_freq * 1e-9 <<" GHZ" ;
+        ss1 << std::setprecision(2) << result->theory_freq <<" GHZ" ;
+        ss2 << std::setprecision(2) << result->caculate_freq <<" GHZ" ;
         ss3 << std::setprecision(2) << result->IPC_fp32 ;
         ss4 << std::setprecision(2) << result->IPC_fp64 ;
         ss5<< std::setprecision(2) << result->IPC_load ;
 
-        freq[t]=result->theory_freq;
+        freq[t]=result->caculate_freq;
 
         vector<string> cont;
         cont.resize(table.getCol());

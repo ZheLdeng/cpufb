@@ -4,9 +4,10 @@
 #include <cstdlib>
 #include <unistd.h>
 #include <sys/ioctl.h>
-#include <linux/perf_event.h>
-#include <asm/unistd.h>
 
+#ifdef __linux__
+#include <asm/unistd.h>
+#include <linux/perf_event.h>
 class PerfEventCycle {
 private:
     int fd;
@@ -51,4 +52,5 @@ public:
         return count;
     }
 };
+#endif
 

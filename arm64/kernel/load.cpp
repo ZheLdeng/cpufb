@@ -8,7 +8,6 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <sys/syscall.h>
-#include <linux/perf_event.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <cstring>
@@ -21,7 +20,7 @@
 //测试WINDOW的数量上限
 #define WINDOW_NUM 2048
 //WINDOW 大小 4MB
-#define WINDOW_SIZE 4*1024*1024
+#define WINDOW_SIZE 128 * 1024 * 1024
 #define LOOP_TIME 1000000
 
 #define PTR_BITS 3
@@ -138,6 +137,7 @@ void get_cachesize(int *cache_size, int cpu_id)
 {
     vector<double> time_used, slope;
     int size_num = log2(WINDOW_SIZE / 1024) + 1;
+#ifdef __linux__
     pid_t pid = gettid();
     cpu_set_t mask;  
     CPU_ZERO(&mask);  
@@ -146,6 +146,7 @@ void get_cachesize(int *cache_size, int cpu_id)
         printf("Error: cpu id %d sched_setaffinity\n", cpu_id);  
         printf("Warning: performance may be impacted \n");  
     } 
+#endif
     random_access(time_used);
     get_slope(time_used, slope);
     cache_size[0] = pow(2, find_L1_point(slope));
@@ -156,14 +157,14 @@ void get_cachesize(int *cache_size, int cpu_id)
 
 
 #define BUFFER_NUM 16
-#define BUFFER_SIZE 1024 * 1024
+#define BUFFER_SIZE 4 * 1024 * 1024
 int get_multiway(){
     struct timespec start, end;
     double time_used = 0, pre_time_used = 0;
     int i, j, k, w;
     int64_t loop_time = 1000000, test_time = 100;
     for(w = 0 ; w < BUFFER_NUM ; w++){
-        uint64_t *index = (uint64_t*)malloc(BUFFER_SIZE*(w+1));
+        uint64_t *index = (uint64_t*)malloc(BUFFER_SIZE*(w + 1));
         uint64_t next=0;
         //init
         for( j = 0 ; j < w ; j++){
@@ -172,7 +173,7 @@ int get_multiway(){
         index[(j * BUFFER_SIZE) >> 3] = 0;
         //warm up
         next = 0;
-        for(k=0 ; k<LOOP_TIME ; k++){
+        for(k=0 ; k<loop_time ; k++){
             next = index[next];
         }
 
@@ -180,14 +181,15 @@ int get_multiway(){
         time_used=0;
         for(i = 0; i < test_time ;i++){
             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-             next = 0;
-            for(k=0 ; k<LOOP_TIME ; k++){
+            next = 0;
+            for(k=0 ; k<loop_time ; k++){
                 next = index[next];
             }
             clock_gettime(CLOCK_MONOTONIC_RAW, &end);
             time_used += get_time(&start, &end);
         }
         time_used /= test_time;
+        // std::cout<<time_used<<" "<<time_used/pre_time_used<<std::endl;
         if(w > 0 && time_used/pre_time_used - 1 > 1e-1){
             break;
         }
@@ -197,6 +199,10 @@ int get_multiway(){
 }
 
 double get_bandwith(uint64_t looptime, double data_size){
+    data_size /= 2.0;
+    if(data_size > 2 * 1024){
+        data_size = 2 * 1024;
+    }
     struct timespec start, end;
     double time_used, perf;
 
@@ -206,7 +212,6 @@ double get_bandwith(uint64_t looptime, double data_size){
         cache_data[i]=i;
     }
     int inner_loop = data_size * 1024 / sizeof(float) / (4 * 32);
-
 	// warm up
     load_ldp_kernel(cache_data, inner_loop, looptime);
 
@@ -214,7 +219,6 @@ double get_bandwith(uint64_t looptime, double data_size){
     load_ldp_kernel(cache_data, inner_loop, looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-
     perf=(double)looptime * data_size * 1024 /
         (time_used * freq[0] * 1e9);
 

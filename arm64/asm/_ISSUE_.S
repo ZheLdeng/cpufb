@@ -1,6 +1,13 @@
 .align 4
+#ifdef __APPLE__
+.global _multiple_issue
+
+_multiple_issue:
+#else 
 .global multiple_issue
-multiple_issue:
+
+multiple_issue:    
+#endif
     
     mov x4, x2
     2:

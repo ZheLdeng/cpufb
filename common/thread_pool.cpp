@@ -57,7 +57,7 @@ static void *tpool_worker(void *arg)
     tpool_t      *tm = targs->tm;
     size_t cpu_id=targs->cpuid;
     free(targs);
-
+#ifdef __linux__
     pid_t pid = gettid();
     cpu_set_t mask;  
     CPU_ZERO(&mask);  
@@ -66,6 +66,7 @@ static void *tpool_worker(void *arg)
         printf("Error: cpu id %d sched_setaffinity\n", cpu_id);  
         printf("Warning: performance may be impacted \n");  
     } 
+#endif
     tpool_work_t *work;
 
     while (1) {

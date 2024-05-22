@@ -15,7 +15,6 @@
 
 #include <stdlib.h>
 #include <sys/syscall.h>
-#include <linux/perf_event.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
 
@@ -139,13 +138,13 @@ static void cpubm_arm64_one(tpool_t *tm,
 static void cpubm_arm_load(cpubm_t &item,
     Table &table)
 {
-   
-    double perf ;
+    double perf =0;;
 
     vector<string> cont;
     cont.resize(table.getCol());
 
-    double data_size;
+    double data_size = 0.0;
+
     if (item.isa == "L1 Cache"){
         int way = get_multiway();
         item.comp_pl = cache_size[0];
@@ -155,9 +154,7 @@ static void cpubm_arm_load(cpubm_t &item,
         cont[4] = "--";
     }
 
-    data_size = item.comp_pl * 1.0 / 2; 
-    
-    perf = get_bandwith(item.loop_time, data_size);
+    perf = get_bandwith(item.loop_time, (double)item.comp_pl);
 
     stringstream ss1;
 
@@ -168,8 +165,6 @@ static void cpubm_arm_load(cpubm_t &item,
     cont[2] = ss1.str();
     cont[3] = to_string(item.comp_pl) + " KB";
     table.addOneItem(cont);
-    
-    
 }
 
 static void cpubm_arm_multiple_issue(tpool_t *tm,
@@ -294,11 +289,11 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
         {
             sleep(idle_time);
             if(bm_list[i].dim.find("OPS") != std::string::npos) {
-                cpubm_arm64_one(tm, bm_list[i], *tables[0]);
+                // cpubm_arm64_one(tm, bm_list[i], *tables[0]);
             } else if (bm_list[i].dim.find("Byte/Cycle") != std::string::npos) {
                 cpubm_arm_load(bm_list[i], *tables[1]);
             } else if (bm_list[i].dim.find("IPC") != std::string::npos) {
-                // cpubm_arm_multiple_issue(tm, bm_list[i], *tables[3]);
+                cpubm_arm_multiple_issue(tm, bm_list[i], *tables[3]);
             } else {
                 std::cout << "Wrong dimension !" << endl;
                 break;

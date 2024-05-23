@@ -59,19 +59,19 @@ int main() {
     // for (int i = 0; i < count; i++) {
     //     printf("%s\n", features[i]);
     // }
-    if(find("asimd",features,count)){
+    if (find("asimd",features,count)) {
         printf("_ASIMD_\n");
     }
-    if(find("asimddp",features,count)){
+    if (find("asimddp",features,count)) {
         printf("_ASIMD_DP_\n");
     }
-    if(find("asimdhp",features,count)){
+    if (find("asimdhp",features,count)) {
         printf("_ASIMD_HP_\n");
     }
-    if(find("i8mm",features,count)){
+    if (find("i8mm",features,count)) {
         printf("_I8MM_\n");
     }
-    if(find("bf16",features,count)){
+    if (find("bf16",features,count)) {
         printf("_BF16_\n");
     }
     printf("_LDP_\n");     

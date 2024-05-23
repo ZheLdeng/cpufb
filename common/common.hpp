@@ -1,6 +1,10 @@
+#ifndef _PERF_EVENT_HPP
+#define _PERF_EVENT_HPP
+
 #include <iostream>
 #include <cstring>
 #include <cstdio>
+#include <ctime>
 #include <cstdlib>
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -52,5 +56,16 @@ public:
         return count;
     }
 };
+
+static double get_time(struct timespec *start,
+	struct timespec *end)
+{
+	return end->tv_sec - start->tv_sec +
+		(end->tv_nsec - start->tv_nsec) * 1e-9;
+}
+
+
+
+#endif
 #endif
 

@@ -36,6 +36,8 @@ struct tpool_args {
     size_t cpuid;
 };
 
+void parse_thread_pool(char *sets, std::vector<int> &set_of_threads);
+
 tpool_t *tpool_create(std::vector<int>thread_pool);
 void tpool_destroy(tpool_t *tm);
 

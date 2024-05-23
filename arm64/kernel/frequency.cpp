@@ -1,39 +1,25 @@
 #include <unistd.h>
-#include <sys/ioctl.h>  
-#include <sys/syscall.h>  
 #include <sys/types.h>   
 #include <cstdio>  
 #include <cstdlib>  
 #include <ctime>  
 #include <iostream>
 #include <cstdint>
-#include "compute.hpp"
-#include "frequency.hpp"
-#include "perf_event.hpp"
-#include "load.hpp"
-
 #include <string>  
 #include <vector>
-
 #include <cstring>
-#include <sstream>
 #include <iomanip>
 #include <fstream>
 
-#include <stdlib.h>
-#include <fcntl.h>
+#include "compute.hpp"
+#include "frequency.hpp"
+#include "common.hpp"
+#include "load.hpp"
 
-
-static double get_time(struct timespec *start,
-	struct timespec *end)
-{
-	return end->tv_sec - start->tv_sec +
-		(end->tv_nsec - start->tv_nsec) * 1e-9;
-}
 using namespace std;
 vector<double> freq;
 
-void* thread_function_freq(void* arg){
+static void* thread_function_freq(void* arg){
     struct FrequencyData* data = (FrequencyData*)malloc(sizeof(FrequencyData));
     double CPU_freq;
     int64_t looptime = 100000000;
@@ -47,7 +33,7 @@ void* thread_function_freq(void* arg){
 #endif
 #ifdef __linux__
     PerfEventCycle pec;
-    int cpuid=*((int *)arg);
+    int cpuid =* ((int *)arg);
     // Set affinity to the specified core
     cpu_set_t cpuset;
     pid_t pid = gettid();
@@ -59,13 +45,13 @@ void* thread_function_freq(void* arg){
     } 
     //get CPU frequency
     FILE *fp = NULL;
-    char buf[100]={0};
+    char buf[100] = {0};
     string file_path="/sys/devices/system/cpu/cpu"+ std::to_string(cpuid) +"/cpufreq/scaling_max_freq";
     std::ifstream file(file_path);
     if (file) {
         string read_freq = "cat " + file_path;
         fp = popen(read_freq.c_str(), "r");
-        if(fp) {
+        if (fp) {
             int ret = fread(buf, 1, sizeof(buf)-1, fp);
             if (ret > 0) {
                 data->theory_freq = std::stod(buf) * 1e-6;
@@ -83,7 +69,7 @@ void* thread_function_freq(void* arg){
     pec.stop();
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    CPU_freq = (double)pec.get_cycle()/time_used;
+    CPU_freq = (double)pec.get_cycle() / time_used;
     data->caculate_freq = CPU_freq * 1e-9;
 #endif
 
@@ -116,14 +102,14 @@ void* thread_function_freq(void* arg){
 // 变量名待修改
 void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
 {
-    int num_thread=set_of_threads.size();
+    int num_thread = set_of_threads.size();
     void *thread_result;
     FrequencyData *result;
     freq.resize(num_thread);
 
     pthread_t threads[num_thread];
-    int i=0;
-    for(int i = 0;i<num_thread;i++){
+    int i = 0;
+    for (int i = 0; i<num_thread; i++){
         pthread_create(&threads[i], NULL, thread_function_freq,  (void*)&set_of_threads[i] );
     }
     
@@ -137,11 +123,11 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
         ss4 << std::setprecision(2) << result->IPC_fp64 ;
         ss5<< std::setprecision(2) << result->IPC_load ;
 
-        freq[t]=result->caculate_freq;
+        freq[t] = result->caculate_freq;
 
         vector<string> cont;
         cont.resize(table.getCol());
-        cont[0] =to_string(set_of_threads[t]);
+        cont[0] = to_string(set_of_threads[t]);
         cont[1] = ss1.str();
         cont[2] = ss2.str();
         cont[3] = ss3.str();

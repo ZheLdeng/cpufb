@@ -1,6 +1,3 @@
-#include "table.hpp"
-#include "thread_pool.hpp"
-
 #include <unistd.h>
 #include <cstdint>
 #include <ctime>
@@ -18,23 +15,23 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 
+#include "table.hpp"
+#include "thread_pool.hpp"
 #include<load.hpp>
 #include<compute.hpp>
 #include<frequency.hpp>
 #include<multiple_issue.hpp>
+#include<common.hpp>
 
-#ifdef __linux__
-#include<perf_event.hpp>
-#endif
 using namespace std;
 extern vector<double> freq;
 static int cache_size[2];
 
 typedef struct
 {
-    std::string isa;
-    std::string type;
-    std::string dim;
+    string isa;
+    string type;
+    string dim;
     int64_t loop_time;
     int64_t comp_pl;
     void (*bench)(int64_t);
@@ -50,16 +47,9 @@ typedef struct
 
 static vector<cpubm_t> bm_list;
 
-static double get_time(struct timespec *start,
-	struct timespec *end)
-{
-	return end->tv_sec - start->tv_sec +
-		(end->tv_nsec - start->tv_nsec) * 1e-9;
-}
-
-static void reg_new_isa(std::string isa,
-    std::string type,
-    std::string dim,
+static void reg_new_isa(string isa,
+    string type,
+    string dim,
     int64_t loop_time,
     int64_t comp_pl,
     void (*bench)(int64_t))
@@ -88,8 +78,7 @@ static void cache_thread_func(void *params)
 }
 
 static void cpubm_arm64_one(tpool_t *tm,
-    cpubm_t &item,
-    Table &table)
+    cpubm_t &item, Table &table)
 {
     struct timespec start, end;
     double time_used, perf, IPC;
@@ -126,7 +115,7 @@ static void cpubm_arm64_one(tpool_t *tm,
 
     stringstream ss1, ss2;
 
-    ss1 << std::setprecision(5) << perf << " " << perfUnit << item.dim;
+    ss1 << setprecision(5) << perf << " " << perfUnit << item.dim;
     vector<string> cont;
     cont.resize(table.getCol());
     cont[0] = item.isa;
@@ -135,10 +124,9 @@ static void cpubm_arm64_one(tpool_t *tm,
     table.addOneItem(cont);
 }
 
-static void cpubm_arm_load(cpubm_t &item,
-    Table &table)
+static void cpubm_arm_load(cpubm_t &item, Table &table)
 {
-    double perf =0;;
+    double perf = 0;
 
     vector<string> cont;
     cont.resize(table.getCol());
@@ -158,7 +146,7 @@ static void cpubm_arm_load(cpubm_t &item,
 
     stringstream ss1;
 
-    ss1 << std::setprecision(5) << perf << " " << item.dim;
+    ss1 << setprecision(5) << perf << " " << item.dim;
     
     cont[0] = item.isa;
     cont[1] = item.type;
@@ -178,8 +166,8 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
     int size = 1024;
     float* cache_data = (float*)malloc(1024);
     //Preventing Compiler Optimization
-    for(int i = 0;i < size / sizeof(float); i++){
-        cache_data[i]=i;
+    for (int i = 0;i < size / sizeof(float); i++){
+        cache_data[i] = i;
     }
     int inner_loop = 1024;
     bm.bench = multiple_issue;
@@ -200,7 +188,7 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
         (time_used * freq[0] * 1e9);
     stringstream ss;
     
-    ss << std::setprecision(5) << perf << " " << item.dim;
+    ss << setprecision(5) << perf << " " << item.dim;
 
     vector<string> cont;
     cont.resize(table.getCol());
@@ -214,13 +202,13 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
 //cachesize: cache level / Core Computation / bandwith / size / IPC / way
 //frequency : core id / theory freq / test freq
 //multi issue
-static void init_table(std::vector<Table*> &tables){
+static void init_table(vector<Table*> &tables)
+{
     tables.resize(4);
     for (int  i = 0; i < 4; i++)
     {
         tables[i] = new Table();
     }
-    
     
     vector<string> ti;   
 
@@ -258,7 +246,7 @@ static void init_table(std::vector<Table*> &tables){
     tables[3]->addOneItem(ti);
 }
 
-static void cpubm_do_bench(std::vector<int> &set_of_threads,
+static void cpubm_do_bench(vector<int> &set_of_threads,
     uint32_t idle_time)
 {
     int i;
@@ -275,7 +263,7 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
         }
         printf("\n");
         // set table head
-        std::vector<Table*> tables;
+        vector<Table*> tables;
         init_table(tables);
         get_cpu_freq(set_of_threads, *tables[2]);
         get_cachesize(cache_size, set_of_threads[0]);
@@ -288,18 +276,18 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
         for (i = 1; i < bm_list.size(); i++)
         {
             sleep(idle_time);
-            if(bm_list[i].dim.find("OPS") != std::string::npos) {
+            if (bm_list[i].dim.find("OPS") != string::npos) {
                 // cpubm_arm64_one(tm, bm_list[i], *tables[0]);
-            } else if (bm_list[i].dim.find("Byte/Cycle") != std::string::npos) {
+            } else if (bm_list[i].dim.find("Byte/Cycle") != string::npos) {
                 cpubm_arm_load(bm_list[i], *tables[1]);
-            } else if (bm_list[i].dim.find("IPC") != std::string::npos) {
+            } else if (bm_list[i].dim.find("IPC") != string::npos) {
                 cpubm_arm_multiple_issue(tm, bm_list[i], *tables[3]);
             } else {
-                std::cout << "Wrong dimension !" << endl;
+                cout << "Wrong dimension !" << endl;
                 break;
             }
         }
-        for(i = 0; i < tables.size(); i++)
+        for (i = 0; i < tables.size(); i++)
             tables[i]->print();
 
         tpool_destroy(tm);
@@ -307,74 +295,6 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
     else
     {
         printf("Sorry, there's no any supported SIMD isa.\n");
-    }
-}
-
-static void parse_thread_pool(char *sets,
-    vector<int> &set_of_threads)
-{
-    if (sets[0] != '[')
-    {
-        return;
-    }
-    int pos = 1;
-    int left = 0, right = 0;
-    int state = 0;
-    while (sets[pos] != ']' && sets[pos] != '\0')
-    {
-        if (state == 0)
-        {
-            if (sets[pos] >= '0' && sets[pos] <= '9')
-            {
-                left *= 10;
-                left += (int)(sets[pos] - '0');
-            }
-            else if (sets[pos] == ',')
-            {
-                set_of_threads.push_back(left);
-                left = 0;
-            }
-            else if (sets[pos] == '-')
-            {
-                right = 0;
-                state = 1;
-            }
-        }
-        else if (state == 1)
-        {
-            if (sets[pos] >= '0' && sets[pos] <= '9')
-            {
-                right *= 10;
-                right += (int)(sets[pos] - '0');
-            }
-            else if (sets[pos] == ',')
-            {
-                int i;
-                for (i = left; i <= right; i++)
-                {
-                    set_of_threads.push_back(i);
-                }
-                left = 0;
-                state = 0;
-            }
-        }
-        pos++;
-    }
-    if (sets[pos] != ']')
-    {
-        return;
-    }
-    if (state == 0)
-    {
-        set_of_threads.push_back(left);
-    }
-    else if (state == 1)
-    {
-        int i;
-        for (i = left; i <= right; i++)
-        {
-            set_of_threads.push_back(i);
-        }
     }
 }
 

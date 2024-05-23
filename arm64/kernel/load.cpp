@@ -1,19 +1,13 @@
-#include <stdio.h>
 #include <cstdlib>
 #include <pthread.h>
 #include <sched.h> // For CPU affinity
-#include <time.h>
-#include <cstdint>
+#include <ctime>
 #include <cmath>
-#include <sys/mman.h>
 #include <unistd.h>
-#include <sys/syscall.h>
-#include <fcntl.h>
-#include <sys/ioctl.h>
 #include <cstring>
 #include <vector>
 #include <iostream>
-#include <sched.h>
+#include<common.hpp>
 #include <load.hpp>
 //cacheline长度
 #define CACHE_LINE 64
@@ -26,14 +20,10 @@
 #define PTR_BITS 3
 #define MAX_RAND 100000
 
-using namespace std;
+#define BUFFER_NUM 16
+#define BUFFER_SIZE 4 * 1024 * 1024
 
-static double get_time(struct timespec *start,
-	struct timespec *end)
-{
-	return end->tv_sec - start->tv_sec +
-		(end->tv_nsec - start->tv_nsec) * 1e-9;
-}
+using namespace std;
 
 static int64_t get_random(int64_t lower_bound, int64_t upper_bound) {
     return lower_bound + rand() % (upper_bound - lower_bound + 1);
@@ -42,27 +32,26 @@ static int64_t get_random(int64_t lower_bound, int64_t upper_bound) {
 static void random_access(vector<double>& time_used) {
     srand(time(NULL));
     struct timespec start, end;
-
     double sum_time_used = 0;
     int i, j, k;
-    for(int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
+    for (int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
         int64_t *ptr = (int64_t*)malloc(win_size);
         int total_num = (win_size) >> 3;
         memset(ptr, -1, win_size);
         volatile int64_t index = 0;
         //init
-        for( j = 0 ; j < total_num/2 ; j++){
+        for (j = 0; j < total_num / 2; j++) {
             volatile int64_t rand;
             int k;
-            for(k = 0; k < MAX_RAND; k++){
-                rand = get_random(0, total_num-1);
-                if(ptr[rand] == -1 && rand != index){
+            for (k = 0; k < MAX_RAND; k++) {
+                rand = get_random(0, total_num - 1);
+                if (ptr[rand] == -1 && rand != index) {
                     break;
                 }
             }
-            if(k == MAX_RAND){
+            if (k == MAX_RAND) {
                 rand = index + 1;
-                while(ptr[rand] != -1||rand == index){
+                while(ptr[rand] != -1 || rand == index) {
                     rand = (rand + 1) % total_num;
                 }
             }
@@ -73,15 +62,15 @@ static void random_access(vector<double>& time_used) {
         ptr[index] = 0;
         //warm up
         index = 0;
-        for(k=0 ; k < LOOP_TIME; k++){
+        for (k = 0; k < LOOP_TIME; k++) {
             index = ptr[index];
             
         }
-        sum_time_used=0;
-        for(i = 0;i < 100;i++){
+        sum_time_used = 0;
+        for (i = 0; i < 100; i++) {
             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
             index = 0;
-            for(k = 0 ; k < LOOP_TIME; k++){
+            for (k = 0; k < LOOP_TIME; k++) {
                 index = ptr[index];
             }
             clock_gettime(CLOCK_MONOTONIC_RAW, &end);
@@ -102,7 +91,7 @@ static void get_slope(vector<double>& time_used, vector<double>& slope)
 }
 
 // 检查点是否是极大值点
-static bool isMaximum(const std::vector<double>& values, int index)
+static bool isMaximum(const vector<double>& values, int index)
 {
     int n = values.size();
     if (index == 0 || index == n - 1) {
@@ -155,42 +144,40 @@ void get_cachesize(int *cache_size, int cpu_id)
     // cout << "L1 = " << cache_size[0] << " L2 = " << cache_size[1] << endl;
 }
 
-
-#define BUFFER_NUM 16
-#define BUFFER_SIZE 4 * 1024 * 1024
-int get_multiway(){
+int get_multiway()
+{
     struct timespec start, end;
     double time_used = 0, pre_time_used = 0;
     int i, j, k, w;
     int64_t loop_time = 1000000, test_time = 100;
-    for(w = 0 ; w < BUFFER_NUM ; w++){
-        uint64_t *index = (uint64_t*)malloc(BUFFER_SIZE*(w + 1));
-        uint64_t next=0;
+    for (w = 0; w < BUFFER_NUM; w++) {
+        uint64_t *index = (uint64_t*)malloc(BUFFER_SIZE * (w + 1));
+        uint64_t next = 0;
         //init
-        for( j = 0 ; j < w ; j++){
-            index[(j * BUFFER_SIZE) >> 3 ]=((j + 1) * BUFFER_SIZE) >> 3;
+        for ( j = 0; j < w; j++) {
+            index[(j * BUFFER_SIZE) >> 3 ] = ((j + 1) * BUFFER_SIZE) >> 3;
         }
         index[(j * BUFFER_SIZE) >> 3] = 0;
         //warm up
         next = 0;
-        for(k=0 ; k<loop_time ; k++){
+        for (k = 0; k < loop_time; k++) {
             next = index[next];
         }
 
-        pre_time_used=time_used;
-        time_used=0;
-        for(i = 0; i < test_time ;i++){
+        pre_time_used = time_used;
+        time_used = 0;
+        for (i = 0; i < test_time;i++) {
             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
             next = 0;
-            for(k=0 ; k<loop_time ; k++){
+            for (k = 0; k<loop_time; k++) {
                 next = index[next];
             }
             clock_gettime(CLOCK_MONOTONIC_RAW, &end);
             time_used += get_time(&start, &end);
         }
         time_used /= test_time;
-        // std::cout<<time_used<<" "<<time_used/pre_time_used<<std::endl;
-        if(w > 0 && time_used/pre_time_used - 1 > 1e-1){
+        // cout<<time_used<<" "<<time_used/pre_time_used<<endl;
+        if (w > 0 && time_used/pre_time_used - 1 > 1e-1) {
             break;
         }
         free(index);
@@ -198,18 +185,20 @@ int get_multiway(){
     return w;
 }
 
-double get_bandwith(uint64_t looptime, double data_size){
-    data_size /= 2.0;
-    if(data_size > 2 * 1024){
-        data_size = 2 * 1024;
-    }
+double get_bandwith(uint64_t looptime, double data_size)
+{
     struct timespec start, end;
     double time_used, perf;
 
+    data_size /= 2.0;
+    if (data_size > 2 * 1024) {
+        data_size = 2 * 1024;
+    }
     float* cache_data = (float*)malloc(data_size * 1024);
+
     //Preventing Compiler Optimization
-    for(int i = 0; i < data_size * 1024/sizeof(float); i++){
-        cache_data[i]=i;
+    for (int i = 0; i < data_size * 1024/sizeof(float); i++) {
+        cache_data[i] = i;
     }
     int inner_loop = data_size * 1024 / sizeof(float) / (4 * 32);
 	// warm up
@@ -219,8 +208,7 @@ double get_bandwith(uint64_t looptime, double data_size){
     load_ldp_kernel(cache_data, inner_loop, looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    perf=(double)looptime * data_size * 1024 /
-        (time_used * freq[0] * 1e9);
+    perf = (double)looptime * data_size * 1024 / (time_used * freq[0] * 1e9);
 
     free(cache_data);
     return perf;

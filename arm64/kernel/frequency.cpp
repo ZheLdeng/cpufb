@@ -10,6 +10,7 @@
 #include <cstring>
 #include <iomanip>
 #include <fstream>
+#include <sstream>
 
 #include "compute.hpp"
 #include "frequency.hpp"

@@ -9,6 +9,12 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 
+static double get_time(struct timespec *start,
+	struct timespec *end)
+{
+	return end->tv_sec - start->tv_sec +
+		(end->tv_nsec - start->tv_nsec) * 1e-9;
+}
 #ifdef __linux__
 #include <asm/unistd.h>
 #include <linux/perf_event.h>
@@ -56,13 +62,6 @@ public:
         return count;
     }
 };
-
-static double get_time(struct timespec *start,
-	struct timespec *end)
-{
-	return end->tv_sec - start->tv_sec +
-		(end->tv_nsec - start->tv_nsec) * 1e-9;
-}
 
 
 

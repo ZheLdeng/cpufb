@@ -8,9 +8,12 @@ extern "C"
 {
     void load_ldp_kernel(float*, int, int64_t);
     void load_ldr_kernel(float*, int64_t);
+#ifdef _SVE_LD1W_
+    void load_ld1w_kernel(float*, int ,int);
+#endif
 }
 
 void get_cachesize(int *cache_size, int cpu_id);
 int get_multiway();
-double get_bandwith(uint64_t looptime, double data_size);
+double get_bandwith(uint64_t looptime, double data_size, std::string type);
 #endif

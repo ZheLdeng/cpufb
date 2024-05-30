@@ -142,7 +142,7 @@ static void cpubm_arm_load(cpubm_t &item, Table &table)
         cont[4] = "--";
     }
 
-    perf = get_bandwith(item.loop_time, (double)item.comp_pl);
+    perf = get_bandwith(item.loop_time, (double)item.comp_pl, item.type);
 
     stringstream ss1;
 
@@ -353,11 +353,18 @@ static void cpufp_register_isa()
     reg_new_isa("asimd", "fmla.vv(f64,f64,f64)", "FLOPS",
         0x100000LL, 96LL, asimd_fmla_vv_f64f64f64);
 #endif
+#ifdef _SVE_LD1W_
+    reg_new_isa("L1 Cache", "ld1w(f32)", "Byte/Cycle",
+        0x186A00LL, 32LL, NULL);
+    reg_new_isa("L2 Cache", "ld1w(f32)", "Byte/Cycle",
+        0x186A00LL, 128LL, NULL);
+#endif
 
     reg_new_isa("L1 Cache", "ldp(f32)", "Byte/Cycle",
         0x186A00LL, 32LL, NULL);
     reg_new_isa("L2 Cache", "ldp(f32)", "Byte/Cycle",
         0x186A00LL, 128LL, NULL);
+
     // reg_new_isa("Multiway", "L1cache", "Way",
     //     0x2710LL, 512LL,cpufp_kernel_multiway);
     // reg_new_isa("Multiway", "L2cache", "Way",

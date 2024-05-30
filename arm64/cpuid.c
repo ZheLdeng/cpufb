@@ -60,6 +60,12 @@ int get_cpuid()
         printf("_ASIMD_\n");
     }
     #endif
+
+    #ifdef HWCAP_SVE
+    if (hwcaps & HWCAP_SVE) {
+        printf("_SVE_LD1W_\n");
+    }
+    #endif
 #endif
     printf("_LDP_\n");
     printf("_ISSUE_\n");

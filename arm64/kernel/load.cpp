@@ -185,7 +185,7 @@ int get_multiway()
     return w;
 }
 
-double get_bandwith(uint64_t looptime, double data_size)
+double get_bandwith(uint64_t looptime, double data_size, string type)
 {
     struct timespec start, end;
     double time_used, perf;
@@ -201,12 +201,26 @@ double get_bandwith(uint64_t looptime, double data_size)
         cache_data[i] = i;
     }
     int inner_loop = data_size * 1024 / sizeof(float) / (4 * 32);
+#ifdef _SVE_LD1W_
 	// warm up
-    load_ldp_kernel(cache_data, inner_loop, looptime);
+    if (type.find("SVE")!= string::npos) {
+        load_ld1w_kernel(cache_data, data_size / sizeof(float), looptime);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+        load_ld1w_kernel(cache_data, data_size / sizeof(float), looptime);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    } else {
+        load_ldp_kernel(cache_data, inner_loop, looptime);
 
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+        load_ldp_kernel(cache_data, inner_loop, looptime);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    }
+#else
+    load_ldp_kernel(cache_data, inner_loop, looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     load_ldp_kernel(cache_data, inner_loop, looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+#endif
     time_used = get_time(&start, &end);
     perf = (double)looptime * data_size * 1024 / (time_used * freq[0] * 1e9);
 

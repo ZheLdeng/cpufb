@@ -1,6 +1,6 @@
-.global load_ldp_kernel
+.global load_ld1w_kernel
 
-load_ldp_kernel:
+load_ld1w_kernel:
     mov x27, x2
     ptrue p2.s
 outer_loop:
@@ -26,4 +26,3 @@ inner_loop:
 
 out:
     ret
-    

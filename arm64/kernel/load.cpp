@@ -9,12 +9,15 @@
 #include <iostream>
 #include<common.hpp>
 #include <load.hpp>
+#include <fstream>
+#include <sstream>
+
 //cacheline长度
 #define CACHE_LINE 64
 //测试WINDOW的数量上限
 #define WINDOW_NUM 2048
 //WINDOW 大小 4MB
-#define WINDOW_SIZE 128 * 1024 * 1024
+#define WINDOW_SIZE 4 * 1024 * 1024
 #define LOOP_TIME 1000000
 
 #define PTR_BITS 3
@@ -122,7 +125,7 @@ static int find_L1_point(const vector<double>& values)
 }
 
 
-void get_cachesize(int *cache_size, int cpu_id)
+void get_cachesize(struct CacheData *cache_size, int cpu_id)
 {
     vector<double> time_used, slope;
     int size_num = log2(WINDOW_SIZE / 1024) + 1;
@@ -135,13 +138,43 @@ void get_cachesize(int *cache_size, int cpu_id)
         printf("Error: cpu id %d sched_setaffinity\n", cpu_id);  
         printf("Warning: performance may be impacted \n");  
     } 
+
+    FILE *fp = NULL;
+    char buf[100] = {0};
+    string file_path="/sys/devices/system/cpu/cpu"+ std::to_string(cpu_id) +"/cache/index0/size";
+    std::ifstream L1_file(file_path);
+    if (L1_file) {
+        string read_freq = "cat " + file_path;
+        fp = popen(read_freq.c_str(), "r");
+        if (fp) {
+            int ret = fread(buf, 1, sizeof(buf)-1, fp);
+            if (ret > 0) {
+                // data->theory_freq = std::stod(buf) * 1e-6;
+                cache_size->theory_L1 = std::stod(buf);
+            } 
+            pclose(fp);
+        } 
+    }
+    file_path="/sys/devices/system/cpu/cpu"+ std::to_string(cpu_id) +"/cache/index2/size";
+    std::ifstream L2_file(file_path);
+    if (L2_file) {
+        string read_freq = "cat " + file_path;
+        fp = popen(read_freq.c_str(), "r");
+        if (fp) {
+            int ret = fread(buf, 1, sizeof(buf)-1, fp);
+            if (ret > 0) {
+                // data->theory_freq = std::stod(buf) * 1e-6;
+                cache_size->theory_L2 = std::stod(buf);
+            } 
+            pclose(fp);
+        } 
+    }
 #endif
     random_access(time_used);
     get_slope(time_used, slope);
-    cache_size[0] = pow(2, find_L1_point(slope));
-    cache_size[1] = pow(2, find_L2_point(slope, log2(cache_size[0]), slope.size()));
+    cache_size->test_L1 = pow(2, find_L1_point(slope));
+    cache_size->test_L2 = pow(2, find_L2_point(slope, log2(cache_size->test_L1), slope.size()));
 
-    // cout << "L1 = " << cache_size[0] << " L2 = " << cache_size[1] << endl;
 }
 
 int get_multiway()

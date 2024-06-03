@@ -12,8 +12,14 @@ extern "C"
     void load_ld1w_kernel(float*, int ,int);
 #endif
 }
+struct CacheData {
+    int theory_L1 = 0;
+    int theory_L2 = 0;
+    int test_L1 = 0;
+    int test_L2 = 0;
+};
 
-void get_cachesize(int *cache_size, int cpu_id);
+void get_cachesize(struct CacheData *cache_size, int cpu_id);
 int get_multiway();
 double get_bandwith(uint64_t looptime, double data_size, std::string type);
 #endif

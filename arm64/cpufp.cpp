@@ -25,7 +25,7 @@
 
 using namespace std;
 extern vector<double> freq;
-static int cache_size[2];
+static struct CacheData cache_size;
 
 typedef struct
 {
@@ -135,11 +135,13 @@ static void cpubm_arm_load(cpubm_t &item, Table &table)
 
     if (item.isa == "L1 Cache"){
         int way = get_multiway();
-        item.comp_pl = cache_size[0];
-        cont[4] = to_string(way);
+        item.comp_pl = cache_size.test_L1;
+        cont[4] = to_string(cache_size.theory_L1) + " KB";
+        cont[5] = to_string(way);
     } else {
-        item.comp_pl = cache_size[1];
-        cont[4] = "--";
+        item.comp_pl = cache_size.test_L2;
+        cont[4] = to_string(cache_size.theory_L2) + " KB";
+        cont[5] = "--";
     }
 
     perf = get_bandwith(item.loop_time, (double)item.comp_pl, item.type);
@@ -219,12 +221,13 @@ static void init_table(vector<Table*> &tables)
     tables[0]->setColumnNum(ti.size());
     tables[0]->addOneItem(ti);
     
-    ti.resize(5);
+    ti.resize(6);
     ti[0] = "Cache Level";
     ti[1] = "Core Computation";
     ti[2] = "Bandwith";
-    ti[3] = "Size";
-    ti[4] = "Way";
+    ti[3] = "Theory Size";
+    ti[4] = "Test Size";
+    ti[5] = "Way";
     tables[1]->setColumnNum(ti.size());
     tables[1]->addOneItem(ti);
 
@@ -266,7 +269,7 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
         vector<Table*> tables;
         init_table(tables);
         get_cpu_freq(set_of_threads, *tables[2]);
-        get_cachesize(cache_size, set_of_threads[0]);
+        get_cachesize(&cache_size, set_of_threads[0]);
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);

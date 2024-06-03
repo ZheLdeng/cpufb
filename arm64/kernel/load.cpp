@@ -236,10 +236,10 @@ double get_bandwith(uint64_t looptime, double data_size, string type)
     int inner_loop = data_size * 1024 / sizeof(float) / (4 * 32);
 #ifdef _SVE_LD1W_
 	// warm up
-    if (type.find("SVE")!= string::npos) {
-        load_ld1w_kernel(cache_data, data_size / sizeof(float), looptime);
+    if (type.find("ld1w")!= string::npos) {
+        load_ld1w_kernel(cache_data, data_size * 1024 / sizeof(float), looptime);
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        load_ld1w_kernel(cache_data, data_size / sizeof(float), looptime);
+        load_ld1w_kernel(cache_data, data_size * 1024 / sizeof(float), looptime);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     } else {
         load_ldp_kernel(cache_data, inner_loop, looptime);

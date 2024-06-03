@@ -136,11 +136,11 @@ static void cpubm_arm_load(cpubm_t &item, Table &table)
     if (item.isa == "L1 Cache"){
         int way = get_multiway();
         item.comp_pl = cache_size.test_L1;
-        cont[4] = to_string(cache_size.theory_L1) + " KB";
+        cont[3] = to_string(cache_size.theory_L1) + " KB";
         cont[5] = to_string(way);
     } else {
         item.comp_pl = cache_size.test_L2;
-        cont[4] = to_string(cache_size.theory_L2) + " KB";
+        cont[3] = to_string(cache_size.theory_L2) + " KB";
         cont[5] = "--";
     }
 
@@ -153,7 +153,7 @@ static void cpubm_arm_load(cpubm_t &item, Table &table)
     cont[0] = item.isa;
     cont[1] = item.type;
     cont[2] = ss1.str();
-    cont[3] = to_string(item.comp_pl) + " KB";
+    cont[4] = to_string(item.comp_pl) + " KB";
     table.addOneItem(cont);
 }
 
@@ -373,7 +373,7 @@ static void cpufp_register_isa()
     // reg_new_isa("Multiway", "L2cache", "Way",
     //     0x2710LL, 512LL, cpufp_kernel_multiway);
     reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC",
-        0x186A00LL, 26LL, NULL);
+        0x186A00LL, 50LL, NULL);
 }
 
 int main(int argc, char *argv[])

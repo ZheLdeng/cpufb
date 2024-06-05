@@ -57,37 +57,4 @@ _\FUNCTION_NAME:
     eor v31.16b, v31.16b, v31.16b
 .endm
 
-#ifdef _SVE_FMLA_
-.macro SVE_INIT
-    fmov z0.b, p0/m, #0
-    fmov z1.b, p0/m, #0
-    fmov z8.b, p0/m, #0
-    fmov z9.b, p0/m, #0
-    fmov z10.b, p0/m, #0
-    fmov z11.b, p0/m, #0
-    fmov z12.b, p0/m, #0
-    fmov z13.b, p0/m, #0
-    fmov z14.b, p0/m, #0
-    fmov z15.b, p0/m, #0
-    fmov z16.b, p0/m, #0
-    fmov z17.b, p0/m, #0
-    fmov z18.b, p0/m, #0
-    fmov z19.b, p0/m, #0
-    fmov z20.b, p0/m, #0
-    fmov z21.b, p0/m, #0
-    fmov z22.b, p0/m, #0
-    fmov z23.b, p0/m, #0
-    fmov z24.b, p0/m, #0
-    fmov z25.b, p0/m, #0
-    fmov z26.b, p0/m, #0
-    fmov z27.b, p0/m, #0
-    fmov z28.b, p0/m, #0
-    fmov z29.b, p0/m, #0
-    fmov z30.b, p0/m, #0
-    fmov z31.b, p0/m, #0
-.endm
-
-#endif
-
-
 #endif

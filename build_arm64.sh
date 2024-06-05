@@ -11,7 +11,7 @@ OS=$(uname -s)
 CPU=$(uname -m)
 
 CXX=g++
-CC=gcc 
+CC=gcc
 CFLAG=
 
 echo "Operating System  : $OS"
@@ -38,11 +38,14 @@ do
     SIMD_OBJ="$SIMD_OBJ$BUILD_DIR/$SIMD.o "
     $CC -march=native -g -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     #as -g -mcpu=all -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
-    
+    if [ _SVE_FMLA_ = $SIMD ]; then
+    SIMD_MACRO="$SIMD_MACRO-march=armv8-a+sve "
+    fi
 done
 # compile cpufp
-$CXX -g -O2 -I$COMM -I$KERNEL $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o 
-$CXX -g -O2 -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/frequency.cpp -o $BUILD_DIR/frequency.o 
-$CXX -g -O0 -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load.o 
-$CXX -g -O2 -z noexecstack -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ 
+$CXX -g -O2 -I$COMM -I$KERNEL $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
+$CXX -g -O2 -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/frequency.cpp -o $BUILD_DIR/frequency.o
+$CXX -g -O0 -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load.o
+
+$CXX -g -O2 -z noexecstack -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ
 set +x

@@ -23,6 +23,10 @@
 #include<multiple_issue.hpp>
 #include<common.hpp>
 
+#ifdef _SVE_FMLA_
+#include <arm_sve.h>
+#endif
+
 using namespace std;
 extern vector<double> freq;
 static struct CacheData cache_size;
@@ -99,7 +103,9 @@ static void cpubm_arm64_one(tpool_t *tm,
     }
     tpool_wait(tm);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-
+    #ifdef _SVE_FMLA_
+    item.comp_pl = item.comp_pl * svcntb();
+    #endif
     time_used = get_time(&start, &end);
     perf = item.loop_time * item.comp_pl * num_threads /
         time_used;
@@ -149,7 +155,7 @@ static void cpubm_arm_load(cpubm_t &item, Table &table)
     stringstream ss1;
 
     ss1 << setprecision(5) << perf << " " << item.dim;
-    
+
     cont[0] = item.isa;
     cont[1] = item.type;
     cont[2] = ss1.str();
@@ -189,7 +195,7 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
     perf = (double)item.loop_time * (inner_loop * item.comp_pl + 4)/
         (time_used * freq[0] * 1e9);
     stringstream ss;
-    
+
     ss << setprecision(5) << perf << " " << item.dim;
 
     vector<string> cont;
@@ -211,8 +217,8 @@ static void init_table(vector<Table*> &tables)
     {
         tables[i] = new Table();
     }
-    
-    vector<string> ti;   
+
+    vector<string> ti;
 
     ti.resize(3);
     ti[0] = "Instruction Set";
@@ -220,7 +226,7 @@ static void init_table(vector<Table*> &tables)
     ti[2] = "Peak Performance";
     tables[0]->setColumnNum(ti.size());
     tables[0]->addOneItem(ti);
-    
+
     ti.resize(6);
     ti[0] = "Cache Level";
     ti[1] = "Core Computation";
@@ -273,7 +279,7 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);
-        
+
         // traverse task list
         // cpubm_arm64_one(tm, bm_list[0], table);
         for (i = 1; i < bm_list.size(); i++)
@@ -310,7 +316,7 @@ static void cpufp_register_isa()
         0x100000LL, 1536LL, asimd_mmla_u32u8u8);
     reg_new_isa("i8mm", "mmla(s32,u8,s8)", "OPS",
         0x100000LL, 1536LL, asimd_mmla_s32u8s8);
-    
+
     reg_new_isa("i8mm", "dp4a.vs(s32,s8,u8)", "OPS",
         0x100000LL, 768LL, asimd_dp4a_vs_s32s8u8);
     reg_new_isa("i8mm", "dp4a.vs(s32,u8,s8)", "OPS",
@@ -361,6 +367,8 @@ static void cpufp_register_isa()
         0x186A00LL, 32LL, NULL);
     reg_new_isa("L2 Cache", "ld1w(f32)", "Byte/Cycle",
         0x186A00LL, 128LL, NULL);
+    reg_new_isa("asimd", "sve_fmla.vs(f32,f32,f32)", "FLOPS",
+        0x100000LL, 12LL, sve_fmla_vs_f32f32f32);
 #endif
 
     reg_new_isa("L1 Cache", "ldp(f32)", "Byte/Cycle",
@@ -410,7 +418,7 @@ int main(int argc, char *argv[])
     }
 
     cpufp_register_isa();
-    
+
     cpubm_do_bench(set_of_threads, idle_time);
 
     return 0;

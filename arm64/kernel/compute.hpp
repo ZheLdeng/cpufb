@@ -37,6 +37,10 @@ extern "C"
     void asimd_dp4a_vs_s32u8s8(int64_t);
     void asimd_dp4a_vv_s32u8s8(int64_t);
 #endif
+
+#ifdef _SVE_FMLA_
+    void sve_fmla_vs_f32f32f32(int64_t);
+#endif
 }
 
 

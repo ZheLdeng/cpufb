@@ -36,7 +36,7 @@ for SIMD in `$BUILD_DIR/cpuid`;
 do
     SIMD_MACRO="$SIMD_MACRO-D$SIMD "
     SIMD_OBJ="$SIMD_OBJ$BUILD_DIR/$SIMD.o "
-    $CC -march=native -g -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=native -g -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     #as -g -mcpu=all -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     
 done

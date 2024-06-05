@@ -64,6 +64,7 @@ int get_cpuid()
     #ifdef HWCAP_SVE
     if (hwcaps & HWCAP_SVE) {
         printf("_SVE_LD1W_\n");
+        printf("_SVE_FMLA_\n");
     }
     #endif
 #endif

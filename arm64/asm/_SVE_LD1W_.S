@@ -1,6 +1,6 @@
-.global load_ld1w_kernel
-
-load_ld1w_kernel:
+#include "common_arm64.h"
+#void void load_ld1w_kernel(float*, int ,int);
+    PROLOGUE load_ld1w_kernel
     mov x11, x2
     ptrue p2.s
 outer_loop:

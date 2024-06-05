@@ -1,14 +1,8 @@
 .align 5
-
-#ifdef __APPLE__
-.global _load_ldp_kernel
-
-_load_ldp_kernel:
-#else 
-.global load_ldp_kernel
-
-load_ldp_kernel:    
-#endif
+#include "common_arm64.h"
+#void load_ldp_kernel(float*, int, int64_t);
+#void load_ldr_kernel(float*, int64_t);
+    PROLOGUE load_ldp_kernel
     mov x4, x2
     2:
     mov x3, x1
@@ -32,27 +26,19 @@ load_ldp_kernel:
     ldp q28, q29,[x5, #448]
     ldp q30, q31,[x5, #480]
     add x5, x5, #512
-    
+
     subs x3, x3, #1
-    bne 1b    
+    bne 1b
 
     subs x4, x4, #1
     bne 2b
     ret
 
-
-#ifdef __APPLE__
-.global _load_ldr_kernel
-
-_load_ldr_kernel:
-#else 
-.global load_ldr_kernel
-
-load_ldr_kernel:    
-#endif
+###############################
+    PROLOGUE load_ldr_kernel
     mov x3, x1
     mov x5, x0
-    
+
     1:
     ldr q0, [x5]
     ldr q1, [x5]
@@ -86,8 +72,7 @@ load_ldr_kernel:
     ldr q29, [x5]
     ldr q30, [x5]
     ldr q31, [x5]
-    
+
     subs x3, x3, #1
-    bne 1b    
+    bne 1b
     ret
-    

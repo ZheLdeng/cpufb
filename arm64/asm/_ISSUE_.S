@@ -1,14 +1,9 @@
 .align 4
-#ifdef __APPLE__
-.global _multiple_issue
+#include "common_arm64.h"
 
-_multiple_issue:
-#else 
-.global multiple_issue
 
-multiple_issue:    
-#endif
-    
+#void void multiple_issue(float*,int, int64_t);
+    PROLOGUE multiple_issue
     mov x4, x2
     2:
     mov x3, x1

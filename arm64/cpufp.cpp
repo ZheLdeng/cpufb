@@ -103,9 +103,9 @@ static void cpubm_arm64_one(tpool_t *tm,
     }
     tpool_wait(tm);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    #ifdef _SVE_FMLA_
-    item.comp_pl = item.comp_pl * svcntb();
-    #endif
+    if (item.type.find("sve") != string::npos) {
+        item.comp_pl = item.comp_pl * svcntb();
+    }
     time_used = get_time(&start, &end);
     perf = item.loop_time * item.comp_pl * num_threads /
         time_used;
@@ -369,6 +369,12 @@ static void cpufp_register_isa()
         0x186A00LL, 128LL, NULL);
     reg_new_isa("asimd", "sve_fmla.vs(f32,f32,f32)", "FLOPS",
         0x100000LL, 12LL, sve_fmla_vs_f32f32f32);
+    reg_new_isa("asimd", "sve_fmla.vv(f32,f32,f32)", "FLOPS",
+        0x100000LL, 12LL, sve_fmla_vv_f32f32f32);
+    reg_new_isa("asimd", "sve_fmla.vs(f64,f64,f64)", "FLOPS",
+        0x100000LL, 12LL, sve_fmla_vs_f64f64f64);
+    reg_new_isa("asimd", "sve_fmla.vv(f64,f64,f64)", "FLOPS",
+        0x100000LL, 12LL, sve_fmla_vv_f64f64f64);
 #endif
 
     reg_new_isa("L1 Cache", "ldp(f32)", "Byte/Cycle",

@@ -1,16 +1,26 @@
 # cpufp
 
-This is a cpu tool for benchmarking the floating-points and AI peak performance.
+This is a tool for benchmarking insturctions performance of cpu.
+
+It includes the following features:
+
+floating-points and AI peak performance, L1 and L2 cache size, 
+L1 and L2 cache bandwidth, number of ways of L1 cache,
+IPC of floating-point instruction, IPC of load instruction,
+theoretical peak IPC.
 
 It can automatically sense the local SIMD|DSA ISAs while compiling.
+
+
 
 ## Support OS and ISA
 
 |OS|x86-64|arm64|riscv64|
 | ------------ | ------------ | ------------ | ------------ |
 |Linux|yes|yes|yes|
-|MacOS|no|no|no|
+|MacOS|no|yes|no|
 |Windows|no|no|no|
+|Andoroid|no|yes|no|
 
 ## Support x86-64 SIMD|DSA ISA
 
@@ -34,9 +44,11 @@ It can automatically sense the local SIMD|DSA ISAs while compiling.
 |Arch|ISA|Feature|Data Type|Description|
 | ------------ | ------------ | ------------ | ------------ | ------------ |
 |SIMD|asimd|Vector|fp32/fp64|From Cortex-A57/A53|
+|SIMD|sve|Vector|fp32/fp64|From AWS Graviton3|
 |SIMD|asimd_hp|Vector|fp16|From Cortex-A75/A55|
 |SIMD|asimd_dp|Vector|int8|From Cortex-A75/A55|
 |SIMD|bf16|Matrix|bf16|From Cortex-X2/A710/A510|
+|SIMD|i8mm|Matrix|int8|From Cortex-X2/A710/A510|
 |SIMD|i8mm|Matrix|int8|From Cortex-X2/A710/A510|
 
 ## Support riscv64 VECTOR ISA
@@ -46,6 +58,12 @@ It can automatically sense the local SIMD|DSA ISAs while compiling.
 |Vector|vector|Vector|fp16/fp32/fp64|From RISC-V "V" vector extension. Version 1.0|
 |DSA|ime|Matrix|int8|From SpacemiT-X60|
 ## How to build
+---
+### Dependencies
+
+If you need to benchmark the SVE instruction set, please upgrade GCC to version 8.x.
+
+### Normal compile
 
 build x64 version:
 
@@ -55,6 +73,10 @@ build arm64 version:
 
 `./build_arm64.sh`
 
+build arm64 android version:
+
+`./build_android.sh`
+
 build riscv64 version:
 
 `./build_riscv64.sh`
@@ -62,6 +84,12 @@ build riscv64 version:
 clean:
 
 `./clean.sh`
+
+### Cross compile for android
+
+Use the build_android.sh. We used aarch64-linux-gnu as the default cross compile. If you need to use other cross toolchains, then find the #Cross compile part in build_android.sh. Set CXX to point to the cross C++ compiler, CC to the cross C compiler, and AS to the asm compiler. The target must be specified explicitly when cross compiling.
+
+You need to ensure that the device can be connected via "adb shell" during compilation.
 
 ## How to benchmark
 
@@ -71,8 +99,9 @@ clean:
 
   --idle_time: the interval time(sec) between any two adjacent benchmarks, default is 0.
 
-## Some x86-64 CPU benchmark results
 
+## Some x86-64 CPU benchmark results
+---
 ### Intel Xeon Gold 6455B(2 x 32 x Sapphire Rapids)
 
 For single core:

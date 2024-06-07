@@ -372,20 +372,15 @@ static void cpufp_register_isa()
     reg_new_isa("asimd", "sve_fmla.vv(f32,f32,f32)", "FLOPS",
         0x100000LL, 12LL, sve_fmla_vv_f32f32f32);
     reg_new_isa("asimd", "sve_fmla.vs(f64,f64,f64)", "FLOPS",
-        0x100000LL, 12LL, sve_fmla_vs_f64f64f64);
+        0x100000LL, 6LL, sve_fmla_vs_f64f64f64);
     reg_new_isa("asimd", "sve_fmla.vv(f64,f64,f64)", "FLOPS",
-        0x100000LL, 12LL, sve_fmla_vv_f64f64f64);
+        0x100000LL, 6LL, sve_fmla_vv_f64f64f64);
 #endif
 
     reg_new_isa("L1 Cache", "ldp(f32)", "Byte/Cycle",
         0x186A00LL, 32LL, NULL);
     reg_new_isa("L2 Cache", "ldp(f32)", "Byte/Cycle",
         0x186A00LL, 128LL, NULL);
-
-    // reg_new_isa("Multiway", "L1cache", "Way",
-    //     0x2710LL, 512LL,cpufp_kernel_multiway);
-    // reg_new_isa("Multiway", "L2cache", "Way",
-    //     0x2710LL, 512LL, cpufp_kernel_multiway);
     reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC",
         0x186A00LL, 50LL, NULL);
 }

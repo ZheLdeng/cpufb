@@ -71,7 +71,7 @@
     preserve_caller_vec
     ptrue p0.s
     SVE_INIT
-.sve_fmla_vs_f32f32f32L1:
+.sve_fmla_vv_f32f32f32L1:
     fmla z8.s, p0/m, z8.s, z8.s
     fmla z9.s, p0/m, z9.s, z9.s
     fmla z10.s, p0/m, z10.s, z10.s
@@ -97,7 +97,7 @@
     fmla z29.s, p0/m, z29.s, z29.s
     fmla z30.s, p0/m, z30.s, z30.s
     fmla z31.s, p0/m, z31.s, z31.s
-    bne .sve_fmla_vs_f32f32f32L1
+    bne .sve_fmla_vv_f32f32f32L1
     restore_caller_vec
     ret
 
@@ -143,7 +143,7 @@
     preserve_caller_vec
     ptrue p0.s
     SVE_INIT
-.sve_fmla_vs_f64f64f64L1:
+.sve_fmla_vv_f64f64f64L1:
     fmla z8.d, p0/m, z8.d, z8.d
     fmla z9.d, p0/m, z9.d, z9.d
     fmla z10.d, p0/m, z10.d, z10.d
@@ -169,6 +169,6 @@
     fmla z29.d, p0/m, z29.d, z29.d
     fmla z30.d, p0/m, z30.d, z30.d
     fmla z31.d, p0/m, z31.d, z31.d
-    bne .sve_fmla_vs_f64f64f64L1
+    bne .sve_fmla_vv_f64f64f64L1
     restore_caller_vec
     ret

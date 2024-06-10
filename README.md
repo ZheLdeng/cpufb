@@ -88,7 +88,7 @@ clean:
 
 Use the build_android.sh. We used `aarch64-linux-gnu` as the default cross compile. If you need to use other cross toolchains, then find the #Cross compile part in build_android.sh. Set CXX to point to the cross C++ compiler, CC to the cross C compiler, and AS to the asm compiler. The target must be specified explicitly when cross compiling.
 
-You need to ensure that the device can be connected via "adb shell" during compilation.
+* You must ensure that the device can be connected via `adb shell` during compilation.
 
 ## How to benchmark
 

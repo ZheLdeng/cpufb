@@ -1,16 +1,15 @@
 # cpufp
 
-This is a tool for benchmarking insturctions performance of cpu.
+This is a tool for benchmarking insturctions performance of cpu.It can automatically sense the local SIMD|DSA ISAs while compiling.
 
 It includes the following features:
 
-floating-points and AI peak performance, L1 and L2 cache size, 
+floating-points and AI peak performance, L1 and L2 cache size,
 L1 and L2 cache bandwidth, number of ways of L1 cache,
 IPC of floating-point instruction, IPC of load instruction,
-theoretical peak IPC.
+multiple issue.
 
-It can automatically sense the local SIMD|DSA ISAs while compiling.
-
+* `Multiple issue / cache size / cache bandwidth / multi-way of cache` only for single core. If you test using multiple cores, you will get results from a random core.
 
 
 ## Support OS and ISA
@@ -87,7 +86,7 @@ clean:
 
 ### Cross compile for android
 
-Use the build_android.sh. We used aarch64-linux-gnu as the default cross compile. If you need to use other cross toolchains, then find the #Cross compile part in build_android.sh. Set CXX to point to the cross C++ compiler, CC to the cross C compiler, and AS to the asm compiler. The target must be specified explicitly when cross compiling.
+Use the build_android.sh. We used `aarch64-linux-gnu` as the default cross compile. If you need to use other cross toolchains, then find the #Cross compile part in build_android.sh. Set CXX to point to the cross C++ compiler, CC to the cross C compiler, and AS to the asm compiler. The target must be specified explicitly when cross compiling.
 
 You need to ensure that the device can be connected via "adb shell" during compilation.
 

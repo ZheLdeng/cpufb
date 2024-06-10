@@ -1,11 +1,11 @@
 #include <unistd.h>
-#include <sys/types.h>   
-#include <cstdio>  
-#include <cstdlib>  
-#include <ctime>  
+#include <sys/types.h>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
 #include <iostream>
 #include <cstdint>
-#include <string>  
+#include <string>
 #include <vector>
 #include <cstring>
 #include <iomanip>
@@ -19,7 +19,7 @@
 
 #ifdef _SVE_FMLA_
 #include <arm_sve.h>
-#endif 
+#endif
 using namespace std;
 vector<double> freq;
 
@@ -29,7 +29,7 @@ static void* thread_function_freq(void* arg){
     int64_t looptime = 100000000;
     struct timespec start, end;
     double time_used;
-    
+
 #ifdef __APPLE__
     data->theory_freq = 3.5;
     data->caculate_freq = 3.5;
@@ -43,10 +43,10 @@ static void* thread_function_freq(void* arg){
     pid_t pid = gettid();
     CPU_ZERO(&cpuset);
     CPU_SET(cpuid, &cpuset);
-    if (sched_setaffinity(pid, sizeof(cpu_set_t), &cpuset) < 0) {  
-        printf("Error: cpu id %d sched_setaffinity\n", cpuid);  
-        printf("Warning: performance may be impacted \n");  
-    } 
+    if (sched_setaffinity(pid, sizeof(cpu_set_t), &cpuset) < 0) {
+        printf("Error: cpu id %d sched_setaffinity\n", cpuid);
+        printf("Warning: performance may be impacted \n");
+    }
     //get CPU frequency
     FILE *fp = NULL;
     char buf[100] = {0};
@@ -59,9 +59,9 @@ static void* thread_function_freq(void* arg){
             int ret = fread(buf, 1, sizeof(buf)-1, fp);
             if (ret > 0) {
                 data->theory_freq = std::stod(buf) * 1e-6;
-            } 
+            }
             pclose(fp);
-        } 
+        }
     } else {
         data->theory_freq = 0;
     }
@@ -99,8 +99,8 @@ static void* thread_function_freq(void* arg){
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
     data->IPC_load = looptime * 24 / (time_used * CPU_freq);
-    
 
+#ifdef _SVE_FMLA_
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     sve_fmla_vv_f32f32f32(looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
@@ -112,6 +112,7 @@ static void* thread_function_freq(void* arg){
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
     data->IPC_fp64_sve = looptime * 24 / (time_used * CPU_freq);
+#endif
     pthread_exit((void *)data);
 }
 
@@ -128,7 +129,7 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
     for (int i = 0; i<num_thread; i++){
         pthread_create(&threads[i], NULL, thread_function_freq,  (void*)&set_of_threads[i] );
     }
-    
+
     for (int t = 0; t < num_thread; t++) {
         pthread_join(threads[t], &thread_result);
         result = (struct FrequencyData *)thread_result;
@@ -139,7 +140,7 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
         ss4 << std::setprecision(2) << result->IPC_fp64 ;
         ss5<< std::setprecision(2) << result->IPC_load ;
         ss6 << std::setprecision(2) << result->IPC_fp32_sve ;
-	ss7 << std::setprecision(2) << result->IPC_fp64_sve ;
+	    ss7 << std::setprecision(2) << result->IPC_fp64_sve ;
         freq[t] = result->caculate_freq;
 
         vector<string> cont;
@@ -150,8 +151,8 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
         cont[3] = ss3.str();
         cont[4] = ss4.str();
         cont[5] = ss5.str();
-	cont[6] = ss6.str();
-	cont[7] = ss7.str();
+	    cont[6] = ss6.str();
+	    cont[7] = ss7.str();
         table.addOneItem(cont);
     }
 

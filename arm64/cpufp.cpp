@@ -103,9 +103,11 @@ static void cpubm_arm64_one(tpool_t *tm,
     }
     tpool_wait(tm);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+#ifdef _SVE_FMLA_
     if (item.type.find("sve") != string::npos) {
         item.comp_pl = item.comp_pl * svcntb();
     }
+#endif
     time_used = get_time(&start, &end);
     perf = item.loop_time * item.comp_pl * num_threads /
         time_used;

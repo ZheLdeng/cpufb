@@ -17,6 +17,10 @@
 #include "common.hpp"
 #include "load.hpp"
 
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#endif
+
 #ifdef _SVE_FMLA_
 #include <arm_sve.h>
 #endif
@@ -31,9 +35,27 @@ static void* thread_function_freq(void* arg){
     double time_used;
 
 #ifdef __APPLE__
-    data->theory_freq = 3.5;
-    data->caculate_freq = 3.5;
-    CPU_freq = 3.5 * 1e9;
+    char cpuType[256];
+    size_t size = sizeof(cpuType);
+
+    // 获取 CPU 架构名称
+    if (sysctlbyname("machdep.cpu.brand_string", &cpuType, &size, NULL, 0) == -1) {
+        perror("sysctl");
+    }
+    if(std::string(cpuType) == "Apple M1"){
+        ata->theory_freq = 3.2;
+        data->caculate_freq = 3.2;
+        CPU_freq = 3.2 * 1e9;
+    }else if(std::string(cpuType) == "Apple M2"){
+        data->theory_freq = 3.5;
+        data->caculate_freq = 3.5;
+        CPU_freq = 3.5 * 1e9;
+    }else if(std::string(cpuType) == "Apple M3"){
+        data->theory_freq = 4.06;
+        data->caculate_freq = 4.06;
+        CPU_freq = 4.06 * 1e9;
+    }
+    
 #endif
 #ifdef __linux__
     PerfEventCycle pec;

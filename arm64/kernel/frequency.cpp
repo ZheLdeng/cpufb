@@ -139,8 +139,10 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
         ss3 << std::setprecision(2) << result->IPC_fp32 ;
         ss4 << std::setprecision(2) << result->IPC_fp64 ;
         ss5<< std::setprecision(2) << result->IPC_load ;
+        #ifdef _SVE_FMLA_
         ss6 << std::setprecision(2) << result->IPC_fp32_sve ;
 	    ss7 << std::setprecision(2) << result->IPC_fp64_sve ;
+        #endif
         freq[t] = result->caculate_freq;
 
         vector<string> cont;
@@ -151,8 +153,10 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
         cont[3] = ss3.str();
         cont[4] = ss4.str();
         cont[5] = ss5.str();
+        #ifdef _SVE_FMLA_
 	    cont[6] = ss6.str();
 	    cont[7] = ss7.str();
+        #endif
         table.addOneItem(cont);
     }
 

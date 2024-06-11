@@ -239,15 +239,22 @@ static void init_table(vector<Table*> &tables)
     tables[1]->setColumnNum(ti.size());
     tables[1]->addOneItem(ti);
 
+    #ifdef _SVE_FMLA_
     ti.resize(8);
+    #else
+    ti.resize(6);
+    #endif
+
     ti[0] = "Core ID";
     ti[1] = "Theory Freq";
     ti[2] = "Test Freq";
     ti[3] = "IPC(FSU32)";
     ti[4] = "IPC(FSU64)";
     ti[5] = "IPC(LSU ldr)";
+    #ifdef _SVE_FMLA_
     ti[6] = "IPC(SVE32)";
     ti[7] = "IPC(SVE64)";
+    #endif
     tables[2]->setColumnNum(ti.size());
     tables[2]->addOneItem(ti);
 

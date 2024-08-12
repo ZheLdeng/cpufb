@@ -27,7 +27,7 @@ if [[ "$CPU" == "x86_64" || "$CPU" == "i686" ]]; then
 fi
 
 
-
+echo $CC
 # make directory
 if [ -d "$BUILD_DIR" ]; then
     rm -rf $BUILD_DIR/*
@@ -49,7 +49,9 @@ for SIMD in `adb shell  /data/local/tmp/cpuid`;
 do
     SIMD_MACRO="$SIMD_MACRO-D$SIMD "
     SIMD_OBJ="$SIMD_OBJ$BUILD_DIR/$SIMD.o "
-    $AS -g -mcpu=all -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    #$AS  -g -mcpu=all -I$ASM/ -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv8.6-a+sve -I$ASM/ -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+
 done
 # compile cpufp
 $CXX -g -O2 -I$COMM -I$KERNEL $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o 

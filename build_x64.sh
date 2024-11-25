@@ -1,5 +1,6 @@
 SRC=x64
 ASM=$SRC/asm
+KERNEL=$SRC/kernel
 COMM=common
 BUILD_DIR=build_dir
 
@@ -25,6 +26,12 @@ do
     g++ -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
 done
 
+# # compile cpufp
+# g++ -O3 -I$COMM $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
+# g++ -O3 -z noexecstack -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ
 # compile cpufp
-g++ -O3 -I$COMM $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
-g++ -O3 -z noexecstack -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ
+g++ -g -O3 -I$COMM -I$KERNEL $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
+g++ -g -O0 -I$COMM -I$KERNEL $SIMD_MACRO -c $KERNEL/frequency.cpp -o $BUILD_DIR/frequency.o
+g++ -g -O3 -I$COMM -I$KERNEL $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load.o
+
+g++ -g -O3 -z noexecstack -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ

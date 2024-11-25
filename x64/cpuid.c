@@ -78,7 +78,8 @@ int main()
     {
         printf("_SSE2_\n");
     }
-
+    printf("_LDP_\n"); 
+    printf("_ISSUE_\n");
     return 0;
 }
 

@@ -1,5 +1,11 @@
 #include "table.hpp"
 #include "thread_pool.hpp"
+// #include "./kernel/compute.hpp"
+#include<compute.hpp>
+#include<load.hpp>
+#include<frequency.hpp>
+#include<common.hpp>
+#include<multiple_issue.hpp>
 
 #include <unistd.h>
 #include <cstdint>
@@ -16,66 +22,8 @@
 #endif
 
 using namespace std;
-
-extern "C"
-{
-#ifdef _SSE_
-    void sse_add_mul_f32f32_f32(int64_t, void *params);
-#endif
-
-#ifdef _SSE2_
-    void sse2_add_mul_f64f64_f64(int64_t, void *params);
-#endif
-
-#ifdef _AVX_
-    void avx_add_mul_f32f32_f32(int64_t, void *params);
-    void avx_add_mul_f64f64_f64(int64_t, void *params);
-#endif
-
-#ifdef _FMA_
-    void fma_f32f32f32(int64_t, void *params);
-    void fma_f64f64f64(int64_t, void *params);
-#endif
-
-#ifdef _AVX512F_
-    void avx512f_fma_f32f32f32(int64_t, void *params);
-    void avx512f_fma_f64f64f64(int64_t, void *params);
-#endif
-
-#ifdef _AVX512_BF16_
-    void avx512_bf16_dp2a_f32bf16bf16(int64_t, void *params);
-#endif
-
-#ifdef _AVX512_FP16_
-    void avx512_fp16_fma_f16f16f16(int64_t, void *params);
-#endif
-
-#ifdef _AVX512_VNNI_
-    void avx512_vnni_dp4a_s32u8s8(int64_t, void *params);
-    void avx512_vnni_dp2a_s32s16s16(int64_t, void *params);
-#endif
-
-#ifdef _AVX_VNNI_
-    void avx_vnni_dp4a_s32u8s8(int64_t, void *params);
-    void avx_vnni_dp2a_s32s16s16(int64_t, void *params);
-#endif
-
-#ifdef _AVX_VNNI_INT8_
-    void avx_vnni_int8_dp4a_s32s8s8(int64_t, void *params);
-    void avx_vnni_int8_dp4a_s32s8u8(int64_t, void *params);
-    void avx_vnni_int8_dp4a_s32u8u8(int64_t, void *params);
-#endif
-
-#ifdef _AMX_INT8_
-    void amx_int8_mm_s32s8s8(int64_t, void* tile_cfg);
-    void amx_int8_mm_s32s8u8(int64_t, void* tile_cfg);
-    void amx_int8_mm_s32u8s8(int64_t, void* tile_cfg);
-    void amx_int8_mm_s32u8u8(int64_t, void* tile_cfg);
-#endif
-#ifdef _AMX_BF16_
-    void amx_bf16_mm_f32bf16bf16(int64_t, void* tile_cfg);
-#endif
-}
+extern vector<double> freq;
+static struct CacheData cache_size;
 
 #ifdef _AMX_TILE_
 struct
@@ -119,14 +67,21 @@ typedef struct
     void *params;
     void (*bench)(int64_t, void*);
 } cpubm_t;
+typedef struct
+{
+    float* cache_data;
+    int inner_loop;
+    int loop_time;
+    void (*bench)(float*, int, int64_t);
+} cache_bm_t;
 static vector<cpubm_t> bm_list;
 
-static double get_time(struct timespec *start,
-    struct timespec *end)
-{
-    return end->tv_sec - start->tv_sec +
-        (end->tv_nsec - start->tv_nsec) * 1e-9;
-}
+// static double get_time(struct timespec *start,
+//     struct timespec *end)
+// {
+//     return end->tv_sec - start->tv_sec +
+//         (end->tv_nsec - start->tv_nsec) * 1e-9;
+// }
 
 static void reg_new_isa(std::string isa,
     std::string type,
@@ -159,6 +114,11 @@ static void thread_func(void *params)
     {
         bm->bench(bm->loop_time, NULL);
     }
+}
+static void cache_thread_func(void *params)
+{
+    cache_bm_t *bm = (cache_bm_t*)params;
+    bm->bench(bm->cache_data, bm->inner_loop, bm->loop_time);
 }
 
 static void cpubm_x64_one(tpool_t *tm,
@@ -211,6 +171,188 @@ static void cpubm_x64_one(tpool_t *tm,
     table.addOneItem(cont);
 }
 
+static void cpubm_x64_load(cpubm_t &item, Table &table)
+{
+    double perf = 0;
+
+    vector<string> cont;
+    cont.resize(table.getCol());
+
+    double data_size = 0.0;
+
+    if (item.isa == "L1 Cache"){
+        int way = get_multiway();
+        item.comp_pl = cache_size.test_L1;
+        cont[3] = to_string(cache_size.theory_L1) + " KB";
+        cont[5] = to_string(way);
+    } else {
+        item.comp_pl = cache_size.test_L2;
+        cont[3] = to_string(cache_size.theory_L2) + " KB";
+        cont[5] = "--";
+    }
+
+    perf = get_bandwith(item.loop_time, (double)item.comp_pl, item.type);
+
+    stringstream ss1;
+
+    ss1 << setprecision(5) << perf << " " << item.dim;
+
+    cont[0] = item.isa;
+    cont[1] = item.type;
+    cont[2] = ss1.str();
+    cont[4] = to_string(item.comp_pl) + " KB";
+    table.addOneItem(cont);
+}
+
+static void cpubm_x64_multiple_issue(tpool_t *tm,
+    cpubm_t &item,
+    Table &table)
+{
+
+    struct timespec start, end;
+    double time_used, perf;
+    cache_bm_t bm;
+    int num_threads = tm->thread_num;
+    int size = 1024;
+    float* cache_data = (float*)malloc(1024);
+    //Preventing Compiler Optimization
+    for (int i = 0;i < size / sizeof(float); i++){
+        cache_data[i] = i;
+    }
+    int inner_loop = 1024;
+    bm.bench = multiple_issue;
+    bm.cache_data = cache_data;
+    bm.inner_loop = inner_loop;
+    bm.loop_time = item.loop_time;
+
+	// warm up
+    tpool_add_work(tm, cache_thread_func, (void*)&bm);
+    tpool_wait(tm);
+
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    tpool_add_work(tm, cache_thread_func, (void*)&bm);
+    tpool_wait(tm);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    time_used = get_time(&start, &end);
+    perf = (double)item.loop_time * (inner_loop * item.comp_pl + 4)/
+        (time_used * freq[0] * 1e9);
+    stringstream ss;
+
+    ss << setprecision(5) << perf << " " << item.dim;
+
+    vector<string> cont;
+    cont.resize(table.getCol());
+    cont[0] = item.isa;
+    cont[1] = item.type;
+    cont[2] = ss.str();
+    table.addOneItem(cont);
+    free(cache_data);
+}
+
+//comupte: Instruction Set / Core Computation / Peak Performance / IPC
+//cachesize: cache level / Core Computation / bandwith / size / IPC / way
+//frequency : core id / theory freq / test freq
+//multi issue
+static void init_table(vector<Table*> &tables)
+{
+    tables.resize(4);
+    for (int  i = 0; i < 4; i++)
+    {
+        tables[i] = new Table();
+    }
+
+    vector<string> ti;
+
+    ti.resize(3);
+    ti[0] = "Instruction Set";
+    ti[1] = "Core Computation";
+    ti[2] = "Peak Performance";
+    tables[0]->setColumnNum(ti.size());
+    tables[0]->addOneItem(ti);
+
+    ti.resize(6);
+    ti[0] = "Cache Level";
+    ti[1] = "Core Computation";
+    ti[2] = "Bandwith";
+    ti[3] = "Theory Size";
+    ti[4] = "Test Size";
+    ti[5] = "Way";
+    tables[1]->setColumnNum(ti.size());
+    tables[1]->addOneItem(ti);
+
+    #ifdef _SVE_FMLA_
+    ti.resize(8);
+    #else
+    ti.resize(6);
+    #endif
+
+    ti[0] = "Core ID";
+    ti[1] = "Theory Freq";
+    ti[2] = "Test Freq";
+    ti[3] = "IPC(FSU32)";
+    ti[4] = "IPC(FSU64)";
+    ti[5] = "IPC(LSU ldr)";
+    #ifdef _SVE_FMLA_
+    ti[6] = "IPC(SVE32)";
+    ti[7] = "IPC(SVE64)";
+    #endif
+    tables[2]->setColumnNum(ti.size());
+    tables[2]->addOneItem(ti);
+
+    ti.resize(3);
+    ti[0] = "Instruction Set";
+    ti[1] = "Core Computation";
+    ti[2] = "IPC";
+    tables[3]->setColumnNum(ti.size());
+    tables[3]->addOneItem(ti);
+}
+
+
+// static void cpubm_do_bench(std::vector<int> &set_of_threads,
+//     uint32_t idle_time)
+// {
+//     int i;
+    
+//     if (bm_list.size() > 0)
+//     {
+//         int num_threads = set_of_threads.size();
+
+//         printf("Number Threads: %d\n", num_threads);
+//         printf("Thread Pool Binding:");
+//         for (i = 0; i < num_threads; i++)
+//         {
+//             printf(" %d", set_of_threads[i]);
+//         }
+//         printf("\n");
+
+//         // set table head
+//         vector<string> ti;
+//         ti.resize(3);
+//         ti[0] = "Instruction Set";
+//         ti[1] = "Core Computation";
+//         ti[2] = "Peak Performance";
+
+//         Table table;
+//         table.setColumnNum(3);
+//         table.addOneItem(ti);
+
+//         // set thread pool
+//         tpool_t *tm;
+//         tm = tpool_create(set_of_threads);
+
+//         // traverse task list
+//         cpubm_x64_one(tm, bm_list[0], table);
+//         for (i = 1; i < bm_list.size(); i++)
+//         {
+//             sleep(idle_time);
+//             cpubm_x64_one(tm, bm_list[i], table);
+//         }
+
+//         table.print();
+
+//        tpool_destroy(tm);
+//     }
+// }
 static void cpubm_do_bench(std::vector<int> &set_of_threads,
     uint32_t idle_time)
 {
@@ -227,103 +369,107 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
             printf(" %d", set_of_threads[i]);
         }
         printf("\n");
-
         // set table head
-        vector<string> ti;
-        ti.resize(3);
-        ti[0] = "Instruction Set";
-        ti[1] = "Core Computation";
-        ti[2] = "Peak Performance";
-
-        Table table;
-        table.setColumnNum(3);
-        table.addOneItem(ti);
-
+        vector<Table*> tables;
+        init_table(tables);
+        
+        get_cpu_freq(set_of_threads, *tables[2]);
+        get_cachesize(&cache_size, set_of_threads[0]);
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);
 
         // traverse task list
-        cpubm_x64_one(tm, bm_list[0], table);
+        // cpubm_x64_one(tm, bm_list[0], table);
         for (i = 1; i < bm_list.size(); i++)
         {
             sleep(idle_time);
-            cpubm_x64_one(tm, bm_list[i], table);
+            if (bm_list[i].dim.find("OPS") != string::npos) {
+                cpubm_x64_one(tm, bm_list[i], *tables[0]);
+            } else if (bm_list[i].dim.find("Byte/Cycle") != string::npos) {
+                cpubm_x64_load(bm_list[i], *tables[1]);
+            } else if (bm_list[i].dim.find("IPC") != string::npos) {
+                cpubm_x64_multiple_issue(tm, bm_list[i], *tables[3]);
+            } else {
+                cout << "Wrong dimension !" << endl;
+                break;
+            }
         }
-
-        table.print();
+        // TODO: support multiple issue
+        for (i = 0; i < tables.size(); i++)
+            tables[i]->print();
 
        tpool_destroy(tm);
     }
 }
 
-static void parse_thread_pool(char *sets,
-    vector<int> &set_of_threads)
-{
-    if (sets[0] != '[')
-    {
-        return;
-    }
-    int pos = 1;
-    int left = 0, right = 0;
-    int state = 0;
-    while (sets[pos] != ']' && sets[pos] != '\0')
-    {
-        if (state == 0)
-        {
-            if (sets[pos] >= '0' && sets[pos] <= '9')
-            {
-                left *= 10;
-                left += (int)(sets[pos] - '0');
-            }
-            else if (sets[pos] == ',')
-            {
-                set_of_threads.push_back(left);
-                left = 0;
-            }
-            else if (sets[pos] == '-')
-            {
-                right = 0;
-                state = 1;
-            }
-        }
-        else if (state == 1)
-        {
-            if (sets[pos] >= '0' && sets[pos] <= '9')
-            {
-                right *= 10;
-                right += (int)(sets[pos] - '0');
-            }
-            else if (sets[pos] == ',')
-            {
-                int i;
-                for (i = left; i <= right; i++)
-                {
-                    set_of_threads.push_back(i);
-                }
-                left = 0;
-                state = 0;
-            }
-        }
-        pos++;
-    }
-    if (sets[pos] != ']')
-    {
-        return;
-    }
-    if (state == 0)
-    {
-        set_of_threads.push_back(left);
-    }
-    else if (state == 1)
-    {
-        int i;
-        for (i = left; i <= right; i++)
-        {
-            set_of_threads.push_back(i);
-        }
-    }
-}
+// static void parse_thread_pool(char *sets,
+//     vector<int> &set_of_threads)
+// {
+//     if (sets[0] != '[')
+//     {
+//         return;
+//     }
+//     int pos = 1;
+//     int left = 0, right = 0;
+//     int state = 0;
+//     while (sets[pos] != ']' && sets[pos] != '\0')
+//     {
+//         if (state == 0)
+//         {
+//             if (sets[pos] >= '0' && sets[pos] <= '9')
+//             {
+//                 left *= 10;
+//                 left += (int)(sets[pos] - '0');
+//             }
+//             else if (sets[pos] == ',')
+//             {
+//                 set_of_threads.push_back(left);
+//                 left = 0;
+//             }
+//             else if (sets[pos] == '-')
+//             {
+//                 right = 0;
+//                 state = 1;
+//             }
+//         }
+//         else if (state == 1)
+//         {
+//             if (sets[pos] >= '0' && sets[pos] <= '9')
+//             {
+//                 right *= 10;
+//                 right += (int)(sets[pos] - '0');
+//             }
+//             else if (sets[pos] == ',')
+//             {
+//                 int i;
+//                 for (i = left; i <= right; i++)
+//                 {
+//                     set_of_threads.push_back(i);
+//                 }
+//                 left = 0;
+//                 state = 0;
+//             }
+//         }
+//         pos++;
+//     }
+//     if (sets[pos] != ']')
+//     {
+//         return;
+//     }
+//     if (state == 0)
+//     {
+//         set_of_threads.push_back(left);
+//     }
+//     else if (state == 1)
+//     {
+//         int i;
+//         for (i = left; i <= right; i++)
+//         {
+//             set_of_threads.push_back(i);
+//         }
+//     }
+// }
 
 static void cpufp_register_isa()
 {
@@ -411,6 +557,13 @@ static void cpufp_register_isa()
     reg_new_isa("SSE2", "ADD(MUL(f64,f64),f64)", "FLOPS",
         0x20000000LL, 32LL, NULL, sse2_add_mul_f64f64_f64);
 #endif
+
+    reg_new_isa("L1 Cache", "ldp(f32)", "Byte/Cycle",
+        0x186A00LL, 32LL, NULL, NULL);
+    reg_new_isa("L2 Cache", "ldp(f32)", "Byte/Cycle",
+        0x186A00LL, 128LL, NULL, NULL);
+    reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC",
+        0x186A00LL, 50LL, NULL, NULL);
 }
 
 int main(int argc, char *argv[])

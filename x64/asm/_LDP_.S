@@ -5,23 +5,23 @@ load_movups_kernel:
     mov %rsi, %r8
     mov %rdi, %r9
 .load.movups.kernel.L1:
-    movups (%r9), %xmm0
-    movups (%r9), %xmm1
-    movups (%r9), %xmm2
-    movups (%r9), %xmm3
-    movups (%r9), %xmm4
-    movups (%r9), %xmm5
-    movups (%r9), %xmm6
-    movups (%r9), %xmm7
+    vmovups (%r9), %ymm0
+    vmovups (%r9), %ymm1
+    vmovups (%r9), %ymm2
+    vmovups (%r9), %ymm3
+    vmovups (%r9), %ymm4
+    vmovups (%r9), %ymm5
+    vmovups (%r9), %ymm6
+    vmovups (%r9), %ymm7
     sub $0x1, %r8
-    movups (%r9), %xmm8
-    movups (%r9), %xmm9
-    movups (%r9), %xmm10
-    movups (%r9), %xmm11
-    movups (%r9), %xmm12
-    movups (%r9), %xmm13
-    movups (%r9), %xmm14
-    movups (%r9), %xmm15
+    vmovups (%r9), %ymm8
+    vmovups (%r9), %ymm9
+    vmovups (%r9), %ymm10
+    vmovups (%r9), %ymm11
+    vmovups (%r9), %ymm12
+    vmovups (%r9), %ymm13
+    vmovups (%r9), %ymm14
+    vmovups (%r9), %ymm15
     jne .load.movups.kernel.L1
     ret
 

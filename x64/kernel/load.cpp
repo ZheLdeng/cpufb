@@ -8,8 +8,6 @@
 #include <vector>
 #include <iostream>
 
-// #include <common.hpp>
-// #include <load.hpp>
 #include "compute.hpp"
 #include "frequency.hpp"
 #include "common.hpp"
@@ -23,8 +21,10 @@
 //测试WINDOW的数量上限
 #define WINDOW_NUM 2048
 //WINDOW 大小 4MB
-#define WINDOW_SIZE 4 * 1024 * 1024
-#define LOOP_TIME 1000000
+#define WINDOW_SIZE 16 * 1024 * 1024
+#define LOOP_TIME 100000000
+
+#define STRIDE 8
 
 #define PTR_BITS 3
 #define MAX_RAND 100000
@@ -38,46 +38,292 @@ static int64_t get_random(int64_t lower_bound, int64_t upper_bound) {
     return lower_bound + rand() % (upper_bound - lower_bound + 1);
 }
 
+static void shuffleVector(std::vector<int64_t>& vec) {
+    // 使用当前时间作为随机数种子
+    std::srand(static_cast<unsigned>(std::time(0)));
+
+    // Fisher-Yates 洗牌算法
+    for (size_t i = vec.size() - 1; i > 0; --i) {
+        int j = std::rand() % (i + 1); // 生成范围 [0, i] 的随机索引
+        std::swap(vec[i], vec[j]);    // 交换当前元素与随机索引元素
+    }
+}
+static void shuffleGroups(std::vector<int64_t>& vec, int sub) {
+    if (sub <= 0) {
+        std::cerr << "Error: sub must be greater than 0." << std::endl;
+        return;
+    }
+
+    // 初始化随机数种子
+    std::srand(std::time(0));
+
+    // 遍历 vector，将其分为大小为 sub 的组
+    for (size_t i = 0; i < vec.size(); i += sub) {
+        // 计算当前组的结束位置
+        size_t end = std::min(i + sub, vec.size());
+
+        // 对当前组进行洗牌
+        for (size_t j = i; j < end; ++j) {
+            // 生成范围内的随机索引
+            size_t randomIndex = i + (std::rand() % (end - i));
+            // 交换当前元素和随机索引处的元素
+            std::swap(vec[j], vec[randomIndex]);
+        }
+    }
+}
+
+static void random_access_part(vector<double>& time_used) {
+    srand(time(NULL));
+    struct timespec start, end;
+    double sum_time_used = 0;
+    int i, j, k;
+    for (int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
+        std::cout << "win_size: " << win_size << "B" <<std::endl;
+        int64_t *ptr = (int64_t*)malloc(win_size);
+        int total_num = (win_size) >> 3;
+        memset(ptr, -1, win_size);
+        volatile int64_t index = 0;
+        //init
+        int half_num = total_num / 2;
+        vector<int64_t> indexs(total_num);
+        for (int64_t m = 0; m < total_num; ++m) {
+            indexs[m] = m;
+        }
+        shuffleGroups(indexs, half_num);
+        volatile int64_t left = 0;
+        volatile int64_t right = half_num;
+        index = indexs[left];
+        left++;
+        for(int64_t m = 0; m < half_num-1; ++m) {
+            ptr[index] = indexs[right];
+            index = ptr[index];
+            ptr[index] = indexs[left];
+            index = ptr[index];
+            left++;
+            right++;
+        }
+        ptr[index] = indexs[right];
+        index = ptr[index];
+        ptr[index] = indexs[0];
+
+        //warm up
+        index = 0;
+        for (k = 0; k < LOOP_TIME; k++) {
+            index = ptr[index];
+        }
+        sum_time_used = 0;
+        for (i = 0; i < 100; i++) {
+            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+            index = indexs[0];
+            for (k = 0; k < LOOP_TIME; k++) {
+                index = ptr[index];
+            }
+            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            sum_time_used += get_time(&start, &end);
+        }
+        time_used.push_back(sum_time_used / 100);
+        
+        free(ptr);
+    }
+    return;
+}
+
+static void random_access_part_avg(vector<double>& time_used) {
+    srand(time(NULL));
+    struct timespec start, end;
+    double sum_time_used = 0;
+    int i, j, k;
+    for (int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
+        std::cout << "win_size: " << win_size << "B" <<std::endl;
+        int64_t *ptr = (int64_t*)malloc(win_size);
+        int total_num = (win_size) >> 3;
+        memset(ptr, -1, win_size);
+        volatile int64_t index = 0;
+        //init
+        int half_num = total_num / 2;
+        vector<int64_t> indexs(total_num);
+        
+
+        
+        sum_time_used = 0;
+        for (i = 0; i < 100; i++) {
+            for (int64_t m = 0; m < total_num; ++m) {
+                indexs[m] = m;
+            }
+            shuffleGroups(indexs, half_num);
+            volatile int64_t left = 0;
+            volatile int64_t right = half_num;
+            index = indexs[left];
+            left++;
+            for(int64_t m = 0; m < half_num-1; ++m) {
+                ptr[index] = indexs[right];
+                index = ptr[index];
+                ptr[index] = indexs[left];
+                index = ptr[index];
+                left++;
+                right++;
+            }
+            ptr[index] = indexs[right];
+            index = ptr[index];
+            ptr[index] = indexs[0];
+
+            //warm up
+            index = 0;
+            for (k = 0; k < LOOP_TIME; k++) {
+                index = ptr[index];
+            }
+            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+            index = indexs[0];
+            for (k = 0; k < LOOP_TIME; k++) {
+                index = ptr[index];
+            }
+            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            sum_time_used += get_time(&start, &end);
+        }
+        time_used.push_back(sum_time_used / 100);
+        
+        free(ptr);
+    }
+    return;
+}
+
+
 static void random_access(vector<double>& time_used) {
     srand(time(NULL));
     struct timespec start, end;
     double sum_time_used = 0;
     int i, j, k;
     for (int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
+        std::cout << "win_size: " << win_size << "B" <<std::endl;
+    // for (int win_size = (1024+512)*1024; win_size <= (2048+512)*1024; win_size += 64*1024) {
+        int64_t *ptr = (int64_t*)malloc(win_size);
+        // 8*（2^3）=64
+        int total_num = (win_size) >> 3;
+        memset(ptr, -1, win_size);
+        volatile int64_t index = 0;
+        std::vector<int64_t> indexs(total_num-1);
+        for (int64_t m = 1; m < total_num; ++m) {
+            indexs[m - 1] = m;
+        }
+        //std::shuffle(indexs.begin(), indexs.end(), std::mt19937(std::random_device()()));
+        shuffleVector(indexs);
+        for (j = 0;j < total_num / 2 - 1; ++j) {
+            ptr[index] = indexs[j];
+            index = indexs[j];
+        }
+
+        ptr[index] = 0;
+        
+        
+        //random warm up
+        index = 0;
+        for (k = 0; k < LOOP_TIME; k++) {
+            index = ptr[index];
+        }
+        
+        
+        
+        sum_time_used = 0;
+        for (i = 0; i < 100; i++) {
+            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+            index = 0;
+            for (k = 0; k < LOOP_TIME; k++) {
+                index = ptr[index];
+            }
+            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            sum_time_used += get_time(&start, &end);
+        }
+        //std::cout << win_size << " "<< sum_time_used / 100 << std::endl;
+
+        time_used.push_back(sum_time_used / 100);
+        
+        free(ptr);
+    }
+    return;
+}
+
+
+
+static void random_access_stride(vector<double>& time_used) {
+    srand(time(NULL));
+    struct timespec start, end;
+    double sum_time_used = 0;
+    int i, j, k;
+    for (int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
+        std::cout << "win_size: " << win_size << "B" <<std::endl;
+    // for (int win_size = (1024+512)*1024; win_size <= (2048+512)*1024; win_size += 64*1024) {
+        int64_t *ptr = (int64_t*)malloc(win_size);
+        // 8*（2^3）=64
+        int total_num = (win_size) >> 3;
+        memset(ptr, -1, win_size);
+        volatile int64_t index = 0;
+        std::vector<int64_t> indexs(total_num-1);
+        for (int64_t m = 1; m < total_num; ++m) {
+            indexs[m - 1] = m;
+        }
+        //std::shuffle(indexs.begin(), indexs.end(), std::mt19937(std::random_device()()));
+        shuffleVector(indexs);
+        index=0;
+        while(index < total_num) {
+            ptr[index] = index + STRIDE;
+            index = ptr[index];
+        }
+        ptr[index - STRIDE] = 0;
+        
+        
+        //random warm up
+        index = 0;
+        for (k = 0; k < LOOP_TIME; k++) {
+            index = ptr[index];
+        }
+        
+        
+        sum_time_used = 0;
+        for (i = 0; i < 100; i++) {
+            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+            index = 0;
+            for (k = 0; k < LOOP_TIME; k++) {
+                index = ptr[index];
+            }
+            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            sum_time_used += get_time(&start, &end);
+        }
+        //std::cout << win_size << " "<< sum_time_used / 100 << std::endl;
+
+        time_used.push_back(sum_time_used / 100);
+        
+        free(ptr);
+    }
+    return;
+}
+
+
+
+static void orded_random_access(vector<double>& time_used) {
+    srand(time(NULL));
+    struct timespec start, end;
+    double sum_time_used = 0;
+    int i, j, k;
+    for (int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
+        std::cout << "win_size: " << win_size << "B" <<std::endl;
     // for (int win_size = 1024; win_size <= WINDOW_SIZE; win_size += 1024) {
         int64_t *ptr = (int64_t*)malloc(win_size);
         // 8*（2^3）=64
         int total_num = (win_size) >> 3;
         memset(ptr, -1, win_size);
         volatile int64_t index = 0;
-        //init
-        // 一半设置为-1, 另一半为随机递增数列的一半
-        for (j = 0; j < total_num / 2; j++) {
-            volatile int64_t rand;
-            int k;
+        std::vector<int64_t> indexs(total_num-1);
 
-            for (k = 0; k < MAX_RAND; k++) {
-                rand = get_random(0, total_num - 1);
-                if (ptr[rand] == -1 && rand != index) {
-                    break;
-                }
-            }
-            if (k == MAX_RAND) {
-                rand = index + 1;
-                while(ptr[rand] != -1 || rand == index) {
-                    rand = (rand + 1) % total_num;
-                }
-            }
-            ptr[index] = rand;
-            index = rand;
-            
+        for (j = 0;j < total_num; ++j) {
+            ptr[index] = j + 1;
         }
-        ptr[index] = 0;
-        //warm up
+        ptr[total_num-1]=0;    
+
+        // sequence warm up
         index = 0;
+        volatile int64_t read = 0;
         for (k = 0; k < LOOP_TIME; k++) {
-            index = ptr[index];
-            
+            index=ptr[index];
         }
         sum_time_used = 0;
         for (i = 0; i < 100; i++) {
@@ -89,6 +335,8 @@ static void random_access(vector<double>& time_used) {
             clock_gettime(CLOCK_MONOTONIC_RAW, &end);
             sum_time_used += get_time(&start, &end);
         }
+        //std::cout << win_size << " "<< sum_time_used / 100 << std::endl;
+
         time_used.push_back(sum_time_used / 100);
         
         free(ptr);
@@ -135,6 +383,14 @@ static int find_L1_point(const vector<double>& values)
 }
 
 
+void print_slope(const std::vector<double>& slope) {
+    std::cout << "Slope values: " << std::endl;
+    for (size_t i = 0; i < slope.size(); ++i) {
+        std::cout << slope[i] << "\n";
+    }
+    std::cout << std::endl; // 换行
+}
+
 void get_cachesize(struct CacheData *cache_size, int cpu_id)
 {
     vector<double> time_used, slope;
@@ -180,10 +436,21 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
         } 
     }
 #endif
-    random_access(time_used);
+    //random_access_stride(time_used);
+    //random_access(time_used);
+    // orded_random_access(time_used);
+    //random_access_part(time_used);
+    random_access_part_avg(time_used);
     get_slope(time_used, slope);
-    cache_size->test_L1 = pow(2, find_L1_point(slope));
-    cache_size->test_L2 = pow(2, find_L2_point(slope, log2(cache_size->test_L1), slope.size()));
+    print_slope(time_used);
+    print_slope(slope);
+    int L1_point = find_L1_point(slope);
+    int L2_point = find_L2_point(slope, L1_point, slope.size());
+    // std::cout << "L1_point: " << L1_point << " L2_point: " << L2_point << std::endl;
+    cache_size->test_L1 = pow(2, L1_point);
+    cache_size->test_L2 = pow(2, L2_point);
+    // cache_size->test_L1 = pow(2, find_L1_point(slope));
+    // cache_size->test_L2 = pow(2, find_L2_point(slope, log2(cache_size->test_L1), slope.size()));
 
 }
 

@@ -32,36 +32,72 @@ static int64_t get_random(int64_t lower_bound, int64_t upper_bound) {
     return lower_bound + rand() % (upper_bound - lower_bound + 1);
 }
 
+static void shuffleVector(std::vector<int64_t>& vec) {
+    // 使用当前时间作为随机数种子
+    std::srand(static_cast<unsigned>(std::time(0)));
+
+    // Fisher-Yates 洗牌算法
+    for (size_t i = vec.size() - 1; i > 0; --i) {
+        int j = std::rand() % (i + 1); // 生成范围 [0, i] 的随机索引
+        std::swap(vec[i], vec[j]);    // 交换当前元素与随机索引元素
+    }
+}
+static void shuffleGroups(std::vector<int64_t>& vec, int sub) {
+    if (sub <= 0) {
+        std::cerr << "Error: sub must be greater than 0." << std::endl;
+        return;
+    }
+
+    // 初始化随机数种子
+    std::srand(std::time(0));
+
+    // 遍历 vector，将其分为大小为 sub 的组
+    for (size_t i = 0; i < vec.size(); i += sub) {
+        // 计算当前组的结束位置
+        size_t end = std::min(i + sub, vec.size());
+
+        // 对当前组进行洗牌
+        for (size_t j = i; j < end; ++j) {
+            // 生成范围内的随机索引
+            size_t randomIndex = i + (std::rand() % (end - i));
+            // 交换当前元素和随机索引处的元素
+            std::swap(vec[j], vec[randomIndex]);
+        }
+    }
+}
+
+
+void print_slope(const std::vector<double>& slope) {
+    std::cout << "Slope values: " << std::endl;
+    for (size_t i = 0; i < slope.size(); ++i) {
+        std::cout << slope[i] << "\n";
+    }
+    std::cout << std::endl; // 换行
+}
+
 static void random_access(vector<double>& time_used) {
     srand(time(NULL));
     struct timespec start, end;
     double sum_time_used = 0;
     int i, j, k;
     for (int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
+        std::cout << "win_size: " << win_size << "B" <<std::endl;
         int64_t *ptr = (int64_t*)malloc(win_size);
         int total_num = (win_size) >> 3;
         memset(ptr, -1, win_size);
         volatile int64_t index = 0;
         //init
-        for (j = 0; j < total_num / 2; j++) {
-            volatile int64_t rand;
-            int k;
-            for (k = 0; k < MAX_RAND; k++) {
-                rand = get_random(0, total_num - 1);
-                if (ptr[rand] == -1 && rand != index) {
-                    break;
-                }
-            }
-            if (k == MAX_RAND) {
-                rand = index + 1;
-                while(ptr[rand] != -1 || rand == index) {
-                    rand = (rand + 1) % total_num;
-                }
-            }
-            ptr[index] = rand;
-            index = rand;
-            
+        std::vector<int64_t> indexs(total_num-1);
+        for (int64_t m = 1; m < total_num; ++m) {
+            indexs[m - 1] = m;
         }
+        //std::shuffle(indexs.begin(), indexs.end(), std::mt19937(std::random_device()()));
+        shuffleVector(indexs);
+        for (j = 0;j < total_num / 2 - 1; ++j) {
+            ptr[index] = indexs[j];
+            index = indexs[j];
+        }
+        
         ptr[index] = 0;
         //warm up
         index = 0;
@@ -85,6 +121,65 @@ static void random_access(vector<double>& time_used) {
     }
     return;
 }
+static void random_access_part_avg(vector<double>& time_used) {
+    srand(time(NULL));
+    struct timespec start, end;
+    double sum_time_used = 0;
+    int i, j, k;
+    for (int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
+        std::cout << "win_size: " << win_size << "B" <<std::endl;
+        int64_t *ptr = (int64_t*)malloc(win_size);
+        int total_num = (win_size) >> 3;
+        memset(ptr, -1, win_size);
+        volatile int64_t index = 0;
+        //init
+        int half_num = total_num / 2;
+        vector<int64_t> indexs(total_num);
+        
+
+        
+        sum_time_used = 0;
+        for (i = 0; i < 100; i++) {
+            for (int64_t m = 0; m < total_num; ++m) {
+                indexs[m] = m;
+            }
+            shuffleGroups(indexs, half_num);
+            volatile int64_t left = 0;
+            volatile int64_t right = half_num;
+            index = indexs[left];
+            left++;
+            for(int64_t m = 0; m < half_num-1; ++m) {
+                ptr[index] = indexs[right];
+                index = ptr[index];
+                ptr[index] = indexs[left];
+                index = ptr[index];
+                left++;
+                right++;
+            }
+            ptr[index] = indexs[right];
+            index = ptr[index];
+            ptr[index] = indexs[0];
+
+            //warm up
+            index = 0;
+            for (k = 0; k < LOOP_TIME; k++) {
+                index = ptr[index];
+            }
+            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+            index = indexs[0];
+            for (k = 0; k < LOOP_TIME; k++) {
+                index = ptr[index];
+            }
+            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            sum_time_used += get_time(&start, &end);
+        }
+        time_used.push_back(sum_time_used / 100);
+        
+        free(ptr);
+    }
+    return;
+}
+
 
 static void get_slope(vector<double>& time_used, vector<double>& slope)
 {

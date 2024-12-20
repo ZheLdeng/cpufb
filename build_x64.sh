@@ -32,6 +32,6 @@ done
 # compile cpufp
 g++ -g -O3 -I$COMM -I$KERNEL $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
 g++ -g -O0 -I$COMM -I$KERNEL $SIMD_MACRO -c $KERNEL/frequency.cpp -o $BUILD_DIR/frequency.o
-g++ -g -std=c++20 -O3 -I$COMM -I$KERNEL $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load.o
+g++ -g -O3 -I$COMM -I$KERNEL $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load.o
 
 g++ -g -O3 -z noexecstack -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ

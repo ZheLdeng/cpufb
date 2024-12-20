@@ -395,7 +395,7 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
                 break;
             }
         }
-        // TODO: support multiple issue
+
         for (i = 0; i < tables.size(); i++)
             tables[i]->print();
 

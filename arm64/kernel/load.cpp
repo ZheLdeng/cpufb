@@ -17,8 +17,8 @@
 //测试WINDOW的数量上限
 #define WINDOW_NUM 2048
 //WINDOW 大小 4MB
-#define WINDOW_SIZE 4 * 1024 * 1024
-#define LOOP_TIME 1000000
+#define WINDOW_SIZE 8 * 1024 * 1024
+#define LOOP_TIME 100000000
 
 #define PTR_BITS 3
 #define MAX_RAND 100000

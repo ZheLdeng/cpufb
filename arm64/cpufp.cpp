@@ -297,11 +297,11 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
         {
             sleep(idle_time);
             if (bm_list[i].dim.find("OPS") != string::npos) {
-                cpubm_arm64_one(tm, bm_list[i], *tables[0]);
+                // cpubm_arm64_one(tm, bm_list[i], *tables[0]);
             } else if (bm_list[i].dim.find("Byte/Cycle") != string::npos) {
                 cpubm_arm_load(bm_list[i], *tables[1]);
             } else if (bm_list[i].dim.find("IPC") != string::npos) {
-                cpubm_arm_multiple_issue(tm, bm_list[i], *tables[3]);
+                // cpubm_arm_multiple_issue(tm, bm_list[i], *tables[3]);
             } else {
                 cout << "Wrong dimension !" << endl;
                 break;

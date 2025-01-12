@@ -308,51 +308,6 @@ static void init_table(vector<Table*> &tables)
 }
 
 
-// static void cpubm_do_bench(std::vector<int> &set_of_threads,
-//     uint32_t idle_time)
-// {
-//     int i;
-    
-//     if (bm_list.size() > 0)
-//     {
-//         int num_threads = set_of_threads.size();
-
-//         printf("Number Threads: %d\n", num_threads);
-//         printf("Thread Pool Binding:");
-//         for (i = 0; i < num_threads; i++)
-//         {
-//             printf(" %d", set_of_threads[i]);
-//         }
-//         printf("\n");
-
-//         // set table head
-//         vector<string> ti;
-//         ti.resize(3);
-//         ti[0] = "Instruction Set";
-//         ti[1] = "Core Computation";
-//         ti[2] = "Peak Performance";
-
-//         Table table;
-//         table.setColumnNum(3);
-//         table.addOneItem(ti);
-
-//         // set thread pool
-//         tpool_t *tm;
-//         tm = tpool_create(set_of_threads);
-
-//         // traverse task list
-//         cpubm_x64_one(tm, bm_list[0], table);
-//         for (i = 1; i < bm_list.size(); i++)
-//         {
-//             sleep(idle_time);
-//             cpubm_x64_one(tm, bm_list[i], table);
-//         }
-
-//         table.print();
-
-//        tpool_destroy(tm);
-//     }
-// }
 static void cpubm_do_bench(std::vector<int> &set_of_threads,
     uint32_t idle_time)
 {
@@ -402,74 +357,6 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
        tpool_destroy(tm);
     }
 }
-
-// static void parse_thread_pool(char *sets,
-//     vector<int> &set_of_threads)
-// {
-//     if (sets[0] != '[')
-//     {
-//         return;
-//     }
-//     int pos = 1;
-//     int left = 0, right = 0;
-//     int state = 0;
-//     while (sets[pos] != ']' && sets[pos] != '\0')
-//     {
-//         if (state == 0)
-//         {
-//             if (sets[pos] >= '0' && sets[pos] <= '9')
-//             {
-//                 left *= 10;
-//                 left += (int)(sets[pos] - '0');
-//             }
-//             else if (sets[pos] == ',')
-//             {
-//                 set_of_threads.push_back(left);
-//                 left = 0;
-//             }
-//             else if (sets[pos] == '-')
-//             {
-//                 right = 0;
-//                 state = 1;
-//             }
-//         }
-//         else if (state == 1)
-//         {
-//             if (sets[pos] >= '0' && sets[pos] <= '9')
-//             {
-//                 right *= 10;
-//                 right += (int)(sets[pos] - '0');
-//             }
-//             else if (sets[pos] == ',')
-//             {
-//                 int i;
-//                 for (i = left; i <= right; i++)
-//                 {
-//                     set_of_threads.push_back(i);
-//                 }
-//                 left = 0;
-//                 state = 0;
-//             }
-//         }
-//         pos++;
-//     }
-//     if (sets[pos] != ']')
-//     {
-//         return;
-//     }
-//     if (state == 0)
-//     {
-//         set_of_threads.push_back(left);
-//     }
-//     else if (state == 1)
-//     {
-//         int i;
-//         for (i = left; i <= right; i++)
-//         {
-//             set_of_threads.push_back(i);
-//         }
-//     }
-// }
 
 static void cpufp_register_isa()
 {
@@ -563,7 +450,7 @@ static void cpufp_register_isa()
     reg_new_isa("L2 Cache", "ldp(f32)", "Byte/Cycle",
         0x186A00LL, 128LL, NULL, NULL);
     reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC",
-        0x186A00LL, 50LL, NULL, NULL);
+        0x186A00LL, 34LL, NULL, NULL);
 }
 
 int main(int argc, char *argv[])

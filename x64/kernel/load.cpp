@@ -273,7 +273,7 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     }
 #endif
     //random_access_stride(time_used);
-    //random_access(time_used);
+    random_access(time_used);
     // orded_random_access(time_used);
     //random_access_part(time_used);
     // random_access_part_avg(time_used);
@@ -287,7 +287,7 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     // cache_size->test_L2 = pow(2, L2_point);
     // // cache_size->test_L1 = pow(2, find_L1_point(slope));
     // // cache_size->test_L2 = pow(2, find_L2_point(slope, log2(cache_size->test_L1), slope.size()));
-
+    
     get_slope(time_used, slope);
     get_validation(time_used, validation);
     L1_size_num = find_L1_point(slope);

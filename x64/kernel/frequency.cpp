@@ -27,40 +27,6 @@ using namespace std;
 vector<double> freq;
 
 
-
-// typedef struct
-// {
-//     std::string isa;
-//     std::string type;
-//     std::string dim;
-//     int64_t loop_time;
-//     int64_t comp_pl;
-//     void *params;
-//     void (*bench)(int64_t, void*);
-// } cpubm_t;
-// static vector<cpubm_t> bm_list;
-
-// static void reg_new_isa(std::string isa,
-//     std::string type,
-//     std::string dim,
-//     int64_t loop_time,
-//     int64_t comp_pl,
-//     void *params,
-//     void (*bench)(int64_t, void*))
-// {
-//     cpubm_t new_one;
-//     new_one.isa = isa;
-//     new_one.type = type;
-//     new_one.dim = dim;
-//     new_one.loop_time = loop_time;
-//     new_one.comp_pl = comp_pl;
-//     new_one.params = params;
-//     new_one.bench = bench;
-
-//     bm_list.push_back(new_one);
-// }
-
-
 static void* thread_function_freq(void* arg){
     struct FrequencyData* data = (FrequencyData*)malloc(sizeof(FrequencyData));
     double CPU_freq;
@@ -68,8 +34,6 @@ static void* thread_function_freq(void* arg){
     struct timespec start, end;
     double time_used;
 
-    // reg_new_isa("SSE2", "ADD(MUL(f64,f64),f64)", "FLOPS", 0x20000000LL, 32LL, NULL, sse2_add_mul_f64f64_f64);
-    // reg_new_isa("LDP", "MOV(f32, f32)", "FLOPS", 0x20000000LL, 64LL, NULL, load_movaps_kernel);
 #ifdef __APPLE__
     char cpuType[256];
     size_t size = sizeof(cpuType);
@@ -94,17 +58,33 @@ static void* thread_function_freq(void* arg){
     
 #endif
 #ifdef __linux__
-    PerfEventCycle pec;
     int cpuid =* ((int *)arg);
+
     // Set affinity to the specified core
     cpu_set_t cpuset;
     pid_t pid = gettid();
     CPU_ZERO(&cpuset);
     CPU_SET(cpuid, &cpuset);
+
     if (sched_setaffinity(pid, sizeof(cpu_set_t), &cpuset) < 0) {
         printf("Error: cpu id %d sched_setaffinity\n", cpuid);
         printf("Warning: performance may be impacted \n");
     }
+
+    // PerfEventCycle pec;
+    PerfEventCycle test_pec = PerfEventCycle(0);
+
+    test_pec.start();
+    volatile int counter = 0; 
+    for (int i = 0; i < 10000; ++i) {
+        counter += 1;
+    }
+    test_pec.stop();
+    long long test_cycle = test_pec.get_cycle();
+
+    PerfEventCycle pec = (test_cycle == 0) ? PerfEventCycle(1) : PerfEventCycle(0);
+
+
     //get CPU frequency
     FILE *fp = NULL;
     char buf[100] = {0};
@@ -140,22 +120,18 @@ static void* thread_function_freq(void* arg){
     sse2_add_mul_f64f64_f64(looptime, NULL);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    // sse2_add_mul_f64f64_f64(looptime, NULL);
     fma_f64f64f64(looptime, NULL);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
     data->IPC_fp64 = looptime * 16 / (time_used * CPU_freq);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    // sse_add_mul_f32f32_f32(looptime, NULL);
     fma_f32f32f32(looptime, NULL);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
     data->IPC_fp32 = looptime * 16 / (time_used * CPU_freq);
 
     float* cache_data = (float*)malloc(1024);
-    // float* cache_data = (float *)aligned_alloc(16, 1024*sizeof(float));
-
     
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     load_movups_kernel(cache_data, looptime);
@@ -163,19 +139,6 @@ static void* thread_function_freq(void* arg){
     time_used = get_time(&start, &end);
     data->IPC_load = looptime * 16 / (time_used * CPU_freq);
 
-// #ifdef _SVE_FMLA_
-//     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-//     sve_fmla_vv_f32f32f32(looptime);
-//     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-//     time_used = get_time(&start, &end);
-//     data->IPC_fp32_sve = looptime * 24 / (time_used * CPU_freq);
-
-//     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-//     sve_fmla_vv_f64f64f64(looptime);
-//     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-//     time_used = get_time(&start, &end);
-//     data->IPC_fp64_sve = looptime * 24 / (time_used * CPU_freq);
-// #endif
     pthread_exit((void *)data);
 }
 
@@ -202,10 +165,6 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
         ss3 << std::setprecision(2) << result->IPC_fp32 ;
         ss4 << std::setprecision(2) << result->IPC_fp64 ;
         ss5<< std::setprecision(2) << result->IPC_load ;
-        #ifdef _SVE_FMLA_
-        ss6 << std::setprecision(2) << result->IPC_fp32_sve ;
-	    ss7 << std::setprecision(2) << result->IPC_fp64_sve ;
-        #endif
         freq[t] = result->caculate_freq;
 
         vector<string> cont;
@@ -216,13 +175,8 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
         cont[3] = ss3.str();
         cont[4] = ss4.str();
         cont[5] = ss5.str();
-        // #ifdef _SVE_FMLA_
-	    // cont[6] = ss6.str();
-	    // cont[7] = ss7.str();
-        // #endif
+
         table.addOneItem(cont);
     }
 
 }
-
-// --thread_pool=\[0\]

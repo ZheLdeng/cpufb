@@ -23,14 +23,19 @@ private:
     int fd;
     struct perf_event_attr pe;
     long long count;
-
-public:
-    PerfEventCycle() {
+    public:
+    PerfEventCycle(int mode = 0) {
         // 初始化性能事件属性结构
         memset(&pe, 0, sizeof(struct perf_event_attr));
         pe.type = PERF_TYPE_HARDWARE;
         pe.size = sizeof(struct perf_event_attr);
-        pe.config = PERF_COUNT_HW_CPU_CYCLES; 
+        if (mode == 0) {
+            pe.config = PERF_COUNT_HW_CPU_CYCLES;
+        } else {
+            pe.config = 0xA00000000;
+        }
+        // pe.config = PERF_COUNT_HW_CPU_CYCLES;
+        // pe.config = 0xA00000000; 
         pe.disabled = 1;
         pe.exclude_kernel = 1;
         pe.exclude_hv = 1;

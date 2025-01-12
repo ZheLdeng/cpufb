@@ -25,6 +25,10 @@ using namespace std;
 extern vector<double> freq;
 static struct CacheData cache_size;
 
+
+#define LOOP_INCREASE 256
+#define LOOP_DECREASE 32
+
 #ifdef _AMX_TILE_
 struct
 {
@@ -130,7 +134,9 @@ static void cpubm_x64_one(tpool_t *tm,
     char perfUnit = 'G';
 
     int i;
-    int num_threads = tm->thread_num;
+    int num_threads = tm->thread_num * LOOP_INCREASE;
+    int64_t past_loop_time = item.loop_time;
+    item.loop_time = item.loop_time / LOOP_DECREASE;
 
     // warm up
     for (i = 0; i < num_threads; i++)
@@ -150,6 +156,7 @@ static void cpubm_x64_one(tpool_t *tm,
     time_used = get_time(&start, &end);
     perf = item.loop_time * item.comp_pl * num_threads /
         time_used;
+    item.loop_time = past_loop_time;
     if (perf > 1e12)
     {
         perfUnit = 'T';
@@ -350,7 +357,7 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
                 break;
             }
         }
-
+        
         for (i = 0; i < tables.size(); i++)
             tables[i]->print();
 

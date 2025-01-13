@@ -84,6 +84,7 @@ static void cache_thread_func(void *params)
 static void cpubm_arm64_one(tpool_t *tm,
     cpubm_t &item, Table &table)
 {
+    // cout << "test fop begin" << endl;
     struct timespec start, end;
     double time_used, perf, IPC;
     char perfUnit = 'G';
@@ -130,6 +131,7 @@ static void cpubm_arm64_one(tpool_t *tm,
     cont[1] = item.type;
     cont[2] = ss1.str();
     table.addOneItem(cont);
+    // cout << "test fop end" << endl;
 }
 
 static void cpubm_arm_load(cpubm_t &item, Table &table)
@@ -138,18 +140,15 @@ static void cpubm_arm_load(cpubm_t &item, Table &table)
 
     vector<string> cont;
     cont.resize(table.getCol());
-
+    // cout << "test load begin" << endl;
     double data_size = 0.0;
 
     if (item.isa == "L1 Cache"){
-        int way = get_multiway();
         item.comp_pl = cache_size.test_L1;
         cont[3] = to_string(cache_size.theory_L1) + " KB";
-        cont[5] = to_string(way);
     } else {
         item.comp_pl = cache_size.test_L2;
         cont[3] = to_string(cache_size.theory_L2) + " KB";
-        cont[5] = "--";
     }
 
     perf = get_bandwith(item.loop_time, (double)item.comp_pl, item.type);
@@ -163,7 +162,30 @@ static void cpubm_arm_load(cpubm_t &item, Table &table)
     cont[2] = ss1.str();
     cont[4] = to_string(item.comp_pl) + " KB";
     table.addOneItem(cont);
+    // cout << "test load end" << endl;
 }
+
+static void cpubm_arm_cache(std::vector<int> &set_of_threads,Table &table)
+{
+    vector<string> cont;
+    cont.resize(table.getCol());
+    get_cacheline(&cache_size, set_of_threads[0]);
+    // cout << "get cacheline" << endl;
+    get_multiway(&cache_size, set_of_threads[0]);
+    // cout << "get multiway" << endl;
+    get_cachesize(&cache_size, set_of_threads[0]);
+    // cout << "get cachesize" << endl;
+    cont[0] = "L1 ways of associativity";
+    cont[1] = to_string(cache_size.theory_way);
+    cont[2] = to_string(cache_size.test_way);
+    table.addOneItem(cont);
+    cont[0] = "cacheline size";
+    cont[1] = to_string(cache_size.theory_cacheline) + " B";
+    cont[2] = to_string(cache_size.test_cacheline) + " B";
+    table.addOneItem(cont);
+    return;
+}
+
 
 static void cpubm_arm_multiple_issue(tpool_t *tm,
     cpubm_t &item,
@@ -214,8 +236,8 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
 //multi issue
 static void init_table(vector<Table*> &tables)
 {
-    tables.resize(4);
-    for (int  i = 0; i < 4; i++)
+    tables.resize(5);
+    for (int  i = 0; i < 5; i++)
     {
         tables[i] = new Table();
     }
@@ -229,22 +251,27 @@ static void init_table(vector<Table*> &tables)
     tables[0]->setColumnNum(ti.size());
     tables[0]->addOneItem(ti);
 
-    ti.resize(6);
+    ti.resize(5);
     ti[0] = "Cache Level";
-    ti[1] = "Core Computation";
+    ti[1] = "Core Instruction";
     ti[2] = "Bandwith";
     ti[3] = "Theory Size";
     ti[4] = "Test Size";
-    ti[5] = "Way";
     tables[1]->setColumnNum(ti.size());
     tables[1]->addOneItem(ti);
+
+    ti.resize(3);
+    ti[0] = "Item";
+    ti[1] = "Theory";
+    ti[2] = "Test";
+    tables[2]->setColumnNum(ti.size());
+    tables[2]->addOneItem(ti);
 
     #ifdef _SVE_FMLA_
     ti.resize(8);
     #else
     ti.resize(6);
     #endif
-
     ti[0] = "Core ID";
     ti[1] = "Theory Freq";
     ti[2] = "Test Freq";
@@ -255,15 +282,15 @@ static void init_table(vector<Table*> &tables)
     ti[6] = "IPC(SVE32)";
     ti[7] = "IPC(SVE64)";
     #endif
-    tables[2]->setColumnNum(ti.size());
-    tables[2]->addOneItem(ti);
-
-    ti.resize(3);
-    ti[0] = "Instruction Set";
-    ti[1] = "Core Computation";
-    ti[2] = "IPC";
     tables[3]->setColumnNum(ti.size());
     tables[3]->addOneItem(ti);
+
+    ti.resize(3);
+    ti[0] = "Item";
+    ti[1] = "Core Instruction";
+    ti[2] = "IPC";
+    tables[4]->setColumnNum(ti.size());
+    tables[4]->addOneItem(ti);
 }
 
 static void cpubm_do_bench(vector<int> &set_of_threads,
@@ -285,8 +312,10 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
         // set table head
         vector<Table*> tables;
         init_table(tables);
-        get_cpu_freq(set_of_threads, *tables[2]);
-        get_cachesize(&cache_size, set_of_threads[0]);
+        // cout << "start benchmark" << endl;
+        get_cpu_freq(set_of_threads, *tables[3]);
+        // cout << "get freq" << endl;
+        cpubm_arm_cache(set_of_threads, *tables[2]);
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);
@@ -297,11 +326,11 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
         {
             sleep(idle_time);
             if (bm_list[i].dim.find("OPS") != string::npos) {
-                // cpubm_arm64_one(tm, bm_list[i], *tables[0]);
+                cpubm_arm64_one(tm, bm_list[i], *tables[0]);
             } else if (bm_list[i].dim.find("Byte/Cycle") != string::npos) {
                 cpubm_arm_load(bm_list[i], *tables[1]);
             } else if (bm_list[i].dim.find("IPC") != string::npos) {
-                // cpubm_arm_multiple_issue(tm, bm_list[i], *tables[3]);
+                cpubm_arm_multiple_issue(tm, bm_list[i], *tables[4]);
             } else {
                 cout << "Wrong dimension !" << endl;
                 break;

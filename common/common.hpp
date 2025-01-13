@@ -2,6 +2,7 @@
 #define _PERF_EVENT_HPP
 
 #include <iostream>
+#include <fstream>
 #include <cstring>
 #include <cstdio>
 #include <ctime>
@@ -35,7 +36,7 @@ private:
             pe.config = 0xA00000000;
         }
         // pe.config = PERF_COUNT_HW_CPU_CYCLES;
-        // pe.config = 0xA00000000; 
+        // pe.config = 0xA00000000;
         pe.disabled = 1;
         pe.exclude_kernel = 1;
         pe.exclude_hv = 1;
@@ -68,7 +69,25 @@ private:
     }
 };
 
-
+inline void read_data(int cpu_id, int *data, std::string path)
+{
+    FILE *fp = NULL;
+    char buf[100] = {0};
+    std::string file_path="/sys/devices/system/cpu/cpu"+ std::to_string(cpu_id) + path;
+    std::ifstream file(file_path);
+    if (file) {
+        std::string read_freq = "cat " + file_path;
+        fp = popen(read_freq.c_str(), "r");
+        if (fp) {
+            int ret = fread(buf, 1, sizeof(buf)-1, fp);
+            if (ret > 0) {
+                // data->theory_freq = std::stod(buf) * 1e-6;
+                *data = std::stod(buf);
+            }
+            pclose(fp);
+        }
+    }
+}
 
 #endif
 #endif

@@ -9,9 +9,7 @@
 #include <iostream>
 #include<common.hpp>
 #include <load.hpp>
-#include <fstream>
 #include <sstream>
-
 //cacheline长度
 #define CACHE_LINE 64
 //测试WINDOW的数量上限
@@ -28,10 +26,6 @@
 
 using namespace std;
 
-static int64_t get_random(int64_t lower_bound, int64_t upper_bound) {
-    return lower_bound + rand() % (upper_bound - lower_bound + 1);
-}
-
 static void shuffleVector(std::vector<int64_t>& vec) {
     // 使用当前时间作为随机数种子
     std::srand(static_cast<unsigned>(std::time(0)));
@@ -42,6 +36,19 @@ static void shuffleVector(std::vector<int64_t>& vec) {
         std::swap(vec[i], vec[j]);    // 交换当前元素与随机索引元素
     }
 }
+
+static inline void flush_cache_line(void *address) {
+    asm volatile (
+        "dmb ish\n\t"
+        "dc civac, %0\n\t"      //clean cacheline
+        "dmb ish\n\t"
+        "isb\n\t"
+        :
+        : "r" (address)
+        : "memory"
+    );
+}
+
 static void shuffleGroups(std::vector<int64_t>& vec, int sub) {
     if (sub <= 0) {
         std::cerr << "Error: sub must be greater than 0." << std::endl;
@@ -66,125 +73,104 @@ static void shuffleGroups(std::vector<int64_t>& vec, int sub) {
     }
 }
 
-
-void print_slope(const std::vector<double>& slope) {
-    std::cout << "Slope values: " << std::endl;
-    for (size_t i = 0; i < slope.size(); ++i) {
-        std::cout << slope[i] << "\n";
+static void init(int64_t *ptr, vector<int64_t> ptr_index, int64_t group)
+{
+    // cout << "start init" << endl;
+    volatile int64_t index = 0;
+    volatile int64_t group_size = ptr_index.size() / group;
+    if (group > 1) {
+        std::vector<int64_t> group_index(group - 1);
+        //group 最后返回0
+        for (int64_t m = 0; m < group - 1; ++m) {
+            group_index[m] = m + 1;
+        }
+        // cout << "start shuffle vector" << endl;
+        shuffleVector(group_index);
+        // cout << "start shuffle groups" << endl;
+        shuffleGroups(ptr_index, group_size);
+        // cout << "finish shuffle" << endl;
+        // 每次,从0开始,按照shuffle的顺序访问子块,最后返回0
+        index = ptr_index[0];
+        for (int64_t m = 0; m < group_size - 1; ++m) {
+            for (int64_t n = 0; n < group - 1; ++n) {
+                ptr[index] = ptr_index[group_index[n] * group_size + m];
+                index = ptr[index];
+            }
+            shuffleVector(group_index);
+            ptr[index] = ptr_index[m + 1];
+            index = ptr[index];
+        }
+        for (int64_t n = 0; n < group - 1; ++n) {
+            ptr[index] = ptr_index[group_index[n] * group_size + group_size - 1];
+            index = ptr[index];
+        }
+        ptr[index] = ptr_index[0];
+    } else {
+        std::vector<int64_t> indexs(ptr_index.size());
+        for (int64_t m = 0; m < ptr_index.size(); ++m) {
+            indexs[m] = m;
+        }
+        shuffleVector(indexs);
+        index = ptr_index[indexs[0]];
+        for (int64_t m = 0; m < ptr_index.size() - 1; ++m) {
+            ptr[index] = ptr_index[indexs[m + 1]];
+            index = ptr[index];
+        }
+        ptr[index] = ptr_index[indexs[0]];
     }
-    std::cout << std::endl; // 换行
+    // cout << "finish init" << endl;
 }
 
-static void random_access(vector<double>& time_used) {
-    srand(time(NULL));
+static inline double inloop(int group, int win_size)
+{
+    int i, j, k;
     struct timespec start, end;
     double sum_time_used = 0;
-    int i, j, k;
-    for (int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
-        std::cout << "win_size: " << win_size << "B" <<std::endl;
-        int64_t *ptr = (int64_t*)malloc(win_size);
-        int total_num = (win_size) >> 3;
-        memset(ptr, -1, win_size);
-        volatile int64_t index = 0;
-        //init
-        std::vector<int64_t> indexs(total_num-1);
-        for (int64_t m = 1; m < total_num; ++m) {
-            indexs[m - 1] = m;
+    int64_t *ptr = (int64_t*)malloc(win_size);
+    int total_num = (win_size) >> 6; //每64byte 1个数
+    vector<int64_t> ptr_index(total_num) ;
+    for (i = 0; i < 100; i++) {
+        int64_t index = 0;
+        // cout << "main loop start " << i << endl;
+        if (group == 1) {
+            for (int64_t m = 0; m < total_num; ++m) {
+                ptr_index[m] = m << 3;
+            }
+        } else {
+            for (int64_t m = 0; m < total_num; ++m) {
+                ptr_index[m] = m << 3;
+            }
         }
-        //std::shuffle(indexs.begin(), indexs.end(), std::mt19937(std::random_device()()));
-        shuffleVector(indexs);
-        for (j = 0;j < total_num / 2 - 1; ++j) {
-            ptr[index] = indexs[j];
-            index = indexs[j];
-        }
-        
-        ptr[index] = 0;
+        init(ptr, ptr_index, group);
         //warm up
+        for (k = 0; k < LOOP_TIME; k++) {
+            // std::cout << index << std::endl;
+            index = ptr[index];
+        }
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
         index = 0;
         for (k = 0; k < LOOP_TIME; k++) {
             index = ptr[index];
-            
         }
-        sum_time_used = 0;
-        for (i = 0; i < 100; i++) {
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            index = 0;
-            for (k = 0; k < LOOP_TIME; k++) {
-                index = ptr[index];
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            sum_time_used += get_time(&start, &end);
-        }
-        time_used.push_back(sum_time_used / 100);
-        
-        free(ptr);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        sum_time_used += get_time(&start, &end);
+        usleep(1000);
     }
-    return;
+    free(ptr);
+    return sum_time_used / 100;
 }
-static void random_access_part_avg(vector<double>& time_used) {
-    srand(time(NULL));
-    struct timespec start, end;
-    double sum_time_used = 0;
-    int i, j, k;
-    for (int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
-        std::cout << "win_size: " << win_size << "B" <<std::endl;
-        int64_t *ptr = (int64_t*)malloc(win_size);
-        int total_num = (win_size) >> 3;
-        memset(ptr, -1, win_size);
-        volatile int64_t index = 0;
-        //init
-        int half_num = total_num / 2;
-        vector<int64_t> indexs(total_num);
-        
-
-        
-        sum_time_used = 0;
-        for (i = 0; i < 100; i++) {
-            for (int64_t m = 0; m < total_num; ++m) {
-                indexs[m] = m;
-            }
-            shuffleGroups(indexs, half_num);
-            volatile int64_t left = 0;
-            volatile int64_t right = half_num;
-            index = indexs[left];
-            left++;
-            for(int64_t m = 0; m < half_num-1; ++m) {
-                ptr[index] = indexs[right];
-                index = ptr[index];
-                ptr[index] = indexs[left];
-                index = ptr[index];
-                left++;
-                right++;
-            }
-            ptr[index] = indexs[right];
-            index = ptr[index];
-            ptr[index] = indexs[0];
-
-            //warm up
-            index = 0;
-            for (k = 0; k < LOOP_TIME; k++) {
-                index = ptr[index];
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            index = indexs[0];
-            for (k = 0; k < LOOP_TIME; k++) {
-                index = ptr[index];
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            sum_time_used += get_time(&start, &end);
-        }
-        time_used.push_back(sum_time_used / 100);
-        
-        free(ptr);
-    }
-    return;
-}
-
 
 static void get_slope(vector<double>& time_used, vector<double>& slope)
 {
     for (int i = 1; i < time_used.size(); i++) {
-        slope.push_back(abs(time_used[i] - time_used[i - 1]) / time_used[i - 1]); 
+        slope.push_back(abs(time_used[i] - time_used[i - 1]) / time_used[i - 1]);
+    }
+}
+
+static void get_validation(vector<double>& time_used, vector<double>& validation)
+{
+    for (int i = 1; i < time_used.size(); i++) {
+        validation.push_back(abs(time_used[i] - time_used[i - 1]));
     }
 }
 
@@ -199,17 +185,24 @@ static bool isMaximum(const vector<double>& values, int index)
 }
 
 // 找到给定范围内的所有极大值点
-static int find_L2_point(const vector<double>& values, int start, int end) 
+static int find_L2_point(const vector<double>& values, int start, int end)
 {
+    int size = 0;
+    // cout << "start end " << start << " " << end << " " << values[start] << endl;
     for (int i = start + 1; i < end; i++) {
-        if (isMaximum(values, i)) {
-            return i;
+        // cout << "i = " << i << "" << values[i] << endl;
+
+        if (isMaximum(values, i) && values[i] > values [start]) {
+            size = i;
+            break;
         }
     }
-    return 0;
+    // cout << "size = " << size << endl;
+    size = pow(2, size / 2) * (1 + 0.5 * (size % 2));
+    return size;
 }
 
-static int find_L1_point(const vector<double>& values) 
+static int find_L1_point(const vector<double>& values)
 {
     for (int i = 0; i < values.size(); i++) {
         if (values[i] > 0.2) {
@@ -219,65 +212,124 @@ static int find_L1_point(const vector<double>& values)
     return 0;
 }
 
+static void random_access(vector<double>& time_used) {
+    for (int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
+        // int group = max(1, win_size / 1024);
+        // cout << "win_size = " << win_size << " " << int(win_size * 1.5 / 1024 / 64) << endl;
+        time_used.push_back(inloop(max(1, win_size / 1024 / 64), win_size));
+        time_used.push_back(inloop(max(1, int(win_size * 1.5 / 1024 / 64)), win_size * 1.5));
+    }
+    return;
+}
+
+void get_cacheline(struct CacheData *cache_size, int cpu_id)
+{
+    struct timespec start, end;
+    int i, j, k;
+    vector<double> slope;
+    int datasize = 64 * 1024;
+    vector<double> time_used;
+    uintptr_t *ptr = (uintptr_t*)malloc(datasize);
+    double current_time = 0;
+#ifdef __linux__
+    pid_t pid = gettid();
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(cpu_id, &mask);
+    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
+        printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
+        printf("Warning: performance may be impacted \n");
+    }
+    read_data(cpu_id, &cache_size->theory_cacheline, "/cache/index0/coherency_line_size");
+#endif
+    for(int buf = 16 ; buf <= 1024 ; buf *= 2){
+
+        int w = datasize / buf;
+        int n = (buf >> 3)/2 + 1 ;
+        for(j = 0 ; j < datasize >> 3 ; j++){
+            ptr[j] = 0;
+        }
+        uintptr_t* next;
+        for( j = 0 ; j < w-1 ; j++){
+            ptr[(j * buf) >> 3 ]=(uintptr_t)&ptr[((j + 1) * buf) >> 3];
+            ptr[((j * buf) >> 3) + n]=(uintptr_t)&ptr[(((j + 1) * buf) >> 3) + n];
+        }
+        ptr[(j * buf) >> 3] = (uintptr_t)&ptr[0];
+        ptr[((j * buf) >> 3) + n] = (uintptr_t)&ptr[n];
+
+        for(i = 0; i < 1000 ; i++){
+            for(k = 0; k < datasize >> 3; k++){
+                flush_cache_line(&ptr[k]);
+            }
+            // clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+            next = (uintptr_t*)&ptr[0];
+            for(k=0 ; k < w ; k++){
+                next = (uintptr_t*)*next;
+            }
+            // clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            // time2 +=  (get_time(&start, &end) / w);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+            next = (uintptr_t*)&ptr[n];
+            for(k=0 ; k < w ; k++){
+                next = (uintptr_t*)*next;
+            }
+            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            current_time += (get_time(&start, &end)/w);
+        }
+        time_used.push_back(current_time);
+        // cout << "ss: " << buf << " first: " << current_time << endl;
+        // printf("ss: %d first: %.2f \n", buf, current_time);
+    }
+    get_slope(time_used, slope);
+    free(ptr);
+    cache_size->test_cacheline = 16 * find_L1_point(slope);
+    return;
+}
 
 void get_cachesize(struct CacheData *cache_size, int cpu_id)
 {
-    vector<double> time_used, slope;
-    int size_num = log2(WINDOW_SIZE / 1024) + 1;
+    vector<double> time_used, validation, slope;
+    int L1_size_num = 0;
 #ifdef __linux__
     pid_t pid = gettid();
-    cpu_set_t mask;  
-    CPU_ZERO(&mask);  
-    CPU_SET(cpu_id, &mask);  
-    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {  
-        printf("Error: cpu id %d sched_setaffinity\n", cpu_id);  
-        printf("Warning: performance may be impacted \n");  
-    } 
-
-    FILE *fp = NULL;
-    char buf[100] = {0};
-    string file_path="/sys/devices/system/cpu/cpu"+ std::to_string(cpu_id) +"/cache/index0/size";
-    std::ifstream L1_file(file_path);
-    if (L1_file) {
-        string read_freq = "cat " + file_path;
-        fp = popen(read_freq.c_str(), "r");
-        if (fp) {
-            int ret = fread(buf, 1, sizeof(buf)-1, fp);
-            if (ret > 0) {
-                // data->theory_freq = std::stod(buf) * 1e-6;
-                cache_size->theory_L1 = std::stod(buf);
-            } 
-            pclose(fp);
-        } 
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(cpu_id, &mask);
+    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
+        printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
+        printf("Warning: performance may be impacted \n");
     }
-    file_path="/sys/devices/system/cpu/cpu"+ std::to_string(cpu_id) +"/cache/index2/size";
-    std::ifstream L2_file(file_path);
-    if (L2_file) {
-        string read_freq = "cat " + file_path;
-        fp = popen(read_freq.c_str(), "r");
-        if (fp) {
-            int ret = fread(buf, 1, sizeof(buf)-1, fp);
-            if (ret > 0) {
-                // data->theory_freq = std::stod(buf) * 1e-6;
-                cache_size->theory_L2 = std::stod(buf);
-            } 
-            pclose(fp);
-        } 
-    }
+    read_data(cpu_id, &cache_size->theory_L1, "/cache/index0/size");
+    read_data(cpu_id, &cache_size->theory_L2, "/cache/index2/size");
 #endif
     random_access(time_used);
     get_slope(time_used, slope);
-    cache_size->test_L1 = pow(2, find_L1_point(slope));
-    cache_size->test_L2 = pow(2, find_L2_point(slope, log2(cache_size->test_L1), slope.size()));
-
+    get_validation(time_used, validation);
+    L1_size_num = find_L1_point(slope);
+    // cout << "L1_size = " << L1_size_num << endl;
+    // cache_size->test_L1 = pow(2, find_L1_point(slope));
+    cache_size->test_L1 = pow(2, L1_size_num / 2) * (1 + 0.5 * (L1_size_num % 2));
+    // cout << "L1_size == " << cache_size->test_L1 << endl;
+    cache_size->test_L2 = find_L2_point(validation, L1_size_num, validation.size());
 }
 
-int get_multiway()
+void get_multiway(struct CacheData *cache_size, int cpu_id)
 {
     struct timespec start, end;
     double time_used = 0, pre_time_used = 0;
     int i, j, k, w;
     int64_t loop_time = 1000000, test_time = 100;
+#ifdef __linux__
+    pid_t pid = gettid();
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(cpu_id, &mask);
+    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
+        printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
+        printf("Warning: performance may be impacted \n");
+    }
+    read_data(cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
+#endif
     for (w = 0; w < BUFFER_NUM; w++) {
         uint64_t *index = (uint64_t*)malloc(BUFFER_SIZE * (w + 1));
         uint64_t next = 0;
@@ -310,7 +362,8 @@ int get_multiway()
         }
         free(index);
     }
-    return w;
+    cache_size->test_way = w;
+    return;
 }
 
 double get_bandwith(uint64_t looptime, double data_size, string type)

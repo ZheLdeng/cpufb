@@ -230,7 +230,7 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
     int datasize = 64 * 1024;
     vector<double> time_used;
     uintptr_t *ptr = (uintptr_t*)malloc(datasize);
-    double current_time = 0;
+    double first_time, second_time;
 #ifdef __linux__
     pid_t pid = gettid();
     cpu_set_t mask;
@@ -243,7 +243,8 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
     read_data(cpu_id, &cache_size->theory_cacheline, "/cache/index0/coherency_line_size");
 #endif
     for(int buf = 16 ; buf <= 1024 ; buf *= 2){
-
+        first_time = 0;
+        second_time = 0;
         int w = datasize / buf;
         int n = (buf >> 3)/2 + 1 ;
         for(j = 0 ; j < datasize >> 3 ; j++){
@@ -261,28 +262,33 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
             for(k = 0; k < datasize >> 3; k++){
                 flush_cache_line(&ptr[k]);
             }
-            // clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
             next = (uintptr_t*)&ptr[0];
             for(k=0 ; k < w ; k++){
                 next = (uintptr_t*)*next;
             }
-            // clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            // time2 +=  (get_time(&start, &end) / w);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            first_time +=  (get_time(&start, &end) / w);
             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
             next = (uintptr_t*)&ptr[n];
             for(k=0 ; k < w ; k++){
                 next = (uintptr_t*)*next;
             }
             clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            current_time += (get_time(&start, &end)/w);
+            second_time += (get_time(&start, &end) / w);
         }
-        time_used.push_back(current_time);
-        // cout << "ss: " << buf << " first: " << current_time << endl;
-        // printf("ss: %d first: %.2f \n", buf, current_time);
+        time_used.push_back(second_time / first_time);
+        // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
+            // << second_time / first_time << endl;
     }
-    get_slope(time_used, slope);
+    for (size_t i = 0; i < time_used.size() - 1; ++i) {
+        if (time_used[i] < time_used[i + 1]) {
+            // cout << i << " " << 16 * pow(2, i) << endl;
+            cache_size->test_cacheline = 16 * pow(2, i);
+            break;
+        }
+    }
     free(ptr);
-    cache_size->test_cacheline = 16 * find_L1_point(slope);
     return;
 }
 

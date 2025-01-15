@@ -86,23 +86,10 @@ static void* thread_function_freq(void* arg){
 
 
     //get CPU frequency
-    FILE *fp = NULL;
-    char buf[100] = {0};
-    string file_path="/sys/devices/system/cpu/cpu"+ std::to_string(cpuid) +"/cpufreq/scaling_max_freq";
-    std::ifstream file(file_path);
-    if (file) {
-        string read_freq = "cat " + file_path;
-        fp = popen(read_freq.c_str(), "r");
-        if (fp) {
-            int ret = fread(buf, 1, sizeof(buf)-1, fp);
-            if (ret > 0) {
-                data->theory_freq = std::stod(buf) * 1e-6;
-            }
-            pclose(fp);
-        }
-    } else {
-        data->theory_freq = 0;
-    }
+    data->theory_freq = 0;
+    int read_freq = 0;
+    read_data(cpuid, &read_freq, "/cpufreq/scaling_max_freq");
+    data->theory_freq = double(read_freq) * 1e-6;
     //warm up
     sse2_add_mul_f64f64_f64(looptime, NULL);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);

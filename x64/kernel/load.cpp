@@ -7,6 +7,7 @@
 #include <cstring>
 #include <vector>
 #include <iostream>
+#include <immintrin.h>
 
 #include "compute.hpp"
 #include "frequency.hpp"
@@ -34,10 +35,6 @@
 
 using namespace std;
 
-static int64_t get_random(int64_t lower_bound, int64_t upper_bound) {
-    return lower_bound + rand() % (upper_bound - lower_bound + 1);
-}
-
 static void shuffleVector(std::vector<int64_t>& vec) {
     // 使用当前时间作为随机数种子
     std::srand(static_cast<unsigned>(std::time(0)));
@@ -48,6 +45,7 @@ static void shuffleVector(std::vector<int64_t>& vec) {
         std::swap(vec[i], vec[j]);    // 交换当前元素与随机索引元素
     }
 }
+
 static void shuffleGroups(std::vector<int64_t>& vec, int sub) {
     if (sub <= 0) {
         std::cerr << "Error: sub must be greater than 0." << std::endl;
@@ -70,6 +68,10 @@ static void shuffleGroups(std::vector<int64_t>& vec, int sub) {
             std::swap(vec[j], vec[randomIndex]);
         }
     }
+}
+
+static inline void flush_cache_line(void* addr) {
+    _mm_clflush(addr);  // 使用 CLFLUSH
 }
 
 void init(int64_t *ptr, vector<int64_t> ptr_index, int64_t group)
@@ -218,13 +220,75 @@ static int find_L1_point(const vector<double>& values)
     return 0;
 }
 
-
-void print_slope(const std::vector<double>& slope) {
-    std::cout << "Slope values: " << std::endl;
-    for (size_t i = 0; i < slope.size(); ++i) {
-        std::cout << slope[i] << "\n";
+void get_cacheline(struct CacheData *cache_size, int cpu_id)
+{
+    struct timespec start, end;
+    int i, j, k;
+    vector<double> slope;
+    int datasize = 64 * 1024;
+    vector<double> time_used;
+    uintptr_t *ptr = (uintptr_t*)malloc(datasize);
+    double firsh_time, second_time;
+#ifdef __linux__
+    pid_t pid = gettid();
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(cpu_id, &mask);
+    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
+        printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
+        printf("Warning: performance may be impacted \n");
     }
-    std::cout << std::endl; // 换行
+    read_data(cpu_id, &cache_size->theory_cacheline, "/cache/index0/coherency_line_size");
+#endif
+    for(int buf = 16 ; buf <= 1024 ; buf *= 2){
+        
+        firsh_time = 0;
+        second_time = 0;
+        int w = datasize / buf;
+        int n = (buf >> 3)/2 + 1 ;
+        for(j = 0 ; j < datasize >> 3 ; j++){
+            ptr[j] = 0;
+        }
+        uintptr_t* next;
+        for( j = 0 ; j < w-1 ; j++){
+            ptr[(j * buf) >> 3 ]=(uintptr_t)&ptr[((j + 1) * buf) >> 3];
+            ptr[((j * buf) >> 3) + n]=(uintptr_t)&ptr[(((j + 1) * buf) >> 3) + n];
+        }
+        ptr[(j * buf) >> 3] = (uintptr_t)&ptr[0];
+        ptr[((j * buf) >> 3) + n] = (uintptr_t)&ptr[n];
+
+        for(i = 0; i < 1000 ; i++){
+            for(k = 0; k < datasize >> 3; k++){
+                flush_cache_line(&ptr[k]);
+            }
+            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+            next = (uintptr_t*)&ptr[0];
+            for(k=0 ; k < w ; k++){
+                next = (uintptr_t*)*next;
+            }
+            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            firsh_time +=  (get_time(&start, &end) / w);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+            next = (uintptr_t*)&ptr[n];
+            for(k=0 ; k < w ; k++){
+                next = (uintptr_t*)*next;
+            }
+            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            second_time += (get_time(&start, &end)/w);
+        }
+        time_used.push_back(second_time / firsh_time);
+        // cout << "ss: " << buf << " first: " << current_time << endl;
+        // printf("ss: %d first: %.2f \n", buf, current_time);
+    }
+    for (size_t i = 0; i < time_used.size() - 1; ++i) {
+    if (time_used[i] < time_used[i + 1]) {
+            // cout << i << " " << 16 * pow(2, i) << endl;
+        cache_size->test_cacheline = 16 * pow(2, i);
+        break;
+        }
+    }
+    free(ptr);
+    return;
 }
 
 void get_cachesize(struct CacheData *cache_size, int cpu_id)
@@ -243,50 +307,12 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
 
     FILE *fp = NULL;
     char buf[100] = {0};
-    string file_path="/sys/devices/system/cpu/cpu"+ std::to_string(cpu_id) +"/cache/index0/size";
-    std::ifstream L1_file(file_path);
-    if (L1_file) {
-        string read_freq = "cat " + file_path;
-        fp = popen(read_freq.c_str(), "r");
-        if (fp) {
-            int ret = fread(buf, 1, sizeof(buf)-1, fp);
-            if (ret > 0) {
-                // data->theory_freq = std::stod(buf) * 1e-6;
-                cache_size->theory_L1 = std::stod(buf);
-            }
-            pclose(fp);
-        }
-    }
-    file_path="/sys/devices/system/cpu/cpu"+ std::to_string(cpu_id) +"/cache/index2/size";
-    std::ifstream L2_file(file_path);
-    if (L2_file) {
-        string read_freq = "cat " + file_path;
-        fp = popen(read_freq.c_str(), "r");
-        if (fp) {
-            int ret = fread(buf, 1, sizeof(buf)-1, fp);
-            if (ret > 0) {
-                // data->theory_freq = std::stod(buf) * 1e-6;
-                cache_size->theory_L2 = std::stod(buf);
-            }
-            pclose(fp);
-        }
-    }
+
+    read_data(cpu_id, &cache_size->theory_L1, "/cache/index0/size");
+    read_data(cpu_id, &cache_size->theory_L2, "/cache/index2/size");
 #endif
-    //random_access_stride(time_used);
+
     random_access(time_used);
-    // orded_random_access(time_used);
-    //random_access_part(time_used);
-    // random_access_part_avg(time_used);
-    // get_slope(time_used, slope);
-    // print_slope(time_used);
-    // print_slope(slope);
-    // int L1_point = find_L1_point(slope);
-    // int L2_point = find_L2_point(slope, L1_point, slope.size());
-    // // std::cout << "L1_point: " << L1_point << " L2_point: " << L2_point << std::endl;
-    // cache_size->test_L1 = pow(2, L1_point);
-    // cache_size->test_L2 = pow(2, L2_point);
-    // // cache_size->test_L1 = pow(2, find_L1_point(slope));
-    // // cache_size->test_L2 = pow(2, find_L2_point(slope, log2(cache_size->test_L1), slope.size()));
     
     get_slope(time_used, slope);
     get_validation(time_used, validation);
@@ -297,12 +323,25 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
 
 }
 
-int get_multiway()
+void get_multiway(struct CacheData *cache_size, int cpu_id)
 {
     struct timespec start, end;
     double time_used = 0, pre_time_used = 0;
     int i, j, k, w;
     int64_t loop_time = 1000000, test_time = 100;
+
+#ifdef __linux__
+    pid_t pid = gettid();
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(cpu_id, &mask);
+    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
+        printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
+        printf("Warning: performance may be impacted \n");
+    }
+    read_data(cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
+#endif
+
     for (w = 0; w < BUFFER_NUM; w++) {
         uint64_t *index = (uint64_t*)malloc(BUFFER_SIZE * (w + 1));
         uint64_t next = 0;
@@ -335,7 +374,9 @@ int get_multiway()
         }
         free(index);
     }
-    return w;
+    cache_size->test_way = w;
+    return;
+
 }
 
 double get_bandwith(uint64_t looptime, double data_size, string type)

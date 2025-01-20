@@ -160,17 +160,19 @@ static inline double inloop(int group, int win_size)
     return sum_time_used / 100;
 }
 
-static void get_slope(vector<double>& time_used, vector<double>& slope)
+static void get_slope(vector<double>& data, vector<double>& slope)
 {
-    for (int i = 1; i < time_used.size(); i++) {
-        slope.push_back(abs(time_used[i] - time_used[i - 1]) / time_used[i - 1]);
+    for (int i = 1; i < data.size(); i++) {
+        slope.push_back(abs(data[i] - data[i - 1]) / data[i - 1]);
+                // cout << "slope is" << i << " is " << abs(data[i] - data[i - 1]) << endl;
     }
 }
 
-static void get_validation(vector<double>& time_used, vector<double>& validation)
+static void get_validation(vector<double>& data, vector<double>& validation)
 {
-    for (int i = 1; i < time_used.size(); i++) {
-        validation.push_back(abs(time_used[i] - time_used[i - 1]));
+    for (int i = 1; i < data.size(); i++) {
+        validation.push_back(abs(data[i] - data[i - 1]));
+        // cout << scientific << "validation " << i << " is " << abs(data[i] - data[i - 1]) << endl;
     }
 }
 

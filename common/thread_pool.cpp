@@ -7,6 +7,9 @@
 #include <sched.h>
 #include <unistd.h>
 #include "thread_pool.hpp"
+#ifdef __linux__
+#include<sys/syscall.h>
+#endif
 using namespace std;
 
 
@@ -60,14 +63,14 @@ static void *tpool_worker(void *arg)
     size_t cpu_id=targs->cpuid;
     free(targs);
 #ifdef __linux__
-    pid_t pid = gettid();
-    cpu_set_t mask;  
-    CPU_ZERO(&mask);  
-    CPU_SET(cpu_id, &mask);  
-    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {  
-        printf("Error: cpu id %d sched_setaffinity\n", cpu_id);  
-        printf("Warning: performance may be impacted \n");  
-    } 
+    pid_t pid = syscall(SYS_gettid);
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(cpu_id, &mask);
+    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
+        printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
+        printf("Warning: performance may be impacted \n");
+    }
 #endif
     tpool_work_t *work;
 

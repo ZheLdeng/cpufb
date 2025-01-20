@@ -16,14 +16,16 @@
 
 #include <fstream>
 #include <sstream>
-
+#ifdef __linux__
+#include<sys/syscall.h>
+#endif
 //cacheline长度
 #define CACHE_LINE 64
 //测试WINDOW的数量上限
 #define WINDOW_NUM 2048
 //WINDOW 大小 4MB
 #define WINDOW_SIZE 16 * 1024 * 1024
-#define LOOP_TIME 100000000
+#define LOOP_TIME 1000000
 
 #define STRIDE 8
 
@@ -35,7 +37,7 @@
 
 using namespace std;
 
-static void shuffleVector(std::vector<int64_t>& vec) {
+static inline void shuffleVector(std::vector<int64_t>& vec) {
     // 使用当前时间作为随机数种子
     std::srand(static_cast<unsigned>(std::time(0)));
 
@@ -46,7 +48,7 @@ static void shuffleVector(std::vector<int64_t>& vec) {
     }
 }
 
-static void shuffleGroups(std::vector<int64_t>& vec, int sub) {
+static inline void shuffleGroups(std::vector<int64_t>& vec, int sub) {
     if (sub <= 0) {
         std::cerr << "Error: sub must be greater than 0." << std::endl;
         return;
@@ -74,7 +76,7 @@ static inline void flush_cache_line(void* addr) {
     _mm_clflush(addr);  // 使用 CLFLUSH
 }
 
-void init(int64_t *ptr, vector<int64_t> ptr_index, int64_t group)
+static inline void init(int64_t *ptr, vector<int64_t> ptr_index, int64_t group)
 {
     // cout << "start init" << endl;
     volatile int64_t index = 0;
@@ -130,17 +132,12 @@ static inline double inloop(int group, int win_size)
     int64_t *ptr = (int64_t*)malloc(win_size);
     int total_num = (win_size) >> 6; //每64byte 1个数
     vector<int64_t> ptr_index(total_num) ;
+
     for (i = 0; i < 100; i++) {
         int64_t index = 0;
         // cout << "main loop start " << i << endl;
-        if (group == 1) {
-            for (int64_t m = 0; m < total_num; ++m) {
+        for (int64_t m = 0; m < total_num; ++m) {
                 ptr_index[m] = m << 3;
-            }
-        } else {
-            for (int64_t m = 0; m < total_num; ++m) {
-                ptr_index[m] = m << 3;
-            }
         }
         init(ptr, ptr_index, group);
         //warm up
@@ -158,18 +155,8 @@ static inline double inloop(int group, int win_size)
         usleep(1000);
     }
     free(ptr);
+    // printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
     return sum_time_used / 100;
-}
-
-
-
-static void random_access(vector<double>& time_used) {
-    for (int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
-        // int group = max(1, win_size / 1024);
-        time_used.push_back(inloop(max(1, win_size / 1024 / 64), win_size));
-        time_used.push_back(inloop(max(1, int(win_size * 1.5 / 1024 / 64)), win_size * 1.5));
-    }
-    return;
 }
 
 static void get_slope(vector<double>& time_used, vector<double>& slope)
@@ -220,6 +207,16 @@ static int find_L1_point(const vector<double>& values)
     return 0;
 }
 
+static inline void random_access(vector<double>& time_used) {
+    srand(time(NULL));
+    for (int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
+        // int group = max(1, win_size / 1024);
+        time_used.push_back(inloop(max(1, win_size / 1024 / 64), win_size));
+        time_used.push_back(inloop(max(1, int(win_size * 1.5 / 1024 / 64)), win_size * 1.5));
+    }
+    return;
+}
+
 void get_cacheline(struct CacheData *cache_size, int cpu_id)
 {
     struct timespec start, end;
@@ -228,9 +225,9 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
     int datasize = 64 * 1024;
     vector<double> time_used;
     uintptr_t *ptr = (uintptr_t*)malloc(datasize);
-    double firsh_time, second_time;
+    double first_time, second_time;
 #ifdef __linux__
-    pid_t pid = gettid();
+    pid_t pid = syscall(SYS_gettid);
     cpu_set_t mask;
     CPU_ZERO(&mask);
     CPU_SET(cpu_id, &mask);
@@ -241,8 +238,8 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
     read_data(cpu_id, &cache_size->theory_cacheline, "/cache/index0/coherency_line_size");
 #endif
     for(int buf = 16 ; buf <= 1024 ; buf *= 2){
-        
-        firsh_time = 0;
+
+        first_time = 0;
         second_time = 0;
         int w = datasize / buf;
         int n = (buf >> 3)/2 + 1 ;
@@ -267,7 +264,7 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
                 next = (uintptr_t*)*next;
             }
             clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            firsh_time +=  (get_time(&start, &end) / w);
+            first_time +=  (get_time(&start, &end) / w);
             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
             next = (uintptr_t*)&ptr[n];
             for(k=0 ; k < w ; k++){
@@ -276,9 +273,9 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
             clock_gettime(CLOCK_MONOTONIC_RAW, &end);
             second_time += (get_time(&start, &end)/w);
         }
-        time_used.push_back(second_time / firsh_time);
-        // cout << "ss: " << buf << " first: " << current_time << endl;
-        // printf("ss: %d first: %.2f \n", buf, current_time);
+        time_used.push_back(second_time / first_time);
+        // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
+        //     << second_time / first_time << endl;
     }
     for (size_t i = 0; i < time_used.size() - 1; ++i) {
     if (time_used[i] < time_used[i + 1]) {
@@ -296,7 +293,7 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     vector<double> time_used, validation, slope;
     int L1_size_num = 0;
 #ifdef __linux__
-    pid_t pid = gettid();
+    pid_t pid = syscall(SYS_gettid);
     cpu_set_t mask;
     CPU_ZERO(&mask);
     CPU_SET(cpu_id, &mask);
@@ -305,15 +302,12 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
         printf("Warning: performance may be impacted \n");
     }
 
-    FILE *fp = NULL;
-    char buf[100] = {0};
-
     read_data(cpu_id, &cache_size->theory_L1, "/cache/index0/size");
     read_data(cpu_id, &cache_size->theory_L2, "/cache/index2/size");
 #endif
 
     random_access(time_used);
-    
+
     get_slope(time_used, slope);
     get_validation(time_used, validation);
     L1_size_num = find_L1_point(slope);
@@ -328,10 +322,10 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
     struct timespec start, end;
     double time_used = 0, pre_time_used = 0;
     int i, j, k, w;
-    int64_t loop_time = 1000000, test_time = 100;
+    int64_t loop_time = LOOP_TIME, test_time = 100;
 
 #ifdef __linux__
-    pid_t pid = gettid();
+    pid_t pid = syscall(SYS_gettid);
     cpu_set_t mask;
     CPU_ZERO(&mask);
     CPU_SET(cpu_id, &mask);

@@ -18,7 +18,9 @@
 #include "frequency.hpp"
 #include "common.hpp"
 #include "load.hpp"
-
+#ifdef __linux__
+#include<sys/syscall.h>
+#endif
 #ifdef __APPLE__
 #include <sys/sysctl.h>
 #endif
@@ -55,14 +57,14 @@ static void* thread_function_freq(void* arg){
         data->caculate_freq = 4.06;
         CPU_freq = 4.06 * 1e9;
     }
-    
+
 #endif
 #ifdef __linux__
     int cpuid =* ((int *)arg);
 
     // Set affinity to the specified core
     cpu_set_t cpuset;
-    pid_t pid = gettid();
+    pid_t pid = syscall(SYS_gettid);
     CPU_ZERO(&cpuset);
     CPU_SET(cpuid, &cpuset);
 
@@ -75,7 +77,7 @@ static void* thread_function_freq(void* arg){
     PerfEventCycle test_pec = PerfEventCycle(0);
 
     test_pec.start();
-    volatile int counter = 0; 
+    volatile int counter = 0;
     for (int i = 0; i < 10000; ++i) {
         counter += 1;
     }
@@ -119,7 +121,7 @@ static void* thread_function_freq(void* arg){
     data->IPC_fp32 = looptime * 16 / (time_used * CPU_freq);
 
     float* cache_data = (float*)malloc(1024);
-    
+
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     load_movups_kernel(cache_data, looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);

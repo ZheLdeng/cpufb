@@ -10,12 +10,21 @@
 #include<common.hpp>
 #include <load.hpp>
 #include <sstream>
+#ifdef __APPLE__
+#include <dispatch/dispatch.h>
+#include <thread>
+#include <sys/sysctl.h>
+#endif
 //cacheline长度
 #define CACHE_LINE 64
 //测试WINDOW的数量上限
 #define WINDOW_NUM 2048
 //WINDOW 大小 4MB
+#ifndef __APPLE__
 #define WINDOW_SIZE 4 * 1024 * 1024
+#else
+#define WINDOW_SIZE 32 * 1024 * 1024
+#endif
 #define LOOP_TIME 1000000
 
 #define PTR_BITS 3
@@ -26,7 +35,9 @@
 
 using namespace std;
 
-static void shuffleVector(std::vector<int64_t>& vec) {
+double cacheline = 0;
+
+static inline void shuffleVector(std::vector<int64_t>& vec) {
     // 使用当前时间作为随机数种子
     std::srand(static_cast<unsigned>(std::time(0)));
 
@@ -49,12 +60,11 @@ static inline void flush_cache_line(void *address) {
     );
 }
 
-static void shuffleGroups(std::vector<int64_t>& vec, int sub) {
+static inline void shuffleGroups(std::vector<int64_t>& vec, int sub) {
     if (sub <= 0) {
         std::cerr << "Error: sub must be greater than 0." << std::endl;
         return;
     }
-
     // 初始化随机数种子
     std::srand(std::time(0));
 
@@ -73,7 +83,7 @@ static void shuffleGroups(std::vector<int64_t>& vec, int sub) {
     }
 }
 
-static void init(int64_t *ptr, vector<int64_t> ptr_index, int64_t group)
+static inline void init(int64_t *ptr, vector<int64_t> ptr_index, int64_t group)
 {
     // cout << "start init" << endl;
     volatile int64_t index = 0;
@@ -127,19 +137,14 @@ static inline double inloop(int group, int win_size)
     struct timespec start, end;
     double sum_time_used = 0;
     int64_t *ptr = (int64_t*)malloc(win_size);
-    int total_num = (win_size) >> 6; //每64byte 1个数
+    int total_num = (win_size) >> int(log(cacheline)/log(2)); //每64byte 1个数
+
     vector<int64_t> ptr_index(total_num) ;
     for (i = 0; i < 100; i++) {
         int64_t index = 0;
         // cout << "main loop start " << i << endl;
-        if (group == 1) {
-            for (int64_t m = 0; m < total_num; ++m) {
-                ptr_index[m] = m << 3;
-            }
-        } else {
-            for (int64_t m = 0; m < total_num; ++m) {
-                ptr_index[m] = m << 3;
-            }
+        for (int64_t m = 0; m < total_num; ++m) {
+            ptr_index[m] = m << 4;
         }
         init(ptr, ptr_index, group);
         //warm up
@@ -157,18 +162,20 @@ static inline double inloop(int group, int win_size)
         usleep(1000);
     }
     free(ptr);
+    // printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
+
     return sum_time_used / 100;
 }
 
-static void get_slope(vector<double>& data, vector<double>& slope)
+static inline void get_slope(vector<double>& data, vector<double>& slope)
 {
     for (int i = 1; i < data.size(); i++) {
-        slope.push_back(abs(data[i] - data[i - 1]) / data[i - 1]);
-                // cout << "slope is" << i << " is " << abs(data[i] - data[i - 1]) << endl;
+        slope.push_back((data[i] - data[i - 1]) / data[i - 1]);
+        // cout << "slope is" << i << " is " << abs(data[i] - data[i - 1]) << endl;
     }
 }
 
-static void get_validation(vector<double>& data, vector<double>& validation)
+static inline void get_validation(vector<double>& data, vector<double>& validation)
 {
     for (int i = 1; i < data.size(); i++) {
         validation.push_back(abs(data[i] - data[i - 1]));
@@ -177,7 +184,7 @@ static void get_validation(vector<double>& data, vector<double>& validation)
 }
 
 // 检查点是否是极大值点
-static bool isMaximum(const vector<double>& values, int index)
+static inline bool isMaximum(const vector<double>& values, int index)
 {
     int n = values.size();
     if (index == 0 || index == n - 1) {
@@ -187,12 +194,11 @@ static bool isMaximum(const vector<double>& values, int index)
 }
 
 // 找到给定范围内的所有极大值点
-static int find_L2_point(const vector<double>& values, int start, int end)
+static inline int find_L2_point(const vector<double>& values, int start, int end)
 {
     int size = 0;
     // cout << "start end " << start << " " << end << " " << values[start] << endl;
     for (int i = start + 1; i < end; i++) {
-        // cout << "i = " << i << "" << values[i] << endl;
 
         if (isMaximum(values, i) && values[i] > values [start]) {
             size = i;
@@ -200,11 +206,11 @@ static int find_L2_point(const vector<double>& values, int start, int end)
         }
     }
     // cout << "size = " << size << endl;
-    size = pow(2, size / 2) * (1 + 0.5 * (size % 2));
+    size = pow(2, size / 2 + 1) * (1 + 0.5 * (size % 2));
     return size;
 }
 
-static int find_L1_point(const vector<double>& values)
+static inline int find_L1_point(const vector<double>& values)
 {
     for (int i = 0; i < values.size(); i++) {
         if (values[i] > 0.2) {
@@ -214,9 +220,8 @@ static int find_L1_point(const vector<double>& values)
     return 0;
 }
 
-static void random_access(vector<double>& time_used) {
-    for (int win_size = 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
-        // int group = max(1, win_size / 1024);
+static inline void random_access(vector<double>& time_used) {
+    for (int win_size = 2 * 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
         // cout << "win_size = " << win_size << " " << int(win_size * 1.5 / 1024 / 64) << endl;
         time_used.push_back(inloop(max(1, win_size / 1024 / 64), win_size));
         time_used.push_back(inloop(max(1, int(win_size * 1.5 / 1024 / 64)), win_size * 1.5));
@@ -224,7 +229,7 @@ static void random_access(vector<double>& time_used) {
     return;
 }
 
-void get_cacheline(struct CacheData *cache_size, int cpu_id)
+void get_cacheline(struct CacheData *cache_data, int cpu_id)
 {
     struct timespec start, end;
     int i, j, k;
@@ -243,6 +248,12 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
         printf("Warning: performance may be impacted \n");
     }
     read_data(cpu_id, &cache_size->theory_cacheline, "/cache/index0/coherency_line_size");
+#endif
+#ifdef __APPLE__ 
+    size_t size = sizeof(int64_t);
+    if (sysctlbyname("hw.cachelinesize", &cache_data->theory_cacheline, &size, NULL, 0) != 0) {
+        perror("sysctlbyname cachelinesize failed");
+    }
 #endif
     for(int buf = 16 ; buf <= 1024 ; buf *= 2){
         first_time = 0;
@@ -284,12 +295,13 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
             // << second_time / first_time << endl;
     }
     for (size_t i = 0; i < time_used.size() - 1; ++i) {
-        if (time_used[i] < time_used[i + 1]) {
+        if (time_used[i] < 0.98) {
             // cout << i << " " << 16 * pow(2, i) << endl;
-            cache_size->test_cacheline = 16 * pow(2, i);
+            cache_data->test_cacheline = 16 * pow(2, i);
             break;
         }
     }
+    cacheline = cache_data->test_cacheline;
     free(ptr);
     return;
 }
@@ -310,13 +322,23 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     read_data(cpu_id, &cache_size->theory_L1, "/cache/index0/size");
     read_data(cpu_id, &cache_size->theory_L2, "/cache/index2/size");
 #endif
+#ifdef __APPLE__ 
+    size_t size = sizeof(int);
+    if (sysctlbyname("hw.perflevel0.l1dcachesize", &cache_size->theory_L1, &size, NULL, 0) != 0) {
+        perror("sysctlbyname l1dcachesize failed");
+    }
+    if (sysctlbyname("hw.perflevel0.l2cachesize", &cache_size->theory_L2, &size, NULL, 0) != 0) {
+        perror("sysctlbyname l2cachesize failed");
+    }
+    cache_size->theory_L1 /= 1024;
+    cache_size->theory_L2 /= 1024;
+#endif
     random_access(time_used);
     get_slope(time_used, slope);
     get_validation(time_used, validation);
     L1_size_num = find_L1_point(slope);
     // cout << "L1_size = " << L1_size_num << endl;
-    // cache_size->test_L1 = pow(2, find_L1_point(slope));
-    cache_size->test_L1 = pow(2, L1_size_num / 2) * (1 + 0.5 * (L1_size_num % 2));
+    cache_size->test_L1 = pow(2, L1_size_num / 2 + 1) * (1 + 0.5 * (L1_size_num % 2));
     // cout << "L1_size == " << cache_size->test_L1 << endl;
     cache_size->test_L2 = find_L2_point(validation, L1_size_num, validation.size());
 }
@@ -364,8 +386,9 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
             time_used += get_time(&start, &end);
         }
         time_used /= test_time;
-        // cout<<time_used<<" "<<time_used/pre_time_used<<endl;
-        if (w > 0 && time_used/pre_time_used - 1 > 1e-1) {
+        // cout << "multi way " << w << " / " << time_used << " " << pre_time_used << " / "<< 
+            // time_used/pre_time_used << endl;
+        if (w > 1 && time_used/pre_time_used - 1 > 1e-1) {
             break;
         }
         free(index);

@@ -8,7 +8,11 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <vector>
-
+#ifdef __APPLE__
+#include <dispatch/dispatch.h>
+#include <thread>
+#include <sys/sysctl.h>
+#endif
 typedef void (*thread_func_t)(void *arg);
 
 struct tpool_work {
@@ -27,6 +31,10 @@ struct tpool {
     size_t           working_cnt;
     size_t           thread_cnt;
     size_t           thread_num;
+#ifdef __APPLE__
+    dispatch_group_t group;
+    dispatch_queue_t queue;
+#endif
     bool             stop;
 };
 typedef struct tpool tpool_t;

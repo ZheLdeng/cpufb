@@ -43,17 +43,21 @@ static void* thread_function_freq(void* arg){
         perror("sysctl");
     }
     if(std::string(cpuType) == "Apple M1"){
-        ata->theory_freq = 3.2;
+        data->theory_freq = 3.2;
         data->caculate_freq = 3.2;
         CPU_freq = 3.2 * 1e9;
-    }else if(std::string(cpuType) == "Apple M2"){
+    } else if (std::string(cpuType) == "Apple M2"){
         data->theory_freq = 3.5;
         data->caculate_freq = 3.5;
         CPU_freq = 3.5 * 1e9;
-    }else if(std::string(cpuType) == "Apple M3"){
+    } else if (std::string(cpuType) == "Apple M3"){
         data->theory_freq = 4.06;
         data->caculate_freq = 4.06;
         CPU_freq = 4.06 * 1e9;
+    } else if (std::string(cpuType) == "Apple M4 Pro"){
+        data->theory_freq = 4.5;
+        data->caculate_freq = 4.5;
+        CPU_freq = 4.5 * 1e9;
     }
 
 #endif
@@ -75,23 +79,6 @@ static void* thread_function_freq(void* arg){
     read_data(cpuid, &read_freq, "/cpufreq/scaling_max_freq");
     // cout << "read " << endl;
     data->theory_freq = double(read_freq) * 1e-6;
-    // FILE *fp = NULL;
-    // char buf[100] = {0};
-    // string file_path="/sys/devices/system/cpu/cpu"+ std::to_string(cpuid) +"/cpufreq/scaling_max_freq";
-    // std::ifstream file(file_path);
-    // if (file) {
-    //     string read_freq = "cat " + file_path;
-    //     fp = popen(read_freq.c_str(), "r");
-    //     if (fp) {
-    //         int ret = fread(buf, 1, sizeof(buf)-1, fp);
-    //         if (ret > 0) {
-    //             data->theory_freq = std::stod(buf) * 1e-6;
-    //         }
-    //         pclose(fp);
-    //     }
-    // } else {
-    //     data->theory_freq = 0;
-    // }
     //warm up
     asimd_fmla_vv_f64f64f64(looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
@@ -171,7 +158,6 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
 	    ss7 << std::setprecision(2) << result->IPC_fp64_sve ;
         #endif
         freq[t] = result->caculate_freq;
-
         vector<string> cont;
         cont.resize(table.getCol());
         cont[0] = to_string(set_of_threads[t]);

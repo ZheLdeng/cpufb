@@ -28,6 +28,12 @@ int get_cpuid()
     if (sysctlbyname("hw.optional.AdvSIMD", &ret, &size, NULL, 0) == 0 && ret==1) {
         printf("_ASIMD_\n");
     }
+    if (sysctlbyname("hw.optional.arm.FEAT_SME", &ret, &size, NULL, 0) == 0 && ret==1) {
+        printf("_SME_\n");
+    }
+    if (sysctlbyname("hw.optional.arm.FEAT_SME2", &ret, &size, NULL, 0) == 0 && ret==1) {
+        printf("_SME2_\n");
+    }
 #else
     uint64_t hwcaps = getauxval(AT_HWCAP);
 
@@ -65,6 +71,16 @@ int get_cpuid()
     if (hwcaps & HWCAP_SVE) {
         printf("_SVE_LD1W_\n");
         printf("_SVE_FMLA_\n");
+    }
+    #endif
+    #ifdef HWCAP_SME
+    if (hwcaps & HWCAP_SME) {
+        printf("_SME_\n");
+    }
+    #endif
+    #ifdef HWCAP_SME2
+    if (hwcaps & HWCAP_SME) {
+        printf("_SME2_\n");
     }
     #endif
 #endif

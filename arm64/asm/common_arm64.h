@@ -2,7 +2,7 @@
 #define COMMON_ARM64
 
 .macro PROLOGUE FUNCTION_NAME
-.align 4
+.align 5
 #ifdef __APPLE__
 .global _\FUNCTION_NAME
 

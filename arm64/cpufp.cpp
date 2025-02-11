@@ -91,7 +91,7 @@ static void cpubm_arm64_one(tpool_t *tm,
 
     int i;
     int num_threads = tm->thread_num;
-
+#ifndef __APPLE__
      // warm up
     for (i = 0; i < tm->thread_num; i++) {
         tpool_add_work(tm, thread_func, (void*)&item);
@@ -104,10 +104,51 @@ static void cpubm_arm64_one(tpool_t *tm,
     }
     tpool_wait(tm);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+#else
+     // warm up
+    for (int i = 0; i < tm->thread_num; ++i) {
+        dispatch_group_async(tm->group, tm->queue, ^{item.bench(item.loop_time);});
+    }
+    dispatch_group_wait(tm->group, DISPATCH_TIME_FOREVER);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    for (int i = 0; i < tm->thread_num; ++i) {
+        dispatch_group_async(tm->group, tm->queue, ^{item.bench(item.loop_time);});
+    }
+    dispatch_group_wait(tm->group, DISPATCH_TIME_FOREVER);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+#endif
+
+
 #ifdef _SVE_FMLA_
     if (item.type.find("sve") != string::npos) {
         item.comp_pl = item.comp_pl * svcntb();
     }
+#endif
+#ifdef _SME_
+    auto& type = item.type;
+    bool has_opa = type.find("opa.vv") != string::npos;
+    string first_param = has_opa ? type.substr(type.find('('), type.find(',')) : "";
+
+    if (has_opa && first_param.find("32") != string::npos) {
+        item.comp_pl = item.comp_pl * rdsvl8() * rdsvl8() / 32 / 32;
+        cout << type << " op = " << item.comp_pl << endl;
+    } else if (has_opa && first_param.find("64") != string::npos) {
+        item.comp_pl = item.comp_pl * rdsvl8() * rdsvl8() / 64 / 64;
+    } else if (type.find("sme") != string::npos) {
+        item.comp_pl = item.comp_pl * rdsvl8() / 8;
+        cout << type << " is sme " << endl;
+    }
+    
+    // if (item.type.find("opa.vv.(f32") != string::npos) {
+    //     item.comp_pl = item.comp_pl * rdsvl8() * rdsvl8() / 32 / 32 ;
+    //     cout << item.type << " op = " << item.comp_pl << endl;
+    // } else if ((item.type.find("opa.vv.(f64") != string::npos)) {
+    //     item.comp_pl = item.comp_pl * rdsvl8() * rdsvl8() / 64 / 64 ;
+    // } else if (item.type.find("sme") != string::npos) {
+    //     item.comp_pl = item.comp_pl * rdsvl8() / 8;
+    //     cout << item.type << " is sme " << endl;
+    // }
+    
 #endif
     time_used = get_time(&start, &end);
     perf = item.loop_time * item.comp_pl * num_threads /
@@ -140,7 +181,7 @@ static void cpubm_arm_load(cpubm_t &item, Table &table)
 
     vector<string> cont;
     cont.resize(table.getCol());
-    // cout << "test load begin" << endl;
+    cout << "test load begin" << endl;
     double data_size = 0.0;
 
     if (item.isa == "L1 Cache"){
@@ -162,7 +203,7 @@ static void cpubm_arm_load(cpubm_t &item, Table &table)
     cont[2] = ss1.str();
     cont[4] = to_string(item.comp_pl) + " KB";
     table.addOneItem(cont);
-    // cout << "test load end" << endl;
+    cout << "test load end" << endl;
 }
 
 static void cpubm_arm_cache(std::vector<int> &set_of_threads,Table &table)
@@ -170,11 +211,11 @@ static void cpubm_arm_cache(std::vector<int> &set_of_threads,Table &table)
     vector<string> cont;
     cont.resize(table.getCol());
     get_cacheline(&cache_size, set_of_threads[0]);
-    // cout << "get cacheline" << endl;
+    cout << "get cacheline" << endl;
     get_multiway(&cache_size, set_of_threads[0]);
-    // cout << "get multiway" << endl;
+    cout << "get multiway" << endl;
     get_cachesize(&cache_size, set_of_threads[0]);
-    // cout << "get cachesize" << endl;
+    cout << "get cachesize" << endl;
     cont[0] = "L1 ways of associativity";
     cont[1] = to_string(cache_size.theory_way);
     cont[2] = to_string(cache_size.test_way);
@@ -191,6 +232,7 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
     cpubm_t &item,
     Table &table)
 {
+    cout << "test multi issue start" << endl;
     struct timespec start, end;
     double time_used, perf;
     cache_bm_t bm;
@@ -229,6 +271,7 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
     cont[2] = ss.str();
     table.addOneItem(cont);
     free(cache_data);
+    cout << "test multi issue end" << endl;
 }
 //comupte: Instruction Set / Core Computation / Peak Performance / IPC
 //cachesize: cache level / Core Computation / bandwith / size / IPC / way
@@ -292,7 +335,6 @@ static void init_table(vector<Table*> &tables)
     tables[4]->setColumnNum(ti.size());
     tables[4]->addOneItem(ti);
 }
-
 static void cpubm_do_bench(vector<int> &set_of_threads,
     uint32_t idle_time)
 {
@@ -338,7 +380,6 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
         }
         for (i = 0; i < tables.size(); i++)
             tables[i]->print();
-
         tpool_destroy(tm);
     }
     else
@@ -416,6 +457,72 @@ static void cpufp_register_isa()
     reg_new_isa("asimd", "sve_fmla.vv(f64,f64,f64)", "FLOPS",
         0x100000LL, 6LL, sve_fmla_vv_f64f64f64);
 #endif
+
+#ifdef _SME_
+    reg_new_isa("SME", "sme_bfmopa.vv(f32,bf16,bf16)", "FLOPS",
+        0x100000LL, 96LL, sme_bfmopa_vv_f32bf16bf16);
+    reg_new_isa("SME", "sme_fmopa.vv(f32,f32,f32)", "FLOPS",
+        0x100000LL, 24LL, sme_fmopa_vv_f32f32f32);
+    reg_new_isa("SME", "sme_fmopa.vv(f32,f16,f16)", "FLOPS",
+        0x100000LL, 96LL, sme_fmopa_vv_f32f16f16);
+    reg_new_isa("SME", "sme_smopa.vv(i32,i8,i8)", "FLOPS",
+        0x100000LL, 192LL, sme_smopa_vv_i32i8i8);
+#endif
+
+#ifdef _SME2_
+    reg_new_isa("SME2", "sme2_bfmlal.vs(f32,bf16,bf16)", "FLOPS",
+        0x100000LL, 24LL, sme2_bfmlal_vs_f32bf16bf16);
+    reg_new_isa("SME2", "sme2_bfmlal4.vs(f32,bf16,bf16)", "FLOPS",
+        0x100000LL, 96LL, sme2_bfmlal4_vs_f32bf16bf16);
+    reg_new_isa("SME2", "sme2_bfmlal.vv(f32,bf16,bf16)", "FLOPS",
+        0x100000LL, 24LL, sme2_bfmlal_vv_f32bf16bf16);
+    reg_new_isa("SME2", "sme2_bfmlal4.vv(f32,bf16,bf16)", "FLOPS",
+        0x100000LL, 96LL, sme2_bfmlal4_vv_f32bf16bf16);
+    reg_new_isa("SME2", "sme2_bfmlal.mvv(f32,bf16,bf16)", "FLOPS",
+        0x100000LL, 24LL, sme2_bfmlal_mvv_f32bf16bf16);
+    reg_new_isa("SME2", "sme2_bfmlal4.mvv(f32,bf16,bf16)", "FLOPS",
+        0x100000LL, 96LL, sme2_bfmlal4_mvv_f32bf16bf16);
+
+    reg_new_isa("SME2", "sme2_bfdot.vs(f32,bf16,bf16)", "FLOPS",
+        0x100000LL, 24LL, sme2_bfdot_vs_f32bf16bf16);
+    reg_new_isa("SME2", "sme2_bfdot4.vs(f32,bf16,bf16)", "FLOPS",
+        0x100000LL, 96LL, sme2_bfdot4_vs_f32bf16bf16);
+    reg_new_isa("SME2", "sme2_bfdot.vv(f32,bf16,bf16)", "FLOPS",
+        0x100000LL, 24LL, sme2_bfdot_vv_f32bf16bf16);
+    reg_new_isa("SME2", "sme2_bfdot4.vv(f32,bf16,bf16)", "FLOPS",
+        0x100000LL, 96LL, sme2_bfdot4_vv_f32bf16bf16);
+    reg_new_isa("SME2", "sme2_bfdot.mvv(f32,bf16,bf16)", "FLOPS",
+        0x100000LL, 24LL, sme2_bfdot_mvv_f32bf16bf16);
+    reg_new_isa("SME2", "sme2_bfdot4.mvv(f32,bf16,bf16)", "FLOPS",
+        0x100000LL, 96LL, sme2_bfdot4_mvv_f32bf16bf16);
+    
+    reg_new_isa("SME2", "sme2_fmla.vs(f32,f32,f32)", "FLOPS",
+        0x100000LL, 12LL, sme2_fmla_vs_f32f32f32);
+    reg_new_isa("SME2", "sme2_fmla4.vs(f32,f32,f32)", "FLOPS",
+        0x100000LL, 48LL, sme2_fmla4_vs_f32f32f32);
+    reg_new_isa("SME2", "sme2_fmla.vv(f32,f32,f32)", "FLOPS",
+        0x100000LL, 12LL, sme2_fmla_vv_f32f32f32);
+    reg_new_isa("SME2", "sme2_fmla4.vv(f32,f32,f32)", "FLOPS",
+        0x100000LL, 48LL, sme2_fmla4_vv_f32f32f32);
+    reg_new_isa("SME2", "sme2_fmla.mvv(f32,f32,f32)", "FLOPS",
+        0x100000LL, 12LL, sme2_fmla_mvv_f32f32f32);
+    reg_new_isa("SME2", "sme2_fmla4.mvv(f32,f32,f32)", "FLOPS",
+        0x100000LL, 48LL, sme2_fmla4_mvv_f32f32f32);
+
+    reg_new_isa("SME2", "sme2_fmlal.vs(f32,f16,f16)", "FLOPS",
+        0x100000LL, 24LL, sme2_fmlal_vs_f32f16f16);
+    reg_new_isa("SME2", "sme2_fmlal4.vs(f32,f16,f16)", "FLOPS",
+        0x100000LL, 96LL, sme2_fmlal4_vs_f32f16f16);
+    reg_new_isa("SME2", "sme2_fmlal.vv(f32,f16,f16)", "FLOPS",
+        0x100000LL, 24LL, sme2_fmlal_vv_f32f16f16);
+    reg_new_isa("SME2", "sme2_fmlal4.vv(f32,f16,f16)", "FLOPS",
+        0x100000LL, 96LL, sme2_fmlal4_vv_f32f16f16);
+    reg_new_isa("SME2", "sme2_fmlal.mvv(f32,f16,f16)", "FLOPS",
+        0x100000LL, 24LL, sme2_fmlal_mvv_f32f16f16);
+    reg_new_isa("SME2", "sme2_fmlal4.mvv(f32,f16,f16)", "FLOPS",
+        0x100000LL, 96LL, sme2_fmlal4_mvv_f32f16f16);
+#endif
+
 
     reg_new_isa("L1 Cache", "ldp(f32)", "Byte/Cycle",
         0x186A00LL, 32LL, NULL);

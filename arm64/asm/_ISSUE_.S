@@ -1,7 +1,4 @@
-.align 4
 #include "common_arm64.h"
-
-
 #void void multiple_issue(float*,int, int64_t);
     PROLOGUE multiple_issue
     mov x4, x2

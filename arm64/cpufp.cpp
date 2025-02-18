@@ -134,9 +134,10 @@ static void cpubm_arm64_one(tpool_t *tm,
         cout << type << " op = " << item.comp_pl << endl;
     } else if (has_opa && first_param.find("64") != string::npos) {
         item.comp_pl = item.comp_pl * rdsvl8() * rdsvl8() / 64 / 64;
+        cout << type << " op = " << item.comp_pl << endl;
     } else if (type.find("sme") != string::npos) {
         item.comp_pl = item.comp_pl * rdsvl8() / 8;
-        cout << type << " is sme " << endl;
+        cout << type << " is sme " << item.comp_pl <<endl;
     }
     
     // if (item.type.find("opa.vv.(f32") != string::npos) {
@@ -209,12 +210,25 @@ static void cpubm_arm_load(cpubm_t &item, Table &table)
 static void cpubm_arm_cache(std::vector<int> &set_of_threads,Table &table)
 {
     vector<string> cont;
+
+    
     cont.resize(table.getCol());
-    get_cacheline(&cache_size, set_of_threads[0]);
-    cout << "get cacheline" << endl;
-    get_multiway(&cache_size, set_of_threads[0]);
-    cout << "get multiway" << endl;
-    get_cachesize(&cache_size, set_of_threads[0]);
+    dispatch_qos_class_t qos_class = QOS_CLASS_USER_INTERACTIVE;
+    dispatch_queue_attr_t attr = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_CONCURRENT, qos_class, 0);
+    dispatch_queue_t queue = dispatch_queue_create("cache", attr);
+    dispatch_group_t group = dispatch_group_create();
+    dispatch_group_async(group, queue, ^{get_cacheline(&cache_size, set_of_threads[0]);});
+    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+
+    // get_cacheline(&cache_size, set_of_threads[0]);
+    //cout << "get cacheline" << endl;
+    dispatch_group_async(group, queue, ^{get_multiway(&cache_size, set_of_threads[0]);});
+    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+    
+    //cout << "get multiway" << endl;
+    // get_cachesize(&cache_size, set_of_threads[0]);
+    dispatch_group_async(group, queue, ^{get_cachesize(&cache_size, set_of_threads[0]);});
+    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
     cout << "get cachesize" << endl;
     cont[0] = "L1 ways of associativity";
     cont[1] = to_string(cache_size.theory_way);
@@ -462,7 +476,7 @@ static void cpufp_register_isa()
     reg_new_isa("SME", "sme_bfmopa.vv(f32,bf16,bf16)", "FLOPS",
         0x100000LL, 96LL, sme_bfmopa_vv_f32bf16bf16);
     reg_new_isa("SME", "sme_fmopa.vv(f32,f32,f32)", "FLOPS",
-        0x100000LL, 24LL, sme_fmopa_vv_f32f32f32);
+        0x100000LL, 48LL, sme_fmopa_vv_f32f32f32);
     reg_new_isa("SME", "sme_fmopa.vv(f32,f16,f16)", "FLOPS",
         0x100000LL, 96LL, sme_fmopa_vv_f32f16f16);
     reg_new_isa("SME", "sme_smopa.vv(i32,i8,i8)", "FLOPS",
@@ -521,8 +535,44 @@ static void cpufp_register_isa()
         0x100000LL, 24LL, sme2_fmlal_mvv_f32f16f16);
     reg_new_isa("SME2", "sme2_fmlal4.mvv(f32,f16,f16)", "FLOPS",
         0x100000LL, 96LL, sme2_fmlal4_mvv_f32f16f16);
+    
+    reg_new_isa("SME2", "sme2_fvdot.vs(f32,f16,f16)", "FLOPS",
+        0x100000LL, 36LL, sme2_fvdot_vs_f32f16f16);
+    reg_new_isa("SME2", "sme2_fvdot2.vs(f32,f16,f16)", "FLOPS",
+        0x100000LL, 72LL, sme2_fvdot2_vs_f32f16f16);
+    
+    reg_new_isa("SME2", "sme2_fdot.vs(f32,f16,f16)", "FLOPS",
+        0x100000LL, 24LL, sme2_fdot_vs_f32f16f16);
+    reg_new_isa("SME2", "sme2_fdot4.vs(f32,f16,f16)", "FLOPS",
+        0x100000LL, 96LL, sme2_fdot4_vs_f32f16f16);
+    reg_new_isa("SME2", "sme2_fdot.vv(f32,f16,f16)", "FLOPS",
+        0x100000LL, 24LL, sme2_fdot_vv_f32f16f16);
+    reg_new_isa("SME2", "sme2_fdot4.vv(f32,f16,f16)", "FLOPS",
+        0x100000LL, 96LL, sme2_fdot4_vv_f32f16f16);
+    reg_new_isa("SME2", "sme2_fdot.vv(f32,f16,f16)", "FLOPS",
+        0x100000LL, 24LL, sme2_fdot_vv_f32f16f16);
+    reg_new_isa("SME2", "sme2_fdot4.mvv(f32,f16,f16)", "FLOPS",
+        0x100000LL, 96LL, sme2_fdot4_mvv_f32f16f16);
 #endif
 
+
+#ifdef _SMEf64_
+    reg_new_isa("SMEf64", "sme_fmopa.vv(f64,f64,f64)", "FLOPS",
+        0x100000LL, 24LL, sme_fmopa_vv_f64f64f64);
+
+    reg_new_isa("SMEf64", "sme2_fmla.vs(f64,f64,f64)", "FLOPS",
+        0x100000LL, 6LL, sme2_fmla_vs_f64f64f64);
+    reg_new_isa("SMEf64", "sme2_fmla4.vs(f64,f64,f64)", "FLOPS",
+        0x100000LL, 24LL, sme2_fmla4_vs_f64f64f64);
+    reg_new_isa("SMEf64", "sme2_fmla.vv(f64,f64,f64)", "FLOPS",
+        0x100000LL, 6LL, sme2_fmla_vv_f64f64f64);
+    reg_new_isa("SMEf64", "sme2_fmla4.vv(f64,f64,f64)", "FLOPS",
+        0x100000LL, 24LL, sme2_fmla4_vv_f64f64f64);
+    reg_new_isa("SMEf64", "sme2_fmla.mvv(f64,f64,f64)", "FLOPS",
+        0x100000LL, 6LL, sme2_fmla_mvv_f64f64f64);
+    reg_new_isa("SMEf64", "sme2_fmla4.mvv(f64,f64,f64)", "FLOPS",
+        0x100000LL, 24LL, sme2_fmla4_mvv_f64f64f64);
+#endif
 
     reg_new_isa("L1 Cache", "ldp(f32)", "Byte/Cycle",
         0x186A00LL, 32LL, NULL);

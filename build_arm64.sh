@@ -47,6 +47,8 @@ do
     $CC -march=armv9-a+sme $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SME2_ = $SIMD ]; then
     $CC -march=armv9-a+sme2 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    elif [ _SMEf64_ = $SIMD ]; then
+    $CC -march=armv9-a+sme2+sme-f64f64 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     else
     $CC -march=native $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     fi
@@ -63,7 +65,8 @@ done
 # compile cpufp
 $CXX $CFLAG -O2 -I$COMM -I$KERNEL $MARCH_FLAG $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
 $CXX $CFLAG -O2 -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/frequency.cpp -o $BUILD_DIR/frequency.o
+$CXX $CFLAG -c $ASM/access.S -o $BUILD_DIR/access.o
 $CXX $CFLAG -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load.o
 
-$CXX $CFLAG -O2 -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ
+$CXX $CFLAG -O2 -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/access.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ
 set +x

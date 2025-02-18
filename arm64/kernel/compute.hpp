@@ -79,7 +79,29 @@ extern "C"
     void sme2_fmlal4_vv_f32f16f16(int64_t);
     void sme2_fmlal_mvv_f32f16f16(int64_t);
     void sme2_fmlal4_mvv_f32f16f16(int64_t);
+
+    void sme2_fvdot_vs_f32f16f16(int64_t);
+    void sme2_fvdot2_vs_f32f16f16(int64_t);
+
+    void sme2_fdot_vs_f32f16f16(int64_t);
+    void sme2_fdot4_vs_f32f16f16(int64_t);
+    void sme2_fdot_vv_f32f16f16(int64_t);
+    void sme2_fdot4_vv_f32f16f16(int64_t);
+    void sme2_fdot_mvv_f32f16f16(int64_t);
+    void sme2_fdot4_mvv_f32f16f16(int64_t);
 #endif
+#ifdef _SMEf64_
+    void sme_fmopa_vv_f64f64f64(int64_t);
+    
+    void sme2_fmla_vs_f64f64f64(int64_t);
+    void sme2_fmla4_vs_f64f64f64(int64_t);
+    void sme2_fmla_vv_f64f64f64(int64_t);
+    void sme2_fmla4_vv_f64f64f64(int64_t);
+    void sme2_fmla_mvv_f64f64f64(int64_t);
+    void sme2_fmla4_mvv_f64f64f64(int64_t);
+#endif
+
+
 }
 
 

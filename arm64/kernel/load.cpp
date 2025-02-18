@@ -37,13 +37,17 @@ using namespace std;
 
 double cacheline = 0;
 
+extern "C" {
+    void load_ptr(int looptime, int64_t *ptr);
+}
+
 static inline void shuffleVector(std::vector<int64_t>& vec) {
     // 使用当前时间作为随机数种子
     std::srand(static_cast<unsigned>(std::time(0)));
 
     // Fisher-Yates 洗牌算法
     for (size_t i = vec.size() - 1; i > 0; --i) {
-        int j = std::rand() % (i + 1); // 生成范围 [0, i] 的随机索引
+        int j = rand() % (i + 1); // 生成范围 [0, i] 的随机索引
         std::swap(vec[i], vec[j]);    // 交换当前元素与随机索引元素
     }
 }
@@ -89,7 +93,7 @@ static inline void init(int64_t *ptr, vector<int64_t> ptr_index, int64_t group)
     volatile int64_t index = 0;
     volatile int64_t group_size = ptr_index.size() / group;
     if (group > 1) {
-        std::vector<int64_t> group_index(group - 1);
+        vector<int64_t> group_index(group - 1);
         //group 最后返回0
         for (int64_t m = 0; m < group - 1; ++m) {
             group_index[m] = m + 1;
@@ -116,13 +120,13 @@ static inline void init(int64_t *ptr, vector<int64_t> ptr_index, int64_t group)
         }
         ptr[index] = ptr_index[0];
     } else {
-        std::vector<int64_t> indexs(ptr_index.size());
-        for (int64_t m = 0; m < ptr_index.size(); ++m) {
+        vector<int64_t> indexs(ptr_index.size());
+        for (int64_t m = 0; m < ptr_index.size(); m++) {
             indexs[m] = m;
         }
         shuffleVector(indexs);
         index = ptr_index[indexs[0]];
-        for (int64_t m = 0; m < ptr_index.size() - 1; ++m) {
+        for (int64_t m = 0; m < ptr_index.size() - 1; m++) {
             ptr[index] = ptr_index[indexs[m + 1]];
             index = ptr[index];
         }
@@ -137,32 +141,28 @@ static inline double inloop(int group, int win_size)
     struct timespec start, end;
     double sum_time_used = 0;
     int64_t *ptr = (int64_t*)malloc(win_size);
-    int total_num = (win_size) >> int(log(cacheline)/log(2)); //每64byte 1个数
+    // int read_stride = int(log(cacheline) / log(2));
+    int read_stride = 7;
+    int total_num = (win_size) >> read_stride; //每64byte 1个数
 
     vector<int64_t> ptr_index(total_num) ;
     for (i = 0; i < 100; i++) {
-        int64_t index = 0;
         // cout << "main loop start " << i << endl;
+        int64_t index = 0;
         for (int64_t m = 0; m < total_num; ++m) {
-            ptr_index[m] = m << 4;
+            ptr_index[m] = m << (read_stride - 3);
         }
         init(ptr, ptr_index, group);
         //warm up
-        for (k = 0; k < LOOP_TIME; k++) {
-            // std::cout << index << std::endl;
-            index = ptr[index];
-        }
+        load_ptr(LOOP_TIME, ptr);
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        index = 0;
-        for (k = 0; k < LOOP_TIME; k++) {
-            index = ptr[index];
-        }
+        load_ptr(LOOP_TIME, ptr);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
         sum_time_used += get_time(&start, &end);
         usleep(1000);
     }
     free(ptr);
-    // printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
+    printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
 
     return sum_time_used / 100;
 }
@@ -332,6 +332,7 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     }
     cache_size->theory_L1 /= 1024;
     cache_size->theory_L2 /= 1024;
+
 #endif
     random_access(time_used);
     get_slope(time_used, slope);

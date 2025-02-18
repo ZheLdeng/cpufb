@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include "thread_pool.hpp"
 #include <algorithm>
+#include <iostream>
 #ifdef __linux__
 #include<sys/syscall.h>
 #endif
@@ -139,9 +140,12 @@ tpool_t *tpool_create(vector<int> set_of_threads)
         }
     }
     if (all_greater) {
-        qos_class = QOS_CLASS_UTILITY;
-    } 
-
+        qos_class = QOS_CLASS_BACKGROUND;
+        cout << "QOS_CLASS_UTILITY" << endl;
+    } else {
+        cout << "QOS_CLASS_USER_INTERACTIVE" << endl;
+    }
+   
     dispatch_queue_attr_t attr = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_CONCURRENT, qos_class, 0);
     tm->queue = dispatch_queue_create("benchmark", attr);
 

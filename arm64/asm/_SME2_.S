@@ -645,7 +645,42 @@
     smstop
     restore_caller_vec
     ret
+####
+    PROLOGUE sme2_fmla2_mvv_f32f32f32
+    preserve_caller_vec
+    smstart
+    SME_INIT
 
+.sme2_fmla2_mvv_f32f32f32L1:
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    subs x0, x0, #1
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
+    bne .sme2_fmla2_mvv_f32f32f32L1
+    smstop
+    restore_caller_vec
+    ret
 ####
     PROLOGUE sme2_fmla4_mvv_f32f32f32
     preserve_caller_vec

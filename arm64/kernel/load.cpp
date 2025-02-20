@@ -36,7 +36,7 @@
 using namespace std;
 
 double cacheline = 0;
-
+typedef void (*load_bench)(float*, int, int64_t);
 extern "C" {
     void load_ptr(int looptime, int64_t *ptr);
 }
@@ -141,9 +141,8 @@ static inline double inloop(int group, int win_size)
     struct timespec start, end;
     double sum_time_used = 0;
     int64_t *ptr = (int64_t*)malloc(win_size);
-    // int read_stride = int(log(cacheline) / log(2));
-    int read_stride = 7;
-    int total_num = (win_size) >> read_stride; //每64byte 1个数
+    int read_stride = int(log(cacheline) / log(2));
+    int total_num = (win_size) >> read_stride; //每cacheline byte 1个数
 
     vector<int64_t> ptr_index(total_num) ;
     for (i = 0; i < 100; i++) {
@@ -301,7 +300,7 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
             break;
         }
     }
-    cacheline = cache_data->test_cacheline;
+    cacheline = max(cache_data->test_cacheline, cache_data->theory_cacheline);
     free(ptr);
     return;
 }
@@ -398,11 +397,11 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
     return;
 }
 
-double get_bandwith(uint64_t looptime, double data_size, string type)
+double get_bandwith(uint64_t looptime, double data_size, string type, void* bench)
 {
     struct timespec start, end;
     double time_used, perf;
-
+    int inner_loop;
     data_size /= 2.0;
     if (data_size > 2 * 1024) {
         data_size = 2 * 1024;
@@ -413,27 +412,18 @@ double get_bandwith(uint64_t looptime, double data_size, string type)
     for (int i = 0; i < data_size * 1024/sizeof(float); i++) {
         cache_data[i] = i;
     }
-    int inner_loop = data_size * 1024 / sizeof(float) / (4 * 32);
-#ifdef _SVE_LD1W_
-	// warm up
     if (type.find("ld1w")!= string::npos) {
-        load_ld1w_kernel(cache_data, data_size * 1024 / sizeof(float), looptime);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        load_ld1w_kernel(cache_data, data_size * 1024 / sizeof(float), looptime);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        inner_loop = data_size * 1024 / sizeof(float);
     } else {
-        load_ldp_kernel(cache_data, inner_loop, looptime);
-
-        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        load_ldp_kernel(cache_data, inner_loop, looptime);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        inner_loop = data_size * 1024 / sizeof(float) / (4 * 32);
     }
-#else
-    load_ldp_kernel(cache_data, inner_loop, looptime);
+   
+    load_bench bench_ptr = reinterpret_cast<load_bench>(bench);
+	// warm up
+    bench_ptr(cache_data, inner_loop, looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    load_ldp_kernel(cache_data, inner_loop, looptime);
+    bench_ptr(cache_data, inner_loop, looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-#endif
     time_used = get_time(&start, &end);
     perf = (double)looptime * data_size * 1024 / (time_used * freq[0] * 1e9);
 

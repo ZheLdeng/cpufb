@@ -71,6 +71,8 @@ extern "C"
     void sme2_fmla_vv_f32f32f32(int64_t);
     void sme2_fmla4_vv_f32f32f32(int64_t);
     void sme2_fmla_mvv_f32f32f32(int64_t);
+    void sme2_fmla2_mvv_f32f32f32(int64_t);
+
     void sme2_fmla4_mvv_f32f32f32(int64_t);
 
     void sme2_fmlal_vs_f32f16f16(int64_t);
@@ -92,10 +94,14 @@ extern "C"
 #endif
 #ifdef _SMEf64_
     void sme_fmopa_vv_f64f64f64(int64_t);
-    
+    void sme_fmopa2_vv_f64f64f64(int64_t);
+
     void sme2_fmla_vs_f64f64f64(int64_t);
+    void sme2_fmla2_vs_f64f64f64(int64_t);
     void sme2_fmla4_vs_f64f64f64(int64_t);
     void sme2_fmla_vv_f64f64f64(int64_t);
+    void sme2_fmla2_vv_f64f64f64(int64_t);
+
     void sme2_fmla4_vv_f64f64f64(int64_t);
     void sme2_fmla_mvv_f64f64f64(int64_t);
     void sme2_fmla4_mvv_f64f64f64(int64_t);

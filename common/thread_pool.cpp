@@ -134,15 +134,17 @@ tpool_t *tpool_create(vector<int> set_of_threads)
     //     perror("sysctlbyname E-Core failed");
     // }
     for (int i : set_of_threads) {
-        if (i <= p_core) {
+        if (i < p_core) {
             all_greater = false;
             break;
         }
     }
     if (all_greater) {
-        qos_class = QOS_CLASS_BACKGROUND;
-        cout << "QOS_CLASS_UTILITY" << endl;
+
+        qos_class = QOS_CLASS_UTILITY;
+        cout << "QOS_CLASS_BACKGROUND" << endl;
     } else {
+        //pthread_set_qos_class_self_np( QOS_CLASS_USER_INTERACTIVE, 0 );
         cout << "QOS_CLASS_USER_INTERACTIVE" << endl;
     }
    
@@ -151,6 +153,7 @@ tpool_t *tpool_create(vector<int> set_of_threads)
 
     // 使用任务组来等待所有线程完成
     tm->group = dispatch_group_create();
+    
 #endif
 
     pthread_mutex_init(&(tm->work_mutex), NULL);

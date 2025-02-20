@@ -68,6 +68,41 @@
     restore_caller_vec
     smstop
     ret
+############
+    PROLOGUE sme_fmopa2_vv_f64f64f64
+    preserve_caller_vec
+    smstart
+    SME_INIT
+.sme_fmopa2_vv_f64f64f64L1:
+    FMOPA za0.d, p0/M, p1/M, z8.d, z8.d
+    FMOPA za0.d, p0/M, p1/M, z9.d, z9.d
+    FMOPA za0.d, p0/M, p1/M, z10.d, z10.d
+    FMOPA za0.d, p0/M, p1/M, z11.d, z11.d
+    FMOPA za0.d, p0/M, p1/M, z12.d, z12.d
+    FMOPA za0.d, p0/M, p1/M, z13.d, z13.d
+    FMOPA za0.d, p0/M, p1/M, z14.d, z14.d
+    FMOPA za0.d, p0/M, p1/M, z15.d, z15.d
+    FMOPA za0.d, p0/M, p1/M, z16.d, z16.d
+    FMOPA za0.d, p0/M, p1/M, z17.d, z17.d
+    FMOPA za0.d, p0/M, p1/M, z18.d, z18.d
+    FMOPA za0.d, p0/M, p1/M, z19.d, z19.d
+    subs x0, x0, #1
+    FMOPA za0.d, p0/M, p1/M, z20.d, z20.d
+    FMOPA za0.d, p0/M, p1/M, z21.d, z21.d
+    FMOPA za0.d, p0/M, p1/M, z22.d, z22.d
+    FMOPA za0.d, p0/M, p1/M, z23.d, z23.d
+    FMOPA za0.d, p0/M, p1/M, z24.d, z24.d
+    FMOPA za0.d, p0/M, p1/M, z25.d, z25.d
+    FMOPA za0.d, p0/M, p1/M, z26.d, z26.d
+    FMOPA za0.d, p0/M, p1/M, z27.d, z27.d
+    FMOPA za0.d, p0/M, p1/M, z28.d, z28.d
+    FMOPA za0.d, p0/M, p1/M, z29.d, z29.d
+    FMOPA za0.d, p0/M, p1/M, z30.d, z30.d
+    FMOPA za0.d, p0/M, p1/M, z31.d, z31.d
+    bne .sme_fmopa2_vv_f64f64f64L1
+    restore_caller_vec
+    smstop
+    ret
 
 ####
     PROLOGUE sme2_fmla_vs_f64f64f64
@@ -75,33 +110,69 @@
     smstart
     SME_INIT
 
-.sme2_fmla_vs_f32bf32f32L1:
+.sme2_fmla_vs_f64f64f64L1:
     FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w9, 0], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w10, 0], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w11, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w9, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w10, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w11, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w9, 4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w10, 4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w11, 4], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w9, 0], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w10, 0], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w11, 0], { z0.D-z3.D }, z4.D[0]
     subs x0, x0, #1
+    FMLA ZA.D[w8, 4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w9, 4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w10, 4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w11, 4], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w9, 0], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w10, 0], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w11, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w9, 4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w10, 4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w11, 4], { z0.D-z3.D }, z4.D[0]
+    bne .sme2_fmla_vs_f64f64f64L1
+    smstop
+    restore_caller_vec
+    ret
+####
+    PROLOGUE sme2_fmla2_vs_f64f64f64
+    preserve_caller_vec
+    smstart
+    SME_INIT
+
+.sme2_fmla2_vs_f64f64f64L1:
     FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w9, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w10, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w11, 0], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w9, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w10, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w11, 0], { z0.D-z3.D }, z4.D[0]
-    bne .sme2_fmla_vs_f32bf32f32L1
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    subs x0, x0, #1
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
+    bne .sme2_fmla2_vs_f64f64f64L1
     smstop
     restore_caller_vec
     ret
@@ -116,27 +187,27 @@
     FMLA ZA.D[w9, 0, VGx4], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w10, 0, VGx4], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w11, 0, VGx4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w8, 0, VGx4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w9, 0, VGx4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w10, 0, VGx4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w11, 0, VGx4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 4, VGx4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w9, 4, VGx4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w10, 4, VGx4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w11, 4, VGx4], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w8, 0, VGx4], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w9, 0, VGx4], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w10, 0, VGx4], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w11, 0, VGx4], { z0.D-z3.D }, z4.D[0]
     subs x0, x0, #1
+    FMLA ZA.D[w8, 4, VGx4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w9, 4, VGx4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w10, 4, VGx4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w11, 4, VGx4], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w8, 0, VGx4], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w9, 0, VGx4], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w10, 0, VGx4], { z0.D-z3.D }, z4.D[0]
     FMLA ZA.D[w11, 0, VGx4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w8, 0, VGx4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w9, 0, VGx4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w10, 0, VGx4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w11, 0, VGx4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w8, 0, VGx4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w9, 0, VGx4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w10, 0, VGx4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w11, 0, VGx4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w8, 4, VGx4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w9, 4, VGx4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w10, 4, VGx4], { z0.D-z3.D }, z4.D[0]
+    FMLA ZA.D[w11, 4, VGx4], { z0.D-z3.D }, z4.D[0]
     bne .sme2_fmla4_vs_f64f64f64L1
     smstop
     restore_caller_vec
@@ -174,6 +245,42 @@
     FMLA ZA.D[w10, 4], { z0.D-z3.D }, z4.D
     FMLA ZA.D[w11, 4], { z0.D-z3.D }, z4.D
     bne .sme2_fmla_vv_f64f64f64L1
+    smstop
+    restore_caller_vec
+    ret
+####
+    PROLOGUE sme2_fmla2_vv_f64f64f64
+    preserve_caller_vec
+    smstart
+    SME_INIT
+
+.sme2_fmla2_vv_f64f64f64L1:
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    subs x0, x0, #1
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
+    bne .sme2_fmla2_vv_f64f64f64L1
     smstop
     restore_caller_vec
     ret

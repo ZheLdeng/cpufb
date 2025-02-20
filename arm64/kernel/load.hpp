@@ -11,6 +11,10 @@ extern "C"
 #ifdef _SVE_LD1W_
     void load_ld1w_kernel(float*, int ,int);
 #endif
+#ifdef _SME_
+    void sme_ldr_kernel(float*, int ,int);
+    void sme_ldr2_kernel(float*, int ,int);
+#endif
 }
 struct CacheData {
     int theory_L1 = 0;
@@ -26,5 +30,5 @@ struct CacheData {
 void get_cachesize(struct CacheData *cache_size, int cpu_id);
 void get_multiway(struct CacheData *cache_size,int cpu_id);
 void get_cacheline(struct CacheData *cache_size, int cpu_id);
-double get_bandwith(uint64_t looptime, double data_size, std::string type);
+double get_bandwith(uint64_t looptime, double data_size, std::string type, void* bench);
 #endif

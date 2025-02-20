@@ -174,3 +174,80 @@
     smstop
     ret
 ############
+    PROLOGUE sme_ldr_kernel
+    RDSVL x6, #1
+    mov w12, #0
+    mov w13, #1
+    mov w14, #2
+    mov w15, #3
+    mov x4, x2
+    smstart
+    2:
+    mov x3, x1
+    mov x5, x0
+    1:
+    ldr za[w12, #0], [x5]
+    ldr za[w12, #1], [x5, #1, MUL VL]
+    ldr za[w12, #2], [x5, #2, MUL VL]
+    ldr za[w12, #3], [x5, #3, MUL VL]
+    ldr za[w12, #4], [x5, #4, MUL VL]
+    ldr za[w12, #5], [x5, #5, MUL VL]
+    ldr za[w12, #6], [x5, #6, MUL VL]
+    ldr za[w12, #7], [x5, #7, MUL VL]
+    ldr za[w12, #8], [x5, #8, MUL VL]
+    ldr za[w12, #9], [x5, #9, MUL VL]
+    ldr za[w12, #10], [x5, #10, MUL VL]
+    ldr za[w12, #11], [x5, #11, MUL VL]
+    ldr za[w12, #12], [x5, #12, MUL VL]
+    ldr za[w12, #13], [x5, #13, MUL VL]
+    ldr za[w12, #14], [x5, #14, MUL VL]
+    ldr za[w12, #15], [x5, #15, MUL VL]
+    add x5, x5, x6, lsl #4
+
+    subs x3, x3, #1
+    bne 1b
+
+    subs x4, x4, #1
+    bne 2b
+    smstop
+    ret
+
+############
+    PROLOGUE sme_ld1w_kernel
+    //LDR ZA[<Wv>, <offs>], [<Xn|SP>{, #<offs>, MUL VL}]
+    RDSVL x6, #1
+    mov w12, #0
+    mov w13, #1
+    mov w14, #2
+    mov w15, #3
+    mov x4, x2
+    smstart
+sme_ldr2_kernelL2:
+    mov x3, x1
+    mov x5, x0
+sme_ldr2_kernelL1:
+    ldr za[w12, #0], [x5]
+    ldr za[w13, #0], [x5]
+    ldr za[w14, #0], [x5]
+    ldr za[w15, #0], [x5]
+    ldr za[w12, #0], [x5]
+    ldr za[w13, #0], [x5]
+    ldr za[w14, #0], [x5]
+    ldr za[w15, #0], [x5]
+    ldr za[w12, #0], [x5]
+    ldr za[w13, #0], [x5]
+    ldr za[w14, #0], [x5]
+    ldr za[w15, #0], [x5]
+    ldr za[w12, #0], [x5]
+    ldr za[w13, #0], [x5]
+    ldr za[w14, #0], [x5]
+    ldr za[w15, #0], [x5]
+ //   add x5, x5, x6, lsl #4
+
+    subs x3, x3, #1
+    bne sme_ldr2_kernelL1
+
+    subs x4, x4, #1
+    bne sme_ldr2_kernelL2
+    smstop
+    ret

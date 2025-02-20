@@ -23,6 +23,5 @@ inner_loop:
 
     subs x11, x11, #1
     bne outer_loop
-
 out:
     ret

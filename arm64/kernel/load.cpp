@@ -269,7 +269,7 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
         }
         ptr[(j * buf) >> 3] = (uintptr_t)&ptr[0];
         ptr[((j * buf) >> 3) + n] = (uintptr_t)&ptr[n];
-
+#ifdef __APPLE__
         for(i = 0; i < 1000 ; i++){
             for(k = 0; k < datasize >> 3; k++){
                 flush_cache_line(&ptr[k]);
@@ -300,6 +300,36 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
             break;
         }
     }
+#else
+        for(i = 0; i < 1000 ; i++){
+            for(k = 0; k < datasize >> 3; k++){
+                flush_cache_line(&ptr[k]);
+            }
+            next = (uintptr_t*)&ptr[0];
+            for(k=0 ; k < w ; k++){
+                next = (uintptr_t*)*next;
+            }
+            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+            next = (uintptr_t*)&ptr[n];
+            for(k=0 ; k < w ; k++){
+                next = (uintptr_t*)*next;
+            }
+            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+            second_time += (get_time(&start, &end) / w);
+        }
+        time_used.push_back(second_time);
+        // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
+            // << second_time / first_time << endl;
+    }
+    for (size_t i = 1; i < time_used.size() - 1; ++i) {
+        if (time_used[i] / time_used[i - 1] > 1.3) {
+            // cout << i << " " << 16 * pow(2, i) << endl;
+            cache_data->test_cacheline = 16 * pow(2, i - 1);
+            break;
+        }
+    }
+
+#endif
     cacheline = max(cache_data->test_cacheline, cache_data->theory_cacheline);
     free(ptr);
     return;

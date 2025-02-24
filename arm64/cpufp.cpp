@@ -249,11 +249,11 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
         cache_data[i] = i;
     }
     int inner_loop = 1024;
-    if (item.type.find("sme")) {
-        bm.bench = sme_multiple_issue;
-    } else {
-        bm.bench = multiple_issue;
-    }   
+    // if (item.type.find("sme")) {
+    bm.bench = reinterpret_cast<void (*)(float *, int, int64_t)>(item.bench);
+    // } else {
+    //     bm.bench = multiple_issue;
+    // }   
     bm.cache_data = cache_data;
     bm.inner_loop = inner_loop;
     bm.loop_time = item.loop_time;
@@ -473,7 +473,7 @@ static void cpufp_register_isa()
     reg_new_isa("SME", "sme_smopa.vv(i32,i8,i8)", "FLOPS",
         0x100000LL, 192LL, (void*)sme_smopa_vv_i32i8i8);
     reg_new_isa("SME_MULTI_ISSUE", "ldr/fmopa", "IPC",
-        0x186A00LL, 24LL, NULL);
+        0x186A00LL, 24LL, (void*)sme_multiple_issue);
 #endif
 
 #ifdef _SME2_
@@ -612,7 +612,7 @@ static void cpufp_register_isa()
         0x186A00LL, 32LL, (void*)sme_ld1w_kernel);
 #endif
     reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC",
-        0x186A00LL, 50LL, NULL);
+        0x186A00LL, 50LL, (void*)multiple_issue);
 }
 
 int main(int argc, char *argv[])
@@ -654,3 +654,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+

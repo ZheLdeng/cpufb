@@ -186,7 +186,7 @@ static void cpubm_arm_load(cpubm_t &item, Table &table)
         cont[3] = to_string(cache_size.theory_L1) + " KB";
         cont[4] = to_string(load_pl) + " KB";
     } else if (item.isa == "L2 Cache"){
-        load_pl = cache_size.test_L1;
+        load_pl = cache_size.test_L2;
         cont[3] = to_string(cache_size.theory_L2) + " KB";
         cont[4] = to_string(load_pl) + " KB";
     } 
@@ -249,11 +249,11 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
         cache_data[i] = i;
     }
     int inner_loop = 1024;
-    // if (item.type.find("sme")) {
-    //     bm.bench = sme_multiple_issue;
-    // } else {
-    bm.bench = multiple_issue;
-    // }   
+    if (item.type.find("sme")) {
+        bm.bench = sme_multiple_issue;
+    } else {
+        bm.bench = multiple_issue;
+    }   
     bm.cache_data = cache_data;
     bm.inner_loop = inner_loop;
     bm.loop_time = item.loop_time;

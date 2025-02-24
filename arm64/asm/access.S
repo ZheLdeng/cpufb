@@ -1,7 +1,8 @@
 .align 5
-.global _load_ptr
-#load(int looptime, int64_t *ptr)
-_load_ptr:
+#include "common_arm64.h"
+
+#void load_ptr(int looptime, int64_t *ptr)
+PROLOGUE load_ptr
     mov w2, w0
     mov w3, #0
 .loadL1:

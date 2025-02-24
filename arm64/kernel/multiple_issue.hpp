@@ -4,5 +4,6 @@
 extern "C"
 {
     void multiple_issue(float*,int, int64_t);
+    void sme_multiple_issue(float*,int, int64_t);
 }
 #endif

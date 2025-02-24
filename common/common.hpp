@@ -91,10 +91,10 @@ inline void read_data(int cpu_id, int *data, std::string path)
 #endif
 
 #ifdef _SME_
-static uint64_t rdsvl8()
+static uint64_t rdsvl()
 {
   uint64_t len;
-  asm volatile ("rdsvl %0, 8"
+  asm volatile ("rdsvl %0, 1"
                 : "=r"(len)
                );
   return len;

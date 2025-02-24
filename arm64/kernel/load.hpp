@@ -14,6 +14,11 @@ extern "C"
 #ifdef _SME_
     void sme_ldr_kernel(float*, int ,int);
     void sme_ldr2_kernel(float*, int ,int);
+    void sme_ld1wV_kernel(float*, int ,int);
+    void sme_ld1wH_kernel(float*, int ,int);
+#endif
+#ifdef _SME2_
+    void sme_ld1w_kernel(float*, int ,int);
 #endif
 }
 struct CacheData {

@@ -190,7 +190,7 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
     freq[0] = result->caculate_freq;
     vector<string> cont;
     cont.resize(table.getCol());
-    cont[0] = to_string(set_of_threads[0]);
+    cont[0] = "p-core";
     cont[1] = ss1.str();
     cont[2] = ss2.str();
     cont[3] = ss3.str();

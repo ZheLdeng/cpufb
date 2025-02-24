@@ -1224,3 +1224,31 @@
     smstop
     restore_caller_vec
     ret
+
+############
+    PROLOGUE sme_ld1w_kernel
+    
+    preserve_caller_vec
+    RDSVL x6, #1
+    mov x4, x2
+    smstart
+    
+    ptrue pn8.S
+    2:
+    mov x3, x1
+    mov x5, x0
+    1:
+    LD1W { z0.S, z4.S, z8.S, z12.S }, pn8/Z, [x5]
+    LD1W { z1.S, z5.S, z9.S, z13.S }, pn8/Z, [x5, #4, MUL VL]
+    LD1W { z2.S, z6.S, z10.S, z14.S }, pn8/Z, [x5, #8, MUL VL]
+    LD1W { z3.S, z7.S, z11.S, z15.S }, pn8/Z, [x5, #12, MUL VL]
+    add x5, x5, x6, lsl #4
+    subs x3, x3, x6, lsl #2
+    bne 1b
+
+    subs x4, x4, #1
+    bne 2b
+    
+    smstop
+    restore_caller_vec
+    ret

@@ -135,13 +135,13 @@ static void cpubm_arm64_one(tpool_t *tm,
     string first_param = has_opa ? type.substr(type.find('('), type.find(',')) : "";
 
     if (has_opa && first_param.find("32") != string::npos) {
-        item.comp_pl = item.comp_pl * rdsvl8() * rdsvl8() / 32 / 32;
+        item.comp_pl = item.comp_pl * rdsvl() * rdsvl() / 4 / 4;
         //cout << type << " op = " << item.comp_pl << endl;
     } else if (has_opa && first_param.find("64") != string::npos) {
-        item.comp_pl = item.comp_pl * rdsvl8() * rdsvl8() / 64 / 64;
+        item.comp_pl = item.comp_pl * rdsvl() * rdsvl() / 8 / 8;
         //cout << type << " op = " << item.comp_pl << endl;
     } else if (type.find("sme") != string::npos) {
-        item.comp_pl = item.comp_pl * rdsvl8() / 8;
+        item.comp_pl = item.comp_pl * rdsvl();
         //cout << type << " is sme " << item.comp_pl <<endl;
     }
 #endif
@@ -240,14 +240,18 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
     double time_used, perf;
     cache_bm_t bm;
     int num_threads = tm->thread_num;
-    int size = 1024;
-    float* cache_data = (float*)malloc(1024);
+    int size = 2048;
+    float* cache_data = (float*)malloc(size);
     //Preventing Compiler Optimization
     for (int i = 0;i < size / sizeof(float); i++){
         cache_data[i] = i;
     }
     int inner_loop = 1024;
+    // if (item.type.find("sme")) {
+    //     bm.bench = sme_multiple_issue;
+    // } else {
     bm.bench = multiple_issue;
+    // }   
     bm.cache_data = cache_data;
     bm.inner_loop = inner_loop;
     bm.loop_time = item.loop_time;
@@ -367,7 +371,6 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
         tm = tpool_create(set_of_threads);
 
         // traverse task list
-        // cpubm_arm64_one(tm, bm_list[0], table);
         for (i = 1; i < bm_list.size(); i++)
         {
             sleep(idle_time);
@@ -467,6 +470,8 @@ static void cpufp_register_isa()
         0x100000LL, 96LL, (void*)sme_fmopa_vv_f32f16f16);
     reg_new_isa("SME", "sme_smopa.vv(i32,i8,i8)", "FLOPS",
         0x100000LL, 192LL, (void*)sme_smopa_vv_i32i8i8);
+    reg_new_isa("SME_MULTI_ISSUE", "ldr/fmopa", "IPC",
+        0x186A00LL, 24LL, NULL);
 #endif
 
 #ifdef _SME2_
@@ -571,24 +576,38 @@ static void cpufp_register_isa()
     reg_new_isa("L1 Cache", "ldp(f32)", "Byte/Cycle",
         0x186A00LL, 32LL, (void*)load_ldp_kernel);
 #ifdef _SVE_LD1W_
-    reg_new_isa("--------", "ld1w(f32)", "Byte/Cycle",
+    reg_new_isa("--------", "sve-ld1w(f32)", "Byte/Cycle",
         0x186A00LL, 32LL, (void*)load_ld1w_kernel);
 #endif
 #ifdef _SME_
     reg_new_isa("--------", "ldrZA(f32)", "Byte/Cycle",
         0x186A00LL, 32LL, (void*)sme_ldr_kernel);
-    reg_new_isa("--------", "ldrZA(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, (void*)sme_ldr2_kernel);
+    reg_new_isa("--------", "ld1wZAV(f32)", "Byte/Cycle",
+        0x186A00LL, 32LL, (void*)sme_ld1wV_kernel);
+    reg_new_isa("--------", "ld1wZAH(f32)", "Byte/Cycle",
+        0x186A00LL, 32LL, (void*)sme_ld1wH_kernel);
+#endif
+#ifdef _SME2_
+    reg_new_isa("--------", "ld1w(f32)", "Byte/Cycle",
+        0x186A00LL, 32LL, (void*)sme_ld1w_kernel);
 #endif
     reg_new_isa("L2 Cache", "ldp(f32)", "Byte/Cycle",
         0x186A00LL, 128LL, (void*)load_ldp_kernel);
 #ifdef _SVE_LD1W_
-    reg_new_isa("--------", "ld1w(f32)", "Byte/Cycle",
+    reg_new_isa("--------", "sve-ld1w(f32)", "Byte/Cycle",
         0x186A00LL, 128LL, (void*)load_ld1w_kernel);
 #endif
 #ifdef _SME_
     reg_new_isa("--------", "ldrZA(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, (void*)sme_ldr_kernel);        
+        0x186A00LL, 32LL, (void*)sme_ldr_kernel);   
+    reg_new_isa("--------", "ld1wZAV(f32)", "Byte/Cycle",
+        0x186A00LL, 32LL, (void*)sme_ld1wV_kernel);
+    reg_new_isa("--------", "ld1wZAH(f32)", "Byte/Cycle",
+        0x186A00LL, 32LL, (void*)sme_ld1wH_kernel);     
+#endif
+#ifdef _SME2_
+    reg_new_isa("--------", "ld1w(f32)", "Byte/Cycle",
+        0x186A00LL, 32LL, (void*)sme_ld1w_kernel);
 #endif
     reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC",
         0x186A00LL, 50LL, NULL);

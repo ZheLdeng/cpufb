@@ -161,7 +161,7 @@ static inline double inloop(int group, int win_size)
         usleep(1000);
     }
     free(ptr);
-    printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
+    // printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
 
     return sum_time_used / 100;
 }
@@ -403,8 +403,8 @@ double get_bandwith(uint64_t looptime, double data_size, string type, void* benc
     double time_used, perf;
     int inner_loop;
     data_size /= 2.0;
-    if (data_size > 2 * 1024) {
-        data_size = 2 * 1024;
+    if (data_size > 32 * 1024) {
+        data_size = 32 * 1024;
     }
     float* cache_data = (float*)malloc(data_size * 1024);
 
@@ -412,10 +412,11 @@ double get_bandwith(uint64_t looptime, double data_size, string type, void* benc
     for (int i = 0; i < data_size * 1024/sizeof(float); i++) {
         cache_data[i] = i;
     }
-    if (type.find("ld1w")!= string::npos) {
-        inner_loop = data_size * 1024 / sizeof(float);
-    } else {
+    if (type.find("ld1w") == string::npos && type.find("ZA")== string::npos) {
+        
         inner_loop = data_size * 1024 / sizeof(float) / (4 * 32);
+    } else {
+        inner_loop = data_size * 1024 / sizeof(float);
     }
    
     load_bench bench_ptr = reinterpret_cast<load_bench>(bench);
@@ -426,7 +427,6 @@ double get_bandwith(uint64_t looptime, double data_size, string type, void* benc
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
     perf = (double)looptime * data_size * 1024 / (time_used * freq[0] * 1e9);
-
     free(cache_data);
     return perf;
 }

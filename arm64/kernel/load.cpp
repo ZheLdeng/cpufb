@@ -246,7 +246,7 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
         printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
         printf("Warning: performance may be impacted \n");
     }
-    read_data(cpu_id, &cache_size->theory_cacheline, "/cache/index0/coherency_line_size");
+    read_data(cpu_id, &cache_data->theory_cacheline, "/cache/index0/coherency_line_size");
 #endif
 #ifdef __APPLE__ 
     size_t size = sizeof(int64_t);

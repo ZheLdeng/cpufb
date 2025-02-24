@@ -70,7 +70,9 @@ static void reg_new_isa(string isa,
 }
 static void thread_func(void *params)
 {
+#ifdef __APPLE__
     pthread_set_qos_class_self_np( QOS_CLASS_USER_INTERACTIVE, 0 );
+#endif
     cpubm_t *bm = (cpubm_t*)params;
     ((void(*)(int64_t))bm->bench)(bm->loop_time);
 }

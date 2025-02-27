@@ -120,40 +120,13 @@ tpool_t *tpool_create(vector<int> set_of_threads)
     tm->thread_cnt = num;
     tm->thread_num = num;
 #ifdef __APPLE__
-    int p_core, e_core;
     dispatch_qos_class_t qos_class = QOS_CLASS_USER_INTERACTIVE;
-    size_t size = sizeof(int);
-    bool all_greater = true;
-    // 查询 P-Core（性能核心）数量
-    if (sysctlbyname("hw.perflevel0.logicalcpu", &p_core, &size, NULL, 0) != 0) {
-        perror("sysctlbyname P-Core failed");
-        p_core = 0;
-    }
-    // // 查询 E-Core（能效核心）数量
-    // if (sysctlbyname("hw.perflevel1.logicalcpu", &e_core, &size, NULL, 0) != 0) {
-    //     perror("sysctlbyname E-Core failed");
-    // }
-    for (int i : set_of_threads) {
-        if (i < p_core) {
-            all_greater = false;
-            break;
-        }
-    }
-    if (all_greater) {
-
-        qos_class = QOS_CLASS_UTILITY;
-        cout << "QOS_CLASS_BACKGROUND" << endl;
-    } else {
-        //pthread_set_qos_class_self_np( QOS_CLASS_USER_INTERACTIVE, 0 );
-        cout << "QOS_CLASS_USER_INTERACTIVE" << endl;
-    }
-   
+    size_t size = sizeof(int);  
     dispatch_queue_attr_t attr = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_CONCURRENT, qos_class, 0);
     tm->queue = dispatch_queue_create("benchmark", attr);
 
     // 使用任务组来等待所有线程完成
     tm->group = dispatch_group_create();
-    
 #endif
 
     pthread_mutex_init(&(tm->work_mutex), NULL);

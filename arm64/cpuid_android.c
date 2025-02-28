@@ -74,9 +74,6 @@ int main() {
     if (find("bf16",features,count)) {
         printf("_BF16_\n");
     }
-    if (find("bf16",features,count)) {
-        printf("_BF16_\n");
-    }
     if (find("sme",features,count)) {
         printf("_SME_\n");
     }

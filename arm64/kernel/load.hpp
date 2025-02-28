@@ -8,7 +8,7 @@ extern "C"
 {
     void load_ldp_kernel(float*, int, int64_t);
     void load_ldr_kernel(float*, int64_t);
-#ifdef _SVE_LD1W_
+#ifdef _SVE_
     void load_ld1w_kernel(float*, int ,int);
 #endif
 #ifdef _SME_

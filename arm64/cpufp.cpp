@@ -598,7 +598,7 @@ static void cpufp_register_isa()
 #endif
     reg_new_isa("L2 Cache", "ldp(f32)", "Byte/Cycle",
         0x186A00LL, 128LL, (void*)load_ldp_kernel);
-#ifdef _SVE_LD1W_
+#ifdef _SVE_
     reg_new_isa("--------", "sve-ld1w(f32)", "Byte/Cycle",
         0x186A00LL, 128LL, (void*)load_ld1w_kernel);
 #endif

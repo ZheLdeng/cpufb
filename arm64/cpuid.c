@@ -33,7 +33,7 @@ int get_cpuid()
     }
     if (sysctlbyname("hw.optional.arm.FEAT_SME2", &ret, &size, NULL, 0) == 0 && ret==1) {
         printf("_SME2_\n");
-        if (sysctlbyname("hw.optional.arm.FEAT_SME2", &ret, &size, NULL, 0) == 0 && ret==1) {
+        if (sysctlbyname("hw.optional.arm.FEAT_SME_F64F64", &ret, &size, NULL, 0) == 0 && ret==1) {
             printf("_SMEf64_\n");
         }
     }
@@ -77,8 +77,7 @@ int get_cpuid()
             // pass
         }
         #else
-        printf("_SVE_LD1W_\n");
-        printf("_SVE_FMLA_\n");
+        printf("_SVE_\n");
         #endif
     }
     #endif

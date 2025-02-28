@@ -8,6 +8,7 @@ extern "C"
     void asimd_fmla_vv_f32f32f32(int64_t);
     void asimd_fmla_vs_f64f64f64(int64_t);
     void asimd_fmla_vv_f64f64f64(int64_t);
+    void asimd_fmla2_vs_f32f32f32(int64_t);
 #endif
 
 #ifdef _ASIMD_HP_

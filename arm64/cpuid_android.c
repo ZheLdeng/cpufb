@@ -74,6 +74,21 @@ int main() {
     if (find("bf16",features,count)) {
         printf("_BF16_\n");
     }
+    if (find("bf16",features,count)) {
+        printf("_BF16_\n");
+    }
+    if (find("sme",features,count)) {
+        printf("_SME_\n");
+    }
+    if (find("sve",features,count)) {
+        printf("_SVE_\n");
+    }
+    if (find("sme2",features,count)) {
+        printf("_SME2_\n");
+        if (find("sme_f64f64",features,count)) {
+            printf("_SMEf64_\n");
+        }
+    }
     printf("_LDP_\n");     
     printf("_ISSUE_\n");    
     return 0;

@@ -110,18 +110,18 @@ static void cpubm_arm64_one(tpool_t *tm,
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 #else
      // warm up
-    pthread_set_qos_class_self_np( QOS_CLASS_UTILITY, 0 );
+    //pthread_set_qos_class_self_np( QOS_CLASS_UTILITY, 0 );
     for (int i = 0; i < tm->thread_num; ++i) {
-        ((void(*)(int64_t))item.bench)(item.loop_time);
-        // dispatch_group_async(tm->group, tm->queue, ^{item.bench(item.loop_time);});
+        // ((void(*)(int64_t))item.bench)(item.loop_time);
+        dispatch_group_async(tm->group, tm->queue, ^{((void(*)(int64_t))item.bench)(item.loop_time);});
     }
-    // dispatch_group_wait(tm->group, DISPATCH_TIME_FOREVER);
+    dispatch_group_wait(tm->group, DISPATCH_TIME_FOREVER);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (int i = 0; i < tm->thread_num; ++i) {
-        ((void(*)(int64_t))item.bench)(item.loop_time);
-        // dispatch_group_async(tm->group, tm->queue, ^{item.bench(item.loop_time);});
+        // ((void(*)(int64_t))item.bench)(item.loop_time);
+        dispatch_group_async(tm->group, tm->queue, ^{((void(*)(int64_t))item.bench)(item.loop_time);});
     }
-    // dispatch_group_wait(tm->group, DISPATCH_TIME_FOREVER);
+    dispatch_group_wait(tm->group, DISPATCH_TIME_FOREVER);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 #endif
 
@@ -159,7 +159,7 @@ static void cpubm_arm64_one(tpool_t *tm,
     {
         perf /= 1e9;
     }
-    IPC = item.loop_time * 24 / time_used / freq[0] / 1e9;
+    IPC = item.loop_time * 24 * tm->thread_num / time_used / freq[0] / 1e9;
     stringstream ss1, ss2;
 
     ss1 << setprecision(5) << perf << " " << perfUnit << item.dim;
@@ -218,9 +218,9 @@ static void cpubm_arm_cache(std::vector<int> &set_of_threads,Table &table)
     get_cacheline(&cache_size, set_of_threads[0]);
     // cout << "get cacheline" << endl;
     get_multiway(&cache_size, set_of_threads[0]);
-    //cout << "get multiway" << endl;
+    // cout << "get multiway" << endl;
     get_cachesize(&cache_size, set_of_threads[0]);
-    //cout << "get cachesize" << endl;
+    // cout << "get cachesize" << endl;
     cont[0] = "L1 ways of associativity";
     cont[1] = to_string(cache_size.theory_way);
     cont[2] = to_string(cache_size.test_way);
@@ -374,7 +374,8 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
 
         // traverse task list
         for (i = 1; i < bm_list.size(); i++)
-        {
+        { 
+            // cout << bm_list[i].type << endl;
             sleep(idle_time);
             if (bm_list[i].dim.find("OPS") != string::npos) {
                 cpubm_arm64_one(tm, bm_list[i], *tables[0]);
@@ -445,6 +446,8 @@ static void cpufp_register_isa()
 #ifdef _ASIMD_
     reg_new_isa("asimd", "fmla.vs(f32,f32,f32)", "FLOPS",
         0x100000LL, 192LL, (void*)asimd_fmla_vs_f32f32f32);
+    reg_new_isa("asimd", "fmla2.vs(f32,f32,f32)", "FLOPS",
+        0x100000LL, 192LL, (void*)asimd_fmla2_vs_f32f32f32);
     reg_new_isa("asimd", "fmla.vv(f32,f32,f32)", "FLOPS",
         0x100000LL, 192LL, (void*)asimd_fmla_vv_f32f32f32);
     reg_new_isa("asimd", "fmla.vs(f64,f64,f64)", "FLOPS",
@@ -452,7 +455,7 @@ static void cpufp_register_isa()
     reg_new_isa("asimd", "fmla.vv(f64,f64,f64)", "FLOPS",
         0x100000LL, 96LL, (void*)asimd_fmla_vv_f64f64f64);
 #endif
-#ifdef _SVE_FMLA_
+#ifdef _SVE_
     reg_new_isa("asimd", "sve_fmla.vs(f32,f32,f32)", "FLOPS",
         0x100000LL, 12LL, (void*)sve_fmla_vs_f32f32f32);
     reg_new_isa("asimd", "sve_fmla.vv(f32,f32,f32)", "FLOPS",
@@ -473,7 +476,7 @@ static void cpufp_register_isa()
     reg_new_isa("SME", "sme_smopa.vv(i32,i8,i8)", "FLOPS",
         0x100000LL, 192LL, (void*)sme_smopa_vv_i32i8i8);
     reg_new_isa("SME_MULTI_ISSUE", "ldr/fmopa", "IPC",
-        0x186A00LL, 24LL, (void*)sme_multiple_issue);
+        0x186A0LL, 40LL, (void*)sme_multiple_issue);
 #endif
 
 #ifdef _SME2_
@@ -577,7 +580,7 @@ static void cpufp_register_isa()
 #endif
     reg_new_isa("L1 Cache", "ldp(f32)", "Byte/Cycle",
         0x186A00LL, 32LL, (void*)load_ldp_kernel);
-#ifdef _SVE_LD1W_
+#ifdef _SVE_
     reg_new_isa("--------", "sve-ld1w(f32)", "Byte/Cycle",
         0x186A00LL, 32LL, (void*)load_ld1w_kernel);
 #endif

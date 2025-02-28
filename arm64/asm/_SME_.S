@@ -366,15 +366,7 @@
     ldr za[w12, #5], [x5, #5, MUL VL]
     ldr za[w12, #6], [x5, #6, MUL VL]
     ldr za[w12, #7], [x5, #7, MUL VL]
-    ldr za[w12, #8], [x5, #8, MUL VL]
-    ldr za[w12, #9], [x5, #9, MUL VL]
-    ldr za[w12, #10], [x5, #10, MUL VL]
-    ldr za[w12, #11], [x5, #11, MUL VL]
-    ldr za[w12, #12], [x5, #12, MUL VL]
-    ldr za[w12, #13], [x5, #13, MUL VL]
-    ldr za[w12, #14], [x5, #14, MUL VL]
-    ldr za[w12, #15], [x5, #15, MUL VL]
-    
+   
     FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
     FMOPA za1.S, p0/M, p1/M, z10.S, z11.S
     FMOPA za2.S, p0/M, p1/M, z12.S, z13.S
@@ -387,6 +379,15 @@
     FMOPA za1.S, p0/M, p1/M, z26.S, z27.S
     FMOPA za2.S, p0/M, p1/M, z28.S, z29.S
     FMOPA za3.S, p0/M, p1/M, z30.S, z31.S
+
+    ldr za[w12, #8], [x5, #8, MUL VL]
+    ldr za[w12, #9], [x5, #9, MUL VL]
+    ldr za[w12, #10], [x5, #10, MUL VL]
+    ldr za[w12, #11], [x5, #11, MUL VL]
+    ldr za[w12, #12], [x5, #12, MUL VL]
+    ldr za[w12, #13], [x5, #13, MUL VL]
+    ldr za[w12, #14], [x5, #14, MUL VL]
+    ldr za[w12, #15], [x5, #15, MUL VL]
 
     FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
     FMOPA za1.S, p0/M, p1/M, z10.S, z11.S

@@ -137,3 +137,37 @@
     restore_caller_vec
     ret
 
+ ###############################   
+    PROLOGUE asimd_fmla2_vs_f32f32f32
+    preserve_caller_vec
+    INIT
+.asimd.fmla2.vs.f32f32f32.L1:
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    subs x0, x0, #1
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    fmla v8.4s, v0.4s, v1.s[0]
+    bne .asimd.fmla2.vs.f32f32f32.L1
+    restore_caller_vec
+    ret
+###############################

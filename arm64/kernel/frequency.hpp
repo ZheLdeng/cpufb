@@ -9,7 +9,7 @@ struct FrequencyData {
     double IPC_fp32 = 0;
     double IPC_fp64 = 0;
     double IPC_load = 0;
-    #ifdef _SVE_FMLA_
+    #ifdef _SVE_
     double IPC_fp32_sve = 0;
     double IPC_fp64_sve = 0;
     #endif

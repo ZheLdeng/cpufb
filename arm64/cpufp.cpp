@@ -23,7 +23,7 @@
 #include<multiple_issue.hpp>
 #include<common.hpp>
 
-#ifdef _SVE_FMLA_
+#ifdef _SVE_
 #include <arm_sve.h>
 #endif
 
@@ -126,7 +126,7 @@ static void cpubm_arm64_one(tpool_t *tm,
 #endif
 
 
-#ifdef _SVE_FMLA_
+#ifdef _SVE_
     if (item.type.find("sve") != string::npos) {
         item.comp_pl = item.comp_pl * svcntb();
     }
@@ -320,7 +320,7 @@ static void init_table(vector<Table*> &tables)
     tables[2]->setColumnNum(ti.size());
     tables[2]->addOneItem(ti);
 
-    #ifdef _SVE_FMLA_
+    #ifdef _SVE_
     ti.resize(8);
     #else
     ti.resize(6);
@@ -331,7 +331,7 @@ static void init_table(vector<Table*> &tables)
     ti[3] = "IPC(FSU32)";
     ti[4] = "IPC(FSU64)";
     ti[5] = "IPC(LSU ldr)";
-    #ifdef _SVE_FMLA_
+    #ifdef _SVE_
     ti[6] = "IPC(SVE32)";
     ti[7] = "IPC(SVE64)";
     #endif

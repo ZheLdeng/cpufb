@@ -370,7 +370,7 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
         // cout << "start benchmark" << endl;
         get_cpu_freq(set_of_threads, *tables[3]);
         // cout << "get freq" << endl;
-        // cpubm_arm_cache(set_of_threads, *tables[2]);
+        cpubm_arm_cache(set_of_threads, *tables[2]);
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);
@@ -383,9 +383,9 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
             if (bm_list[i].dim.find("OPS") != string::npos) {
                 cpubm_arm64_one(tm, bm_list[i], *tables[0]);
             } else if (bm_list[i].dim.find("Byte/Cycle") != string::npos) {
-                // cpubm_arm_load(bm_list[i], *tables[1]);
+                cpubm_arm_load(bm_list[i], *tables[1]);
             } else if (bm_list[i].dim.find("IPC") != string::npos) {
-                // cpubm_arm_multiple_issue(tm, bm_list[i], *tables[4]);
+                cpubm_arm_multiple_issue(tm, bm_list[i], *tables[4]);
             } else {
                 cout << "Wrong dimension !" << endl;
                 break;

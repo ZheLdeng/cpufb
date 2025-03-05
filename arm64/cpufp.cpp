@@ -23,6 +23,10 @@
 #include<multiple_issue.hpp>
 #include<common.hpp>
 
+#ifdef __APPLE__
+#include<amx.hpp>
+#endif
+
 #ifdef _SVE_
 #include <arm_sve.h>
 #endif
@@ -76,7 +80,6 @@ static void thread_func(void *params)
     cpubm_t *bm = (cpubm_t*)params;
     ((void(*)(int64_t))bm->bench)(bm->loop_time);
 }
-
 
 static void cache_thread_func(void *params)
 {
@@ -367,7 +370,7 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
         // cout << "start benchmark" << endl;
         get_cpu_freq(set_of_threads, *tables[3]);
         // cout << "get freq" << endl;
-        cpubm_arm_cache(set_of_threads, *tables[2]);
+        // cpubm_arm_cache(set_of_threads, *tables[2]);
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);
@@ -380,9 +383,9 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
             if (bm_list[i].dim.find("OPS") != string::npos) {
                 cpubm_arm64_one(tm, bm_list[i], *tables[0]);
             } else if (bm_list[i].dim.find("Byte/Cycle") != string::npos) {
-                cpubm_arm_load(bm_list[i], *tables[1]);
+                // cpubm_arm_load(bm_list[i], *tables[1]);
             } else if (bm_list[i].dim.find("IPC") != string::npos) {
-                cpubm_arm_multiple_issue(tm, bm_list[i], *tables[4]);
+                // cpubm_arm_multiple_issue(tm, bm_list[i], *tables[4]);
             } else {
                 cout << "Wrong dimension !" << endl;
                 break;
@@ -400,6 +403,8 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
 
 static void cpufp_register_isa()
 {
+
+
 #ifdef _I8MM_
     reg_new_isa("i8mm", "mmla(s32,s8,s8)", "OPS",
         0x100000LL, 1536LL, (void*)asimd_mmla_s32s8s8);
@@ -613,6 +618,37 @@ static void cpufp_register_isa()
 #ifdef _SME2_
     reg_new_isa("--------", "ld1w(f32)", "Byte/Cycle",
         0x186A00LL, 32LL, (void*)sme_ld1w_kernel);
+#endif
+#ifdef __APPLE__
+    reg_new_isa("Apple amx", "fmla.mat(f16,f16,f16)", "FLOPS",
+        0x100000LL, 16384LL, (void*)fmla16_benchmark_mat);
+    reg_new_isa("Apple amx", "fmla.mat(f32,f32,f32)", "FLOPS",
+        0x100000LL, 4096LL, (void*)fmla32_benchmark_mat);
+    reg_new_isa("Apple amx", "fmla.mat(f64,f64,f64)", "FLOPS",
+        0x100000LL, 1024LL, (void*)fmla64_benchmark_mat);
+
+    reg_new_isa("Apple amx", "fmla.vec(f16,f16,f16)", "FLOPS",
+        0x100000LL, 512LL, (void*)fmla16_benchmark_vec);
+    reg_new_isa("Apple amx", "fmla.vec(f32,f32,f32)", "FLOPS",
+        0x100000LL, 256LL, (void*)fmla32_benchmark_vec);
+    reg_new_isa("Apple amx", "fmla.vec(f64,f64,f64)", "FLOPS",
+        0x100000LL, 128LL, (void*)fmla64_benchmark_vec);
+
+    reg_new_isa("Apple amx", "mat.mat(i8,i8,i8)", "OPS",
+        0x100000LL, 65536LL, (void*)matint_i8i8_benchmark);
+    reg_new_isa("Apple amx", "fmla.mat(i8,i16,i16)", "OPS",
+        0x100000LL, 32768LL, (void*)matint_i8i16_benchmark);
+    reg_new_isa("Apple amx", "fmla.mat(i16,i16,i16)", "OPS",
+        0x100000LL, 16384LL, (void*)matint_i16i16_benchmark);
+
+    // reg_new_isa("Apple amx", "ldx 1 reg", "Byte/Cycle",
+    //     0x186A00LL, 32LL, (void*)load_benchmark_1);   
+    // reg_new_isa("Apple amx", "ldx 2 reg", "Byte/Cycle",
+    //     0x186A00LL, 32LL, (void*)load_benchmark_2);
+    // reg_new_isa("Apple amx", "ldx 4 reg", "Byte/Cycle",
+    //     0x186A00LL, 32LL, (void*)load_benchmark_4);    
+    
+    
 #endif
     reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC",
         0x186A00LL, 50LL, (void*)multiple_issue);

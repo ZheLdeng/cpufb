@@ -64,11 +64,22 @@ do
     esac
 
 done
+
+system_name=$(uname)
+
+AMX_KERNEL="" 
+# 判断是否为 macOS (Darwin)
+if [ "$system_name" == "Darwin" ]; then
+    $CXX $CFLAG -std=c++20 -O3 -I$COMM -I$KERNEL -c $SRC/kernel/amx_kernel.cpp -o $BUILD_DIR/amx_kernel.o
+    AMX_KERNEL=$BUILD_DIR/amx_kernel.o
+    # echo $AMX_KERNEL
+fi
+
 # compile cpufp
-$CXX $CFLAG -O2 -I$COMM -I$KERNEL $MARCH_FLAG $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
+$CXX $CFLAG -std=c++20 -O2 -I$COMM -I$KERNEL $MARCH_FLAG $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
 $CXX $CFLAG -O2 -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/frequency.cpp -o $BUILD_DIR/frequency.o
 $CXX $CFLAG -c $ASM/access.S -o $BUILD_DIR/access.o
 $CXX $CFLAG -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load.o
 
-$CXX $CFLAG -O2 -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/access.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ
-#set +x
+$CXX $CFLAG -std=c++20 -O2 -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/access.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ $AMX_KERNEL
+set +x

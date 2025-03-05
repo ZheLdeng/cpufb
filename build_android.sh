@@ -78,11 +78,12 @@ do
 
 done
 # compile cpufp
-$CXX -g -O2 -I$COMM -I$KERNEL $MARCH_FLAG $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
-$CXX -g -O2 -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/frequency.cpp -o $BUILD_DIR/frequency.o
+$CXX $CFLAG -O2 -I$COMM -I$KERNEL $MARCH_FLAG $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
+$CXX $CFLAG -O2 -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/frequency.cpp -o $BUILD_DIR/frequency.o
 $CXX $CFLAG -c $ASM/access.S -o $BUILD_DIR/access.o
-$CXX -g -O0 -I$KERNEL -I$COMM -c $KERNEL/load.cpp -o $BUILD_DIR/load.o
-$CXX -g -O2 -z noexecstack -pthread -static -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ
+$CXX $CFLAG -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load.o
+
+$CXX $CFLAG -static -O2 -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/access.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ
 set +x
 adb push cpufp /data/local/tmp/
 adb shell /data/local/tmp/cpufp --thread_pool=[0-7]

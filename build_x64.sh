@@ -15,8 +15,8 @@ else
 fi
 
 # build common tools
-g++ $CXX_STD -O3 -c $COMM/table.cpp -o $BUILD_DIR/table.o
-g++ $CXX_STD -O3 -pthread -c $COMM/thread_pool.cpp -o $BUILD_DIR/thread_pool.o
+g++ $CXX_STD -O2 -c $COMM/table.cpp -o $BUILD_DIR/table.o
+g++ $CXX_STD -O2 -pthread -c $COMM/thread_pool.cpp -o $BUILD_DIR/thread_pool.o
 
 # gen benchmark macro according to cpuid feature
 gcc $SRC/cpuid.c -o $BUILD_DIR/cpuid
@@ -30,8 +30,8 @@ do
 done
 
 # compile cpufp
-g++ $CXX_STD -g -O3 -I$COMM -I$KERNEL $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
+g++ $CXX_STD -g -O2 -I$COMM -I$KERNEL $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
 g++ $CXX_STD -g -O0 -I$COMM -I$KERNEL $SIMD_MACRO -c $KERNEL/frequency.cpp -o $BUILD_DIR/frequency.o
-g++ $CXX_STD -g -O3 -I$COMM -I$KERNEL $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load.o
+g++ $CXX_STD -g -O0 -I$COMM -I$KERNEL $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load.o
 
-g++ $CXX_STD -g -O3 -z noexecstack -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ
+g++ $CXX_STD -g -O2 -z noexecstack -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ

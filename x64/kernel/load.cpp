@@ -219,6 +219,7 @@ static inline void random_access(vector<double>& time_used) {
 
 void get_cacheline(struct CacheData *cache_size, int cpu_id)
 {
+    cout << "start cacheline size" << endl;
     struct timespec start, end;
     int i, j, k;
     vector<double> slope;
@@ -291,6 +292,7 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
 
 void get_cachesize(struct CacheData *cache_size, int cpu_id)
 {
+    cout << "start cachesize" << endl;
     vector<double> time_used, validation, slope;
     int L1_size_num = 0;
 #ifdef __linux__
@@ -320,6 +322,7 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
 
 void get_multiway(struct CacheData *cache_size, int cpu_id)
 {
+    cout << "start multiway" << endl;
     struct timespec start, end;
     double time_used = 0, pre_time_used = 0;
     int i, j, k, w;

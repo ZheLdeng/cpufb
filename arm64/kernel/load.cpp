@@ -161,7 +161,7 @@ static inline double inloop(int group, int win_size)
         usleep(1000);
     }
     free(ptr);
-    // printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
+    printf("size = %d time_used = %.10f\n", win_size / 1024, sum_time_used / 100);
 
     return sum_time_used / 100;
 }
@@ -230,6 +230,7 @@ static inline void random_access(vector<double>& time_used) {
 
 void get_cacheline(struct CacheData *cache_data, int cpu_id)
 {
+    cout << "start cacheline size" << endl;
     struct timespec start, end;
     int i, j, k;
     vector<double> slope;
@@ -248,7 +249,7 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
     }
     read_data(cpu_id, &cache_data->theory_cacheline, "/cache/index0/coherency_line_size");
 #endif
-#ifdef __APPLE__ 
+#ifdef __APPLE__
     size_t size = sizeof(int64_t);
     if (sysctlbyname("hw.cachelinesize", &cache_data->theory_cacheline, &size, NULL, 0) != 0) {
         perror("sysctlbyname cachelinesize failed");
@@ -320,6 +321,7 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
         time_used.push_back(second_time);
         // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
             // << second_time / first_time << endl;
+        cout << "size = " << buf << " time_used = " << second_time << endl;
     }
     for (size_t i = 1; i < time_used.size() - 1; ++i) {
         if (time_used[i] / time_used[i - 1] > 1.3) {
@@ -337,6 +339,7 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
 
 void get_cachesize(struct CacheData *cache_size, int cpu_id)
 {
+    cout << "start cachesize" << endl;
     vector<double> time_used, validation, slope;
     int L1_size_num = 0;
 #ifdef __linux__
@@ -351,7 +354,7 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     read_data(cpu_id, &cache_size->theory_L1, "/cache/index0/size");
     read_data(cpu_id, &cache_size->theory_L2, "/cache/index2/size");
 #endif
-#ifdef __APPLE__ 
+#ifdef __APPLE__
     size_t size = sizeof(int);
     if (sysctlbyname("hw.perflevel0.l1dcachesize", &cache_size->theory_L1, &size, NULL, 0) != 0) {
         perror("sysctlbyname l1dcachesize failed");
@@ -375,6 +378,7 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
 
 void get_multiway(struct CacheData *cache_size, int cpu_id)
 {
+    cout << "start multiway" << endl;
     struct timespec start, end;
     double time_used = 0, pre_time_used = 0;
     int i, j, k, w;
@@ -416,8 +420,9 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
             time_used += get_time(&start, &end);
         }
         time_used /= test_time;
-        // cout << "multi way " << w << " / " << time_used << " " << pre_time_used << " / "<< 
+        // cout << "multi way " << w << " / " << time_used << " " << pre_time_used << " / "<<
             // time_used/pre_time_used << endl;
+        cout << "way = " << w << " time_used = " << time_used << endl;
         if (w > 1 && time_used/pre_time_used - 1 > 1e-1) {
             break;
         }
@@ -443,12 +448,12 @@ double get_bandwith(uint64_t looptime, double data_size, string type, void* benc
         cache_data[i] = i;
     }
     if (type.find("ld1w") == string::npos && type.find("ZA")== string::npos) {
-        
+
         inner_loop = data_size * 1024 / sizeof(float) / (4 * 32);
     } else {
         inner_loop = data_size * 1024 / sizeof(float);
     }
-   
+
     load_bench bench_ptr = reinterpret_cast<load_bench>(bench);
 	// warm up
     bench_ptr(cache_data, inner_loop, looptime);

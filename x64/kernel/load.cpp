@@ -155,7 +155,7 @@ static inline double inloop(int group, int win_size)
         usleep(1000);
     }
     free(ptr);
-    // printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
+    printf("size = %d time_used = %.10f\n", win_size / 1024, sum_time_used / 100);
     return sum_time_used / 100;
 }
 
@@ -276,6 +276,7 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
         time_used.push_back(second_time / first_time);
         // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
         //     << second_time / first_time << endl;
+        cout << "size = " << buf << " time_used = " << second_time << endl;
     }
     for (size_t i = 0; i < time_used.size() - 1; ++i) {
     if (time_used[i] < time_used[i + 1]) {
@@ -363,6 +364,7 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
         }
         time_used /= test_time;
         // cout<<time_used<<" "<<time_used/pre_time_used<<endl;
+        cout << "way = " << w << " time_used = " << time_used << endl;
         if (w > 0 && time_used/pre_time_used - 1 > 1e-1) {
             break;
         }

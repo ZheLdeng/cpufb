@@ -41,9 +41,9 @@ void load_benchmark_1(long long looptime){
   AMX_CLR();
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
   time_used = get_time(&start, &end);
-  std::cout << time_used << std::endl;
+  // std::cout << time_used << std::endl;
   perf = looptime * data_size / (1e9) / (time_used);
-  std::cout << "Bandwidth 1: " << perf << " GB/s" << std::endl;
+  // std::cout << "Bandwidth 1: " << perf << " GB/s" << std::endl;
 }
 
 void load_benchmark_2(long long looptime){
@@ -78,9 +78,9 @@ void load_benchmark_2(long long looptime){
   AMX_CLR();
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
   time_used = get_time(&start, &end);
-  std::cout << time_used << std::endl;
+  // std::cout << time_used << std::endl;
   perf = looptime * data_size / (1e9) / (time_used);
-  std::cout << "Bandwidth 2: " << perf << " GB/s" << std::endl;
+  // std::cout << "Bandwidth 2: " << perf << " GB/s" << std::endl;
 }
 
 void load_benchmark_4(long long looptime){
@@ -115,9 +115,9 @@ void load_benchmark_4(long long looptime){
   AMX_CLR();
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
   time_used = get_time(&start, &end);
-  std::cout << time_used << std::endl;
+  // std::cout << time_used << std::endl;
   perf = looptime * data_size / (1e9) / (time_used);
-  std::cout << "Bandwidth 4: " << perf << " GB/s" << std::endl;
+  // std::cout << "Bandwidth 4: " << perf << " GB/s" << std::endl;
 }
 
 void fmla32_benchmark_mat(long long looptime){
@@ -142,9 +142,9 @@ void fmla32_benchmark_mat(long long looptime){
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
   AMX_CLR();
   double time_used = get_time(&start, &end);
-  std::cout << time_used << std::endl;
+  // std::cout << time_used << std::endl;
   double perf = (double)looptime * (double)(512) * 8 / 1e9 / (time_used);
-  std::cout << "fma32 mat: " << perf << " GFlops" << std::endl;
+  // std::cout << "fma32 mat: " << perf << " GFlops" << std::endl;
 }
 
 void fmla16_benchmark_mat(long long looptime){
@@ -169,9 +169,9 @@ void fmla16_benchmark_mat(long long looptime){
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
   AMX_CLR();
   double time_used = get_time(&start, &end);
-  std::cout << time_used << std::endl;
+  // std::cout << time_used << std::endl;
   double perf = (double)looptime * (double)(32 * 32* 2) * 8 / 1e9 / (time_used);
-  std::cout << "fma16 mat: " << perf << " GFlops" << std::endl;
+  // std::cout << "fma16 mat: " << perf << " GFlops" << std::endl;
 }
 
 void fmla64_benchmark_mat(long long looptime){
@@ -196,9 +196,9 @@ void fmla64_benchmark_mat(long long looptime){
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
   AMX_CLR();
   double time_used = get_time(&start, &end);
-  std::cout << time_used << std::endl;
+  // std::cout << time_used << std::endl;
   double perf = (double)looptime * (double)(8 * 8 * 2) * 8 / 1e9 / (time_used);
-  std::cout << "fma64: " << perf << " GFlops" << std::endl;
+  // std::cout << "fma64: " << perf << " GFlops" << std::endl;
 }
 
 
@@ -224,9 +224,9 @@ void fmla32_benchmark_vec(long long looptime){
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
   AMX_CLR();
   double time_used = get_time(&start, &end);
-  std::cout << time_used << std::endl;
+  // std::cout << time_used << std::endl;
   double perf = (double)looptime * (double)(16 * 2) * 8 / 1e9 / (time_used);
-  std::cout << "fma32 vec: " << perf << " GFlops" << std::endl;
+  // std::cout << "fma32 vec: " << perf << " GFlops" << std::endl;
 }
 
 void fmla16_benchmark_vec(long long looptime){
@@ -251,9 +251,9 @@ void fmla16_benchmark_vec(long long looptime){
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
   AMX_CLR();
   double time_used = get_time(&start, &end);
-  std::cout << time_used << std::endl;
+  // std::cout << time_used << std::endl;
   double perf = (double)looptime * (double)(32 * 2) * 8 / 1e9 / (time_used);
-  std::cout << "fma16 vec: " << perf << " GFlops" << std::endl;
+  // std::cout << "fma16 vec: " << perf << " GFlops" << std::endl;
 }
 
 void fmla64_benchmark_vec(long long looptime){
@@ -278,9 +278,9 @@ void fmla64_benchmark_vec(long long looptime){
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
   AMX_CLR();
   double time_used = get_time(&start, &end);
-  std::cout << time_used << std::endl;
+  // std::cout << time_used << std::endl;
   double perf = (double)looptime * (double)(8 * 2) * 8 / 1e9 / (time_used);
-  std::cout << "fma64 vec: " << perf << " GFlops" << std::endl;
+  // std::cout << "fma64 vec: " << perf << " GFlops" << std::endl;
 }
 
 void matint_i8i8_benchmark(long long looptime){
@@ -306,9 +306,9 @@ void matint_i8i8_benchmark(long long looptime){
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
   AMX_CLR();
   double time_used = get_time(&start, &end);
-  std::cout << time_used << std::endl;
+  // std::cout << time_used << std::endl;
   double perf = (double)looptime * (double)(64 * 64) * 2 * 8 / 1e9 / (time_used);
-  std::cout << "matint mat i8i8: " << perf << " Gops" << std::endl;
+  // std::cout << "matint mat i8i8: " << perf << " Gops" << std::endl;
 }
 
 void matint_i8i16_benchmark(long long looptime){
@@ -334,9 +334,9 @@ void matint_i8i16_benchmark(long long looptime){
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
   AMX_CLR();
   double time_used = get_time(&start, &end);
-  std::cout << time_used << std::endl;
+  // std::cout << time_used << std::endl;
   double perf = (double)looptime * (double)(64 * 32) * 2 * 8 / 1e9 / (time_used);
-  std::cout << "matint mat i8i16: " << perf << " Gops" << std::endl;
+  // std::cout << "matint mat i8i16: " << perf << " Gops" << std::endl;
 }
 
 void matint_i16i16_benchmark(long long looptime){
@@ -360,7 +360,7 @@ void matint_i16i16_benchmark(long long looptime){
   clock_gettime(CLOCK_MONOTONIC_RAW, &end);
   AMX_CLR();
   double time_used = get_time(&start, &end);
-  std::cout << time_used << std::endl;
+  // std::cout << time_used << std::endl;
   double perf = (double)looptime * (double)(32 * 32) * 2 * 8 / 1e9 / (time_used);
-  std::cout << "matint mat i16i16: " << perf << " Gops" << std::endl;
+  // std::cout << "matint mat i16i16: " << perf << " Gops" << std::endl;
 }

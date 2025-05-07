@@ -275,9 +275,9 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
             second_time += (get_time(&start, &end)/w);
         }
         time_used.push_back(second_time / first_time);
-        // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
-        //     << second_time / first_time << endl;
-        cout << "size = " << buf << " time_used = " << second_time << endl;
+        cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
+            << second_time / first_time << endl;
+        // cout << "size = " << buf << " time_used = " << second_time << endl;
     }
     for (size_t i = 0; i < time_used.size() - 1; ++i) {
     if (time_used[i] < time_used[i + 1]) {

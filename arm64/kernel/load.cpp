@@ -234,7 +234,11 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
     struct timespec start, end;
     int i, j, k;
     vector<double> slope;
+#ifdef __APPLE__
+    int datasize = 128 * 1024;
+#else 
     int datasize = 64 * 1024;
+#endif
     vector<double> time_used;
     uintptr_t *ptr = (uintptr_t*)malloc(datasize);
     double first_time, second_time;
@@ -254,6 +258,8 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
     if (sysctlbyname("hw.cachelinesize", &cache_data->theory_cacheline, &size, NULL, 0) != 0) {
         perror("sysctlbyname cachelinesize failed");
     }
+    float *ptr2 = (float*)malloc(datasize * 2);
+    memset(ptr2, 1, datasize * 2);
 #endif
     for(int buf = 16 ; buf <= 1024 ; buf *= 2){
         first_time = 0;
@@ -270,11 +276,19 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
         }
         ptr[(j * buf) >> 3] = (uintptr_t)&ptr[0];
         ptr[((j * buf) >> 3) + n] = (uintptr_t)&ptr[n];
-#ifdef __APPLE__
-        for(i = 0; i < 1000 ; i++){
-            for(k = 0; k < datasize >> 3; k++){
-                flush_cache_line(&ptr[k]);
+
+        for(i = 0; i < 100 ; i++){
+#ifndef __APPLE__
+            // for(k = 0; k < datasize >> 3; k++){
+            //     flush_cache_line(&ptr[k]);
+            // }
+#else
+            for (int m = 0; m < 1000; m++) {
+                for(k = 0; k < datasize * 2 >> 3; k++){
+                    ptr2[k] = k * (i % 5);
+                }
             }
+#endif
             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
             next = (uintptr_t*)&ptr[0];
             for(k=0 ; k < w ; k++){
@@ -291,47 +305,53 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
             second_time += (get_time(&start, &end) / w);
         }
         time_used.push_back(second_time / first_time);
-        // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
-            // << second_time / first_time << endl;
+        cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
+            << second_time / first_time << endl;
     }
     for (size_t i = 0; i < time_used.size() - 1; ++i) {
-        if (time_used[i] < 0.98) {
+        if (time_used[i] > 0.95) {
             // cout << i << " " << 16 * pow(2, i) << endl;
             cache_data->test_cacheline = 16 * pow(2, i);
             break;
         }
     }
-#else
-        for(i = 0; i < 1000 ; i++){
-            for(k = 0; k < datasize >> 3; k++){
-                flush_cache_line(&ptr[k]);
-            }
-            next = (uintptr_t*)&ptr[0];
-            for(k=0 ; k < w ; k++){
-                next = (uintptr_t*)*next;
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            next = (uintptr_t*)&ptr[n];
-            for(k=0 ; k < w ; k++){
-                next = (uintptr_t*)*next;
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            second_time += (get_time(&start, &end) / w);
-        }
-        time_used.push_back(second_time);
-        // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
-            // << second_time / first_time << endl;
-        cout << "size = " << buf << " time_used = " << second_time << endl;
-    }
-    for (size_t i = 1; i < time_used.size() - 1; ++i) {
-        if (time_used[i] / time_used[i - 1] > 1.3) {
-            // cout << i << " " << 16 * pow(2, i) << endl;
-            cache_data->test_cacheline = 16 * pow(2, i - 1);
-            break;
-        }
-    }
+// #else
+//         // for(k = 0; k < datasize >> 3; k++){
+//         //     flush_cache_line(&ptr[k]);
+//         // }
+//         for(i = 0; i < 100 ; i++){
+//             for (int m = 0; m < 1000; m++) {
+//                 for(k = 0; k < datasize * 2 >> 3; k++){
+//                     ptr2[k] = k * (i % 5);
+//                 }
+//             }
+            
+//             next = (uintptr_t*)&ptr[0];
+//             for(k=0 ; k < w ; k++){
+//                 next = (uintptr_t*)*next;
+//             }
+//             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+//             next = (uintptr_t*)&ptr[n];
+//             for(k=0 ; k < w ; k++){ 
+//                 next = (uintptr_t*)*next;
+//             }
+//             clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+//             second_time += (get_time(&start, &end) / w);
+//         }
+//         time_used.push_back(second_time);
+//         // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
+//             // << second_time / first_time << endl;
+//         cout << "size = " << buf << " time_used = " << second_time << endl;
+//     }
+//     for (size_t i = 1; i < time_used.size() - 1; ++i) {
+//         if (time_used[i] / time_used[i - 1] > 1.3) {
+//             // cout << i << " " << 16 * pow(2, i) << endl;
+//             cache_data->test_cacheline = 16 * pow(2, i - 1);
+//             break;
+//         }
+//     }
 
-#endif
+// #endif
     cacheline = max(cache_data->test_cacheline, cache_data->theory_cacheline);
     free(ptr);
     return;

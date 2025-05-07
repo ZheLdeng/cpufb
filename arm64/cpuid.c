@@ -22,10 +22,10 @@ int get_cpuid()
     if (sysctlbyname("hw.optional.arm.FEAT_DotProd", &ret, &size, NULL, 0) == 0 && ret==1) {
         printf("_ASIMD_DP_\n");
     }
-    if (sysctlbyname("hw.optional.AdvSIMD_HPFPCvt", &ret, &size, NULL, 0) == 0 && ret==1) {
+    if (sysctlbyname("hw.optional.arm.AdvSIMD_HPFPCvt", &ret, &size, NULL, 0) == 0 && ret==1) {
         printf("_ASIMD_HP_\n");
     }
-    if (sysctlbyname("hw.optional.AdvSIMD", &ret, &size, NULL, 0) == 0 && ret==1) {
+    if (sysctlbyname("hw.optional.arm.AdvSIMD", &ret, &size, NULL, 0) == 0 && ret==1) {
         printf("_ASIMD_\n");
     }
     if (sysctlbyname("hw.optional.arm.FEAT_SME", &ret, &size, NULL, 0) == 0 && ret==1) {

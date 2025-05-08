@@ -236,7 +236,7 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
     vector<double> slope;
 #ifdef __APPLE__
     int datasize = 128 * 1024;
-#else 
+#else
     int datasize = 64 * 1024;
 #endif
     vector<double> time_used;
@@ -279,9 +279,9 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
 
         for(i = 0; i < 100 ; i++){
 #ifndef __APPLE__
-            // for(k = 0; k < datasize >> 3; k++){
-            //     flush_cache_line(&ptr[k]);
-            // }
+            for(k = 0; k < datasize >> 3; k++){
+                flush_cache_line(&ptr[k]);
+            }
 #else
             for (int m = 0; m < 1000; m++) {
                 for(k = 0; k < datasize * 2 >> 3; k++){
@@ -309,7 +309,7 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
             << second_time / first_time << endl;
     }
     for (size_t i = 0; i < time_used.size() - 1; ++i) {
-        if (time_used[i] > 0.95) {
+        if (time_used[i] < time_used[i + 1]) {
             // cout << i << " " << 16 * pow(2, i) << endl;
             cache_data->test_cacheline = 16 * pow(2, i);
             break;
@@ -325,14 +325,14 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
 //                     ptr2[k] = k * (i % 5);
 //                 }
 //             }
-            
+
 //             next = (uintptr_t*)&ptr[0];
 //             for(k=0 ; k < w ; k++){
 //                 next = (uintptr_t*)*next;
 //             }
 //             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 //             next = (uintptr_t*)&ptr[n];
-//             for(k=0 ; k < w ; k++){ 
+//             for(k=0 ; k < w ; k++){
 //                 next = (uintptr_t*)*next;
 //             }
 //             clock_gettime(CLOCK_MONOTONIC_RAW, &end);

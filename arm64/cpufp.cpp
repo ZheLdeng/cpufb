@@ -462,7 +462,7 @@ static void cpufp_register_isa()
 
 #ifdef _ASIMD_
     reg_new_isa("asimd", "fmla.vs(f32,f32,f32)_latency", "FLOPS",
-        0x1000LL, 192LL, (void*)asimd_fmla2_vs_f32f32f32);
+        0x10000LL, 192LL, (void*)asimd_fmla2_vs_f32f32f32);
     reg_new_isa("asimd", "fmla.vs(f32,f32,f32)", "FLOPS",
         0x100000LL, 192LL, (void*)asimd_fmla_vs_f32f32f32);
     reg_new_isa("asimd", "fmla.vv(f32,f32,f32)_latency", "FLOPS",

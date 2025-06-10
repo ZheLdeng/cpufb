@@ -22,6 +22,7 @@
 #include<frequency.hpp>
 #include<multiple_issue.hpp>
 #include<common.hpp>
+#include <cmath>
 
 #ifdef __APPLE__
 #include<amx.hpp>

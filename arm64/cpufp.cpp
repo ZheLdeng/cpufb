@@ -35,6 +35,7 @@ using namespace std;
 extern vector<double> freq;
 static struct CacheData cache_size;
 static int64_t load_pl = 0;
+static int64_t g_latency = 0;
 typedef struct
 {
     string isa;
@@ -166,13 +167,21 @@ static void cpubm_arm64_one(tpool_t *tm,
     stringstream ss1, ss2;
 
     ss1 << setprecision(5) << perf << " " << perfUnit << item.dim;
-    vector<string> cont;
-    cont.resize(table.getCol());
-    cont[0] = item.isa;
-    cont[1] = item.type;
-    cont[2] = ss1.str();
-    cont[3] = to_string(IPC);
-    table.addOneItem(cont);
+    if (item.type.find("latency") != string::npos) {
+        g_latency = round(1 / IPC);
+    } else {
+        vector<string> cont;
+        cont.resize(table.getCol());
+        // cout << "table size = " << table.getCol() << endl;
+        cont[0] = item.isa;
+        cont[1] = item.type;
+        cont[2] = ss1.str();
+        cont[3] = to_string(IPC);
+        cont[4] = g_latency != 0 ? to_string(g_latency) : "-";
+        g_latency = 0;
+        table.addOneItem(cont);
+    }
+    
     // cout << "test fop end" << endl;
 }
 
@@ -299,20 +308,22 @@ static void init_table(vector<Table*> &tables)
 
     vector<string> ti;
 
-    ti.resize(4);
+    ti.resize(5);
     ti[0] = "Instruction Set";
     ti[1] = "Core Computation";
     ti[2] = "Peak Performance";
     ti[3] = "IPC";
+    ti[4] = "Latency";
     tables[0]->setColumnNum(ti.size());
     tables[0]->addOneItem(ti);
 
-    ti.resize(5);
+    ti.resize(6);
     ti[0] = "Cache Level";
     ti[1] = "Core Instruction";
     ti[2] = "Bandwith";
     ti[3] = "Theory Size";
     ti[4] = "Test Size";
+    ti[5] = "Latency";
     tables[1]->setColumnNum(ti.size());
     tables[1]->addOneItem(ti);
 
@@ -449,24 +460,34 @@ static void cpufp_register_isa()
 #endif
 
 #ifdef _ASIMD_
+    reg_new_isa("asimd", "fmla.vs(f32,f32,f32)_latency", "FLOPS",
+        0x1000LL, 192LL, (void*)asimd_fmla2_vs_f32f32f32);
     reg_new_isa("asimd", "fmla.vs(f32,f32,f32)", "FLOPS",
         0x100000LL, 192LL, (void*)asimd_fmla_vs_f32f32f32);
-    reg_new_isa("asimd", "fmla2.vs(f32,f32,f32)", "FLOPS",
-        0x100000LL, 192LL, (void*)asimd_fmla2_vs_f32f32f32);
+    reg_new_isa("asimd", "fmla.vv(f32,f32,f32)_latency", "FLOPS",
+        0x10000LL, 192LL, (void*)asimd_fmla2_vv_f32f32f32);
     reg_new_isa("asimd", "fmla.vv(f32,f32,f32)", "FLOPS",
         0x100000LL, 192LL, (void*)asimd_fmla_vv_f32f32f32);
+    reg_new_isa("asimd", "fmla.vs(f64,f64,f64)_latency", "FLOPS",
+        0x10000LL, 96LL, (void*)asimd_fmla2_vs_f64f64f64);
     reg_new_isa("asimd", "fmla.vs(f64,f64,f64)", "FLOPS",
         0x100000LL, 96LL, (void*)asimd_fmla_vs_f64f64f64);
+    reg_new_isa("asimd", "fmla.vv(f64,f64,f64)_latency", "FLOPS",
+        0x10000LL, 96LL, (void*)asimd_fmla2_vv_f64f64f64);
     reg_new_isa("asimd", "fmla.vv(f64,f64,f64)", "FLOPS",
         0x100000LL, 96LL, (void*)asimd_fmla_vv_f64f64f64);
 #endif
 #ifdef _SVE_
     reg_new_isa("asimd", "sve_fmla.vs(f32,f32,f32)", "FLOPS",
         0x100000LL, 12LL, (void*)sve_fmla_vs_f32f32f32);
+    reg_new_isa("asimd", "sve_fmla.vv(f32,f32,f32)_latency", "FLOPS",
+        0x10000LL, 12LL, (void*)sve_fmla2_vv_f32f32f32);
     reg_new_isa("asimd", "sve_fmla.vv(f32,f32,f32)", "FLOPS",
         0x100000LL, 12LL, (void*)sve_fmla_vv_f32f32f32);
     reg_new_isa("asimd", "sve_fmla.vs(f64,f64,f64)", "FLOPS",
         0x100000LL, 6LL, (void*)sve_fmla_vs_f64f64f64);
+    reg_new_isa("asimd", "sve_fmla.vv(f64,f64,f64)_latency", "FLOPS",
+        0x10000LL, 6LL, (void*)sve_fmla2_vv_f64f64f64);
     reg_new_isa("asimd", "sve_fmla.vv(f64,f64,f64)", "FLOPS",
         0x100000LL, 6LL, (void*)sve_fmla_vv_f64f64f64);
 #endif
@@ -474,6 +495,8 @@ static void cpufp_register_isa()
 #ifdef _SME_
     reg_new_isa("SME", "sme_bfmopa.vv(f32,bf16,bf16)", "FLOPS",
         0x100000LL, 96LL, (void*)sme_bfmopa_vv_f32bf16bf16);
+    reg_new_isa("SME", "sme_fmopa.vv(f32,f32,f32)_latency", "FLOPS",
+        0x10000LL, 48LL, (void*)sme_fmopa2_vv_f32f32f32);
     reg_new_isa("SME", "sme_fmopa.vv(f32,f32,f32)", "FLOPS",
         0x100000LL, 48LL, (void*)sme_fmopa_vv_f32f32f32);
     reg_new_isa("SME", "sme_fmopa.vv(f32,f16,f16)", "FLOPS",
@@ -519,11 +542,10 @@ static void cpufp_register_isa()
         0x100000LL, 12LL, (void*)sme2_fmla_vv_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla4.vv(f32,f32,f32)", "FLOPS",
         0x100000LL, 48LL, (void*)sme2_fmla4_vv_f32f32f32);
+    reg_new_isa("SME2", "sme2_fmla.mvv(f32,f32,f32)_latency", "FLOPS",
+        0x10000LL, 12LL, (void*)sme2_fmla2_mvv_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla.mvv(f32,f32,f32)", "FLOPS",
         0x100000LL, 12LL, (void*)sme2_fmla_mvv_f32f32f32);
-    reg_new_isa("SME2", "sme2_fmla2.mvv(f32,f32,f32)", "FLOPS",
-        0x100000LL, 12LL, (void*)sme2_fmla2_mvv_f32f32f32);
-        
     reg_new_isa("SME2", "sme2_fmla4.mvv(f32,f32,f32)", "FLOPS",
         0x100000LL, 48LL, (void*)sme2_fmla4_mvv_f32f32f32);
 
@@ -561,21 +583,22 @@ static void cpufp_register_isa()
 
 
 #ifdef _SMEf64_
+    reg_new_isa("SMEf64", "sme_fmopa2.vv(f64,f64,f64)_latency", "FLOPS",
+    0x100000LL, 48LL, (void*)sme_fmopa2_vv_f64f64f64);
     reg_new_isa("SMEf64", "sme_fmopa.vv(f64,f64,f64)", "FLOPS",
-        0x100000LL, 48LL, (void*)sme_fmopa_vv_f64f64f64);
-    reg_new_isa("SMEf64", "sme_fmopa2.vv(f64,f64,f64)", "FLOPS",
-        0x100000LL, 48LL, (void*)sme_fmopa2_vv_f64f64f64);
-
+        0x100000LL, 48LL, (void*)sme_fmopa_vv_f64f64f64); 
+    reg_new_isa("SMEf64", "sme2_fmla.vs(f64,f64,f64)_latency", "FLOPS",
+        0x100000LL, 6LL, (void*)sme2_fmla2_vs_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla.vs(f64,f64,f64)", "FLOPS",
         0x100000LL, 6LL, (void*)sme2_fmla_vs_f64f64f64);
-    reg_new_isa("SMEf64", "sme2_fmla2.vs(f64,f64,f64)", "FLOPS",
-        0x100000LL, 6LL, (void*)sme2_fmla2_vs_f64f64f64);
+    
     reg_new_isa("SMEf64", "sme2_fmla4.vs(f64,f64,f64)", "FLOPS",
+        
         0x100000LL, 24LL, (void*)sme2_fmla4_vs_f64f64f64);
+    reg_new_isa("SMEf64", "sme2_fmla.vv(f64,f64,f64)_latency", "FLOPS",
+        0x100000LL, 6LL, (void*)sme2_fmla2_vv_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla.vv(f64,f64,f64)", "FLOPS",
         0x100000LL, 6LL, (void*)sme2_fmla_vv_f64f64f64);
-    reg_new_isa("SMEf64", "sme2_fmla2.vv(f64,f64,f64)", "FLOPS",
-        0x100000LL, 6LL, (void*)sme2_fmla2_vv_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla4.vv(f64,f64,f64)", "FLOPS",
         0x100000LL, 24LL, (void*)sme2_fmla4_vv_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla.mvv(f64,f64,f64)", "FLOPS",
@@ -620,26 +643,26 @@ static void cpufp_register_isa()
         0x186A00LL, 32LL, (void*)sme_ld1w_kernel);
 #endif
 #ifdef __APPLE__
-    reg_new_isa("Apple amx", "fmla.mat(f16,f16,f16)", "FLOPS",
-        0x100000LL, 16384LL, (void*)fmla16_benchmark_mat);
-    reg_new_isa("Apple amx", "fmla.mat(f32,f32,f32)", "FLOPS",
-        0x100000LL, 4096LL, (void*)fmla32_benchmark_mat);
-    reg_new_isa("Apple amx", "fmla.mat(f64,f64,f64)", "FLOPS",
-        0x100000LL, 1024LL, (void*)fmla64_benchmark_mat);
+    // reg_new_isa("Apple amx", "fmla.mat(f16,f16,f16)", "FLOPS",
+    //     0x100000LL, 16384LL, (void*)fmla16_benchmark_mat);
+    // reg_new_isa("Apple amx", "fmla.mat(f32,f32,f32)", "FLOPS",
+    //     0x100000LL, 4096LL, (void*)fmla32_benchmark_mat);
+    // reg_new_isa("Apple amx", "fmla.mat(f64,f64,f64)", "FLOPS",
+    //     0x100000LL, 1024LL, (void*)fmla64_benchmark_mat);
 
-    reg_new_isa("Apple amx", "fmla.vec(f16,f16,f16)", "FLOPS",
-        0x100000LL, 512LL, (void*)fmla16_benchmark_vec);
-    reg_new_isa("Apple amx", "fmla.vec(f32,f32,f32)", "FLOPS",
-        0x100000LL, 256LL, (void*)fmla32_benchmark_vec);
-    reg_new_isa("Apple amx", "fmla.vec(f64,f64,f64)", "FLOPS",
-        0x100000LL, 128LL, (void*)fmla64_benchmark_vec);
+    // reg_new_isa("Apple amx", "fmla.vec(f16,f16,f16)", "FLOPS",
+    //     0x100000LL, 512LL, (void*)fmla16_benchmark_vec);
+    // reg_new_isa("Apple amx", "fmla.vec(f32,f32,f32)", "FLOPS",
+    //     0x100000LL, 256LL, (void*)fmla32_benchmark_vec);
+    // reg_new_isa("Apple amx", "fmla.vec(f64,f64,f64)", "FLOPS",
+    //     0x100000LL, 128LL, (void*)fmla64_benchmark_vec);
 
-    reg_new_isa("Apple amx", "mat.mat(i8,i8,i8)", "OPS",
-        0x100000LL, 65536LL, (void*)matint_i8i8_benchmark);
-    reg_new_isa("Apple amx", "fmla.mat(i8,i16,i16)", "OPS",
-        0x100000LL, 32768LL, (void*)matint_i8i16_benchmark);
-    reg_new_isa("Apple amx", "fmla.mat(i16,i16,i16)", "OPS",
-        0x100000LL, 16384LL, (void*)matint_i16i16_benchmark);
+    // reg_new_isa("Apple amx", "mat.mat(i8,i8,i8)", "OPS",
+    //     0x100000LL, 65536LL, (void*)matint_i8i8_benchmark);
+    // reg_new_isa("Apple amx", "fmla.mat(i8,i16,i16)", "OPS",
+    //     0x100000LL, 32768LL, (void*)matint_i8i16_benchmark);
+    // reg_new_isa("Apple amx", "fmla.mat(i16,i16,i16)", "OPS",
+    //     0x100000LL, 16384LL, (void*)matint_i16i16_benchmark);
 
     // reg_new_isa("Apple amx", "ldx 1 reg", "Byte/Cycle",
     //     0x186A00LL, 32LL, (void*)load_benchmark_1);   

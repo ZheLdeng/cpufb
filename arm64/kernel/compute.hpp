@@ -9,6 +9,9 @@ extern "C"
     void asimd_fmla_vs_f64f64f64(int64_t);
     void asimd_fmla_vv_f64f64f64(int64_t);
     void asimd_fmla2_vs_f32f32f32(int64_t);
+    void asimd_fmla2_vs_f64f64f64(int64_t);
+    void asimd_fmla2_vv_f32f32f32(int64_t);
+    void asimd_fmla2_vv_f64f64f64(int64_t);
 #endif
 
 #ifdef _ASIMD_HP_
@@ -44,11 +47,14 @@ extern "C"
     void sve_fmla_vv_f32f32f32(int64_t);
     void sve_fmla_vs_f64f64f64(int64_t);
     void sve_fmla_vv_f64f64f64(int64_t);
+    void sve_fmla2_vv_f32f32f32(int64_t);
+    void sve_fmla2_vv_f64f64f64(int64_t);
 #endif
 
 #ifdef _SME_
     void sme_bfmopa_vv_f32bf16bf16(int64_t);
     void sme_fmopa_vv_f32f32f32(int64_t);
+    void sme_fmopa2_vv_f32f32f32(int64_t);
     void sme_fmopa_vv_f32f16f16(int64_t);
     void sme_smopa_vv_i32i8i8(int64_t);
 #endif

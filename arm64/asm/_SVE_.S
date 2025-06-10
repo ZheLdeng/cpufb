@@ -66,7 +66,6 @@
     ret
 
 ############
-
     PROLOGUE sve_fmla_vv_f32f32f32
     preserve_caller_vec
     ptrue p0.s
@@ -172,7 +171,7 @@
     bne .sve_fmla_vv_f64f64f64L1
     restore_caller_vec
     ret
-
+############
 #void void load_ld1w_kernel(float*, int ,int);
     PROLOGUE load_ld1w_kernel
     mov x11, x2
@@ -198,4 +197,74 @@ inner_loop:
     subs x11, x11, #1
     bne outer_loop
 out:
+    ret
+############
+    PROLOGUE sve_fmla2_vv_f32f32f32
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_INIT
+.sve_fmla2_vv_f32f32f32L1:
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    subs x0, x0, #1
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    fmla z8.s, p0/m, z8.s, z8.s
+    bne .sve_fmla2_vv_f32f32f32L1
+    restore_caller_vec
+    ret
+
+############
+
+    PROLOGUE sve_fmla2_vv_f64f64f64
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_INIT
+.sve_fmla2_vv_f64f64f64L1:
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    subs x0, x0, #1
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    fmla z8.d, p0/m, z8.d, z8.d
+    bne .sve_fmla2_vv_f64f64f64L1
+    restore_caller_vec
     ret

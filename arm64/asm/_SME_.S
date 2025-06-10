@@ -104,6 +104,43 @@
     smstop
     ret
 ############
+    PROLOGUE sme_fmopa2_vv_f32f32f32
+    preserve_caller_vec
+    smstart
+    SME_INIT
+.sme_fmopa2_vv_f32f32f32L1:
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    subs x0, x0, #1
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
+    bne .sme_fmopa2_vv_f32f32f32L1
+    restore_caller_vec
+    smstop
+    ret
+############
+
+
     PROLOGUE sme_fmopa_vv_f32f16f16
     preserve_caller_vec
     smstart

@@ -24,6 +24,11 @@
 #ifdef _SVE_
 #include <arm_sve.h>
 #endif
+
+#ifdef __linux__
+#include <sys/syscall.h>
+#endif
+
 using namespace std;
 vector<double> freq;
 
@@ -66,7 +71,7 @@ static void* thread_function_freq(void* arg){
     int cpuid =* ((int *)arg);
     // Set affinity to the specified core
     cpu_set_t cpuset;
-    pid_t pid = gettid();
+    pid_t pid = syscall(SYS_gettid);
     CPU_ZERO(&cpuset);
     CPU_SET(cpuid, &cpuset);
     if (sched_setaffinity(pid, sizeof(cpu_set_t), &cpuset) < 0) {

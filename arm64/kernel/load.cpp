@@ -15,6 +15,10 @@
 #include <thread>
 #include <sys/sysctl.h>
 #endif
+
+#ifdef __linux__
+#include<sys/syscall.h>
+#endif
 //cacheline长度
 #define CACHE_LINE 64
 //测试WINDOW的数量上限
@@ -238,7 +242,7 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
     uintptr_t *ptr = (uintptr_t*)malloc(datasize);
     double first_time, second_time;
 #ifdef __linux__
-    pid_t pid = gettid();
+    pid_t pid = syscall(SYS_gettid);
     cpu_set_t mask;
     CPU_ZERO(&mask);
     CPU_SET(cpu_id, &mask);
@@ -340,7 +344,7 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     vector<double> time_used, validation, slope;
     int L1_size_num = 0;
 #ifdef __linux__
-    pid_t pid = gettid();
+    pid_t pid = syscall(SYS_gettid);
     cpu_set_t mask;
     CPU_ZERO(&mask);
     CPU_SET(cpu_id, &mask);
@@ -380,7 +384,7 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
     int i, j, k, w;
     int64_t loop_time = 1000000, test_time = 100;
 #ifdef __linux__
-    pid_t pid = gettid();
+    pid_t pid = syscall(SYS_gettid);
     cpu_set_t mask;
     CPU_ZERO(&mask);
     CPU_SET(cpu_id, &mask);

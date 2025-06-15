@@ -72,13 +72,7 @@ int get_cpuid()
 
     #ifdef HWCAP_SVE
     if (hwcaps & HWCAP_SVE) {
-        #ifdef HWCAP_SME
-        if (hwcaps & HWCAP_SME) {
-            // pass
-        }
-        #else
         printf("_SVE_\n");
-        #endif
     }
     #endif
 

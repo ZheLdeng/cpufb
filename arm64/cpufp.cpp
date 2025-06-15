@@ -376,6 +376,13 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
             printf(" %d", set_of_threads[i]);
         }
         printf("\n");
+#ifdef _SVE_
+        cout << " SVE : " << svcntb() << endl;
+#endif
+
+#ifdef _SME_
+        cout << "SME : " << rdsvl() * 8 << endl;
+#endif
         // set table head
         vector<Table*> tables;
         init_table(tables);
@@ -594,7 +601,7 @@ static void cpufp_register_isa()
         0x100000LL, 6LL, (void*)sme2_fmla_vs_f64f64f64);
     
     reg_new_isa("SMEf64", "sme2_fmla4.vs(f64,f64,f64)", "FLOPS",
-        
+
         0x100000LL, 24LL, (void*)sme2_fmla4_vs_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla.vv(f64,f64,f64)_latency", "FLOPS",
         0x100000LL, 6LL, (void*)sme2_fmla2_vv_f64f64f64);

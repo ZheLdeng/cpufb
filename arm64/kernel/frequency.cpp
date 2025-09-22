@@ -82,7 +82,10 @@ static void* thread_function_freq(void* arg){
     data->theory_freq = 0;
     int read_freq = 0;
     read_data(cpuid, &read_freq, "/cpufreq/scaling_max_freq");
-    // cout << "read " << endl;
+    if(read_freq == 0){
+        read_data(cpuid, &read_freq, "/cpufreq/cpuinfo_max_freq");
+    }
+    // cout << read_freq << endl;
     data->theory_freq = double(read_freq) * 1e-6;
     //warm up
     asimd_fmla_vv_f64f64f64(looptime);
@@ -92,8 +95,18 @@ static void* thread_function_freq(void* arg){
     pec.stop();
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    CPU_freq = (double)pec.get_cycle() / time_used;
+    long long cycles = pec.get_cycle();
+
+    
+
+    if(cycles == 0){
+        CPU_freq = read_freq * 1e3;
+    }else{
+        CPU_freq = (double)cycles / time_used;
+    }
+    
     data->caculate_freq = CPU_freq * 1e-9;
+    // cout << data->caculate_freq  << endl;
 #endif
 
     //  待补充 注释，warm up

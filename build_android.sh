@@ -86,4 +86,7 @@ $CXX $CFLAG -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load
 $CXX $CFLAG -static -O2 -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/access.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ
 set +x
 adb push cpufp /data/local/tmp/
-adb shell /data/local/tmp/cpufp --thread_pool=[0-7]
+adb shell taskset 1 /data/local/tmp/cpufp --thread_pool=[0]
+adb shell taskset 2 /data/local/tmp/cpufp --thread_pool=[1]
+adb shell taskset 8 /data/local/tmp/cpufp --thread_pool=[7]
+

@@ -388,6 +388,7 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
         init_table(tables);
         // cout << "start benchmark" << endl;
         get_cpu_freq(set_of_threads, *tables[3]);
+        // exit(0);
         // cout << "get freq" << endl;
         cpubm_arm_cache(set_of_threads, *tables[2]);
         // set thread pool

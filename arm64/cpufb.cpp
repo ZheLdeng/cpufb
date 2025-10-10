@@ -421,7 +421,7 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
     }
 }
 
-static void cpufp_register_isa()
+static void cpufb_register_isa()
 {
 
 
@@ -719,7 +719,7 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    cpufp_register_isa();
+    cpufb_register_isa();
 
     cpubm_do_bench(set_of_threads, idle_time);
 

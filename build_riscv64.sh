@@ -25,6 +25,6 @@ do
     as -march=rv64gcv_zfh -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
 done
 
-# compile cpufp
-g++ -O3 -march=rv64gcv_zfh -I$COMM $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
-g++ -O3 -z noexecstack -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ
+# compile cpufb
+g++ -O3 -march=rv64gcv_zfh -I$COMM $SIMD_MACRO -c $SRC/cpufb.cpp -o $BUILD_DIR/cpufb.o
+g++ -O3 -z noexecstack -pthread -o cpufb $BUILD_DIR/cpufb.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ

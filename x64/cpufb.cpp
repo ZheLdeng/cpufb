@@ -382,7 +382,7 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
     }
 }
 
-static void cpufp_register_isa()
+static void cpufb_register_isa()
 {
 #ifdef _AMX_TILE_
     init_tile_cfg();
@@ -510,7 +510,7 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    cpufp_register_isa();
+    cpufb_register_isa();
     cpubm_do_bench(set_of_threads, idle_time);
 
     return 0;

@@ -29,9 +29,9 @@ do
     g++ $CXX_STD -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
 done
 
-# compile cpufp
-g++ $CXX_STD -g -O2 -I$COMM -I$KERNEL $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
+# compile cpufb
+g++ $CXX_STD -g -O2 -I$COMM -I$KERNEL $SIMD_MACRO -c $SRC/cpufb.cpp -o $BUILD_DIR/cpufb.o
 g++ $CXX_STD -g -O0 -I$COMM -I$KERNEL $SIMD_MACRO -c $KERNEL/frequency.cpp -o $BUILD_DIR/frequency.o
 g++ $CXX_STD -g -O0 -I$COMM -I$KERNEL $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load.o
 
-g++ $CXX_STD -g -O2 -z noexecstack -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ
+g++ $CXX_STD -g -O2 -z noexecstack -pthread -o cpufb $BUILD_DIR/cpufb.o $BUILD_DIR/frequency.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ

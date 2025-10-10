@@ -75,11 +75,15 @@ if [ "$system_name" == "Darwin" ]; then
     # echo $AMX_KERNEL
 fi
 
-# compile cpufp
-$CXX $CFLAG -std=c++20 -O2 -I$COMM -I$KERNEL $MARCH_FLAG $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
+# compile cpufb
+if [ "$system_name" == "Darwin" ]; then
+    $CXX $CFLAG -std=c++20 -O0 -I$COMM -I$KERNEL $MARCH_FLAG $SIMD_MACRO -c $SRC/cpufb.cpp -o $BUILD_DIR/cpufb.o
+else
+    $CXX $CFLAG -std=c++20 -O2 -I$COMM -I$KERNEL $MARCH_FLAG $SIMD_MACRO -c $SRC/cpufb.cpp -o $BUILD_DIR/cpufb.o
+fi
 $CXX $CFLAG -O2 -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/frequency.cpp -o $BUILD_DIR/frequency.o
 $CXX $CFLAG -c $ASM/access.S -o $BUILD_DIR/access.o
 $CXX $CFLAG -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load.o
 
-$CXX $CFLAG -std=c++20 -O2 -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/access.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ $AMX_KERNEL
+$CXX $CFLAG -std=c++20 -O2 -pthread -o cpufb $BUILD_DIR/cpufb.o $BUILD_DIR/frequency.o $BUILD_DIR/access.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ $AMX_KERNEL
 set +x

@@ -242,7 +242,7 @@ static void parse_thread_pool(char *sets,
     }
 }
 
-static void cpufp_register_isa()
+static void cpufb_register_isa()
 {
 #ifdef _IME_
     reg_new_isa("ime", "vmadot(s32,s8,s8)", "OPS",
@@ -321,7 +321,7 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    cpufp_register_isa();
+    cpufb_register_isa();
     cpubm_do_bench(set_of_threads, idle_time);
 
     return 0;

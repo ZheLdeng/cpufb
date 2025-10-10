@@ -1,4 +1,4 @@
-# cpufp
+# cpufb
 
 This is a tool for benchmarking insturctions performance of cpu.It can automatically sense the local SIMD|DSA ISAs while compiling.
 
@@ -92,7 +92,7 @@ Use the build_android.sh. We used `aarch64-linux-gnu` as the default cross compi
 
 ## How to benchmark
 
-`./cpufp --thread_pool=[xxx] --idle_time=yyy`
+`./cpufb --thread_pool=[xxx] --idle_time=yyy`
 
   --thread_pool: [xxx] is the list of cpu thread to benchmarking, from setting affinities. Please reference the result of lstopo command. For example, [0,3,5-8,13-15].
 
@@ -106,7 +106,7 @@ Use the build_android.sh. We used `aarch64-linux-gnu` as the default cross compi
 For single core:
 
 <pre>
-$ ./cpufp --thread_pool=[0]
+$ ./cpufb --thread_pool=[0]
 Number Threads: 1
 Thread Pool Binding: 0
 --------------------------------------------------------------
@@ -136,7 +136,7 @@ Thread Pool Binding: 0
 For multi-cores:
 
 <pre>
-$ ./cpufp --thread_pool=[0-63]
+$ ./cpufb --thread_pool=[0-63]
 Number Threads: 64
 Thread Pool Binding: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63
 --------------------------------------------------------------
@@ -168,7 +168,7 @@ Thread Pool Binding: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 
 For single core:
 
 <pre>
-$ ./cpufp --thread_pool=[0]
+$ ./cpufb --thread_pool=[0]
 Number Threads: 1
 Thread Pool Binding: 0
 --------------------------------------------------------------
@@ -190,7 +190,7 @@ Thread Pool Binding: 0
 For multi-cores:
 
 <pre>
-$ ./cpufp --thread_pool=[0-7]
+$ ./cpufb --thread_pool=[0-7]
 Number Threads: 8
 Thread Pool Binding: 0 1 2 3 4 5 6 7
 --------------------------------------------------------------
@@ -214,7 +214,7 @@ Thread Pool Binding: 0 1 2 3 4 5 6 7
 For single core:
 
 <pre>
-$ ./cpufp --thread_pool=[0]
+$ ./cpufb --thread_pool=[0]
 Number Threads: 1
 Thread Pool Binding: 0
 --------------------------------------------------------------
@@ -231,7 +231,7 @@ Thread Pool Binding: 0
 For multi-cores:
 
 <pre>
-$ ./cpufp --thread_pool=[0,2,4,6,8,10,12,14]
+$ ./cpufb --thread_pool=[0,2,4,6,8,10,12,14]
 Number Threads: 8
 Thread Pool Binding: 0 2 4 6 8 10 12 14
 --------------------------------------------------------------
@@ -250,7 +250,7 @@ Thread Pool Binding: 0 2 4 6 8 10 12 14
 For single core:
 
 <pre>
-$ ./cpufp --thread_pool=[0]
+$ ./cpufb --thread_pool=[0]
 Number Threads: 1
 Thread Pool Binding: 0
 --------------------------------------------------------------
@@ -269,7 +269,7 @@ Thread Pool Binding: 0
 For multi_cores:
 
 <pre>
-$ ./cpufp --thread_pool=[0-3]
+$ ./cpufb --thread_pool=[0-3]
 Number Threads: 4
 Thread Pool Binding: 0 1 2 3
 --------------------------------------------------------------
@@ -292,7 +292,7 @@ Thread Pool Binding: 0 1 2 3
 For single core:
 
 <pre>
-$ ./cpufp --thread_pool=[0]
+$ ./cpufb --thread_pool=[0]
 Number Threads: 1
 Thread Pool Binding: 0
 -------------------------------------------------------------
@@ -307,7 +307,7 @@ Thread Pool Binding: 0
 For multi_cores:
 
 <pre>
-$ ./cpufp --thread_pool=[0-3]
+$ ./cpufb --thread_pool=[0-3]
 Number Threads: 4
 Thread Pool Binding: 0 1 2 3
 -------------------------------------------------------------
@@ -324,7 +324,7 @@ Thread Pool Binding: 0 1 2 3
 For single core:
 
 <pre>
-$ ./cpufp --thread_pool=[0]
+$ ./cpufb --thread_pool=[0]
 Number Threads: 1
 Thread Pool Binding: 0
 ----------------------------------------------------------------
@@ -345,7 +345,7 @@ Thread Pool Binding: 0
 For multi_cores:
 
 <pre>
-$ ./cpufp --thread_pool=[0-3]
+$ ./cpufb --thread_pool=[0-3]
 Number Threads: 4
 Thread Pool Binding: 0 1 2 3
 ----------------------------------------------------------------
@@ -368,7 +368,7 @@ Thread Pool Binding: 0 1 2 3
 For single core(Cortex-A55):
 
 <pre>
-$ ./cpufp --thread_pool=[0]
+$ ./cpufb --thread_pool=[0]
 Number Threads: 1
 Thread Pool Binding: 0
 ----------------------------------------------------------------
@@ -389,7 +389,7 @@ Thread Pool Binding: 0
 For multi_cores(Cortex-A55):
 
 <pre>
-$ ./cpufp --thread_pool=[0-3]
+$ ./cpufb --thread_pool=[0-3]
 Number Threads: 4
 Thread Pool Binding: 0 1 2 3
 ----------------------------------------------------------------
@@ -410,7 +410,7 @@ Thread Pool Binding: 0 1 2 3
 For single core(Cortex-A76):
 
 <pre>
-$ ./cpufp --thread_pool=[4]
+$ ./cpufb --thread_pool=[4]
 Number Threads: 1
 Thread Pool Binding: 4
 ----------------------------------------------------------------
@@ -431,7 +431,7 @@ Thread Pool Binding: 4
 For multi_cores(Cortex-A76):
 
 <pre>
-$ ./cpufp --thread_pool=[4-7]
+$ ./cpufb --thread_pool=[4-7]
 Number Threads: 4
 Thread Pool Binding: 4 5 6 7
 ----------------------------------------------------------------
@@ -454,7 +454,7 @@ Thread Pool Binding: 4 5 6 7
 For single core:
 
 <pre>
-$ ./cpufp --thread_pool=[0]
+$ ./cpufb --thread_pool=[0]
 Number Threads: 1
 Thread Pool Binding: 0
 -------------------------------------------------------------
@@ -469,7 +469,7 @@ Thread Pool Binding: 0
 For multi_cores:
 
 <pre>
-$ ./cpufp --thread_pool=[0-3]
+$ ./cpufb --thread_pool=[0-3]
 Number Threads: 4
 Thread Pool Binding: 0 1 2 3
 -------------------------------------------------------------
@@ -488,7 +488,7 @@ Thread Pool Binding: 0 1 2 3
 For single core:
 
 <pre>
-$ ./cpufp --thread_pool=[0]
+$ ./cpufb --thread_pool=[0]
 Number Threads: 1
 Thread Pool Binding: 0
 ---------------------------------------------------------------
@@ -510,7 +510,7 @@ Thread Pool Binding: 0
 For cluster 0(with ime extension), 4 cores:
 
 <pre>
-$ ./cpufp --thread_pool=[0-3]
+$ ./cpufb --thread_pool=[0-3]
 Number Threads: 4
 Thread Pool Binding: 0 1 2 3
 ---------------------------------------------------------------
@@ -532,7 +532,7 @@ Thread Pool Binding: 0 1 2 3
 For 2 clusters, 8 cores:
 
 <pre>
-$ ./cpufp --thread_pool=[0-7]
+$ ./cpufb --thread_pool=[0-7]
 Number Threads: 8
 Thread Pool Binding: 0 1 2 3 4 5 6 7
 ---------------------------------------------------------------

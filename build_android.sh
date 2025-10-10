@@ -77,16 +77,16 @@ do
     esac
 
 done
-# compile cpufp
-$CXX $CFLAG -O2 -I$COMM -I$KERNEL $MARCH_FLAG $SIMD_MACRO -c $SRC/cpufp.cpp -o $BUILD_DIR/cpufp.o
+# compile cpufb
+$CXX $CFLAG -O2 -I$COMM -I$KERNEL $MARCH_FLAG $SIMD_MACRO -c $SRC/cpufb.cpp -o $BUILD_DIR/cpufb.o
 $CXX $CFLAG -O2 -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/frequency.cpp -o $BUILD_DIR/frequency.o
 $CXX $CFLAG -c $ASM/access.S -o $BUILD_DIR/access.o
 $CXX $CFLAG -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load.o
 
-$CXX $CFLAG -static -O2 -pthread -o cpufp $BUILD_DIR/cpufp.o $BUILD_DIR/frequency.o $BUILD_DIR/access.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ
+$CXX $CFLAG -static -O2 -pthread -o cpufb $BUILD_DIR/cpufb.o $BUILD_DIR/frequency.o $BUILD_DIR/access.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ
 set +x
-adb push cpufp /data/local/tmp/
-adb shell taskset 1 /data/local/tmp/cpufp --thread_pool=[0]
-adb shell taskset 2 /data/local/tmp/cpufp --thread_pool=[1]
-adb shell taskset 8 /data/local/tmp/cpufp --thread_pool=[7]
+adb push cpufb /data/local/tmp/
+adb shell taskset 1 /data/local/tmp/cpufb --thread_pool=[0]
+adb shell taskset 2 /data/local/tmp/cpufb --thread_pool=[1]
+adb shell taskset 8 /data/local/tmp/cpufb --thread_pool=[7]
 

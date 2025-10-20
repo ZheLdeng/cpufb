@@ -13,21 +13,21 @@ typedef void (*test_func_t)(void);
 
 void test_asimd(void) {
     __asm__ volatile(
-        ".inst 0x1e601000\n"  // FMOV D0, #1.0
+        ".inst 0x1C61C608\n"  // FMOV D0, #1.0
         ::: "v0"
     );
 }
 
 void test_asimd_hp(void) {
     __asm__ volatile(
-        ".inst 0x1e23c000\n"  // FCVT H0, S0
+        ".inst 0x6E01E408\n"  // FCVT H0, S0
         ::: "v0"
     );
 }
 
 void test_asimd_dp(void) {
     __asm__ volatile(
-        ".inst 0x2e829420\n"  // UDOT v0.2s, v1.8b, v2.8b
+        ".inst 0x4E81A408\n"  // UDOT v0.2s, v1.8b, v2.8b
         ::: "v0"
     );
 }

@@ -10,27 +10,40 @@ typedef void (*test_func_t)(void);
 
 // 各个指令集的测试函数
 #ifdef __aarch64__
-
 void test_asimd(void) {
-    __asm__ volatile(
-        ".inst 0x1C61C608\n"  // FMOV D0, #1.0
-        ::: "v0"
-    );
+    // FMOV D0, #1.0
+    __asm__ volatile(".inst 0x1e601000" ::: "v0", "memory");
 }
 
 void test_asimd_hp(void) {
-    __asm__ volatile(
-        ".inst 0x6E01E408\n"  // FCVT H0, S0
-        ::: "v0"
-    );
+    // FCVT H0, S0 - 半精度浮点转换
+    __asm__ volatile(".inst 0x1e23c000" ::: "v0", "memory");
 }
 
 void test_asimd_dp(void) {
-    __asm__ volatile(
-        ".inst 0x4E81A408\n"  // UDOT v0.2s, v1.8b, v2.8b
-        ::: "v0"
-    );
+    // UDOT v0.2s, v1.8b, v2.8b - DotProd
+    __asm__ volatile(".inst 0x2e829420" ::: "v0", "memory");
 }
+// void test_asimd(void) {
+//     __asm__ volatile(
+//         ".inst 0x1C61C608\n"  // FMOV D0, #1.0
+//         ::: "v0"
+//     );
+// }
+
+// void test_asimd_hp(void) {
+//     __asm__ volatile(
+//         ".inst 0x6E01E408\n"  // FCVT H0, S0
+//         ::: "v0"
+//     );
+// }
+
+// void test_asimd_dp(void) {
+//     __asm__ volatile(
+//         ".inst 0x4E81A408\n"  // UDOT v0.2s, v1.8b, v2.8b
+//         ::: "v0"
+//     );
+// }
 
 void test_i8mm(void) {
     __asm__ volatile(
@@ -196,7 +209,7 @@ int get_cpuid(void) {
     if (sme_supported) {
         bool sme2_supported = test_instruction_in_child(test_sme2, "SME2");
         if (sme2_supported) {
-            test_instruction_in_child(test_sme_f64, "SME_F64");
+            test_instruction_in_child(test_sme_f64, "SMEf64");
         }
     }
     

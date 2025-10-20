@@ -1,0 +1,327 @@
+cmake_minimum_required(VERSION 3.15)
+project(cpufb CXX C ASM)
+
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Detect architecture
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64")
+    set(ARCH "x64")
+    set(CMAKE_CXX_STANDARD 11)  # x64 uses C++11
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+    if(ANDROID)
+        set(ARCH "arm64")
+        set(IS_ANDROID ON)
+    else()
+        set(ARCH "arm64")
+    endif()
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "riscv64")
+    set(ARCH "riscv64")
+else()
+    message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
+message(STATUS "Building for architecture: ${ARCH}")
+message(STATUS "System: ${CMAKE_SYSTEM_NAME}")
+
+# Set source directories
+set(SRC ${CMAKE_SOURCE_DIR}/${ARCH})
+set(ASM ${SRC}/asm)
+set(KERNEL ${SRC}/kernel)
+set(COMM ${CMAKE_SOURCE_DIR}/common)
+
+# Common source files
+set(COMMON_SOURCES
+    ${COMM}/table.cpp
+    ${COMM}/thread_pool.cpp
+)
+
+# Create common library
+add_library(common_lib OBJECT ${COMMON_SOURCES})
+target_compile_options(common_lib PRIVATE -O2)
+if(NOT ARCH STREQUAL "x64")
+    target_compile_options(common_lib PRIVATE -g -w)
+endif()
+
+# Build cpuid detector
+if(ARCH STREQUAL "x64")
+    add_executable(cpuid_detector ${SRC}/cpuid.c)
+elseif(ARCH STREQUAL "arm64")
+    if(IS_ANDROID)
+        add_executable(cpuid_detector ${SRC}/cpuid_android.c)
+        if(CMAKE_CROSSCOMPILING)
+            target_compile_definitions(cpuid_detector PRIVATE CROSS_COMPILE)
+            target_link_options(cpuid_detector PRIVATE -static)
+        endif()
+    else()
+        # Native ARM64 build (non-Android)
+        add_executable(cpuid_detector ${SRC}/cpuid.cpp)
+        target_compile_options(cpuid_detector PRIVATE -O2 -g -w)
+    endif()
+elseif(ARCH STREQUAL "riscv64")
+    add_executable(cpuid_detector ${SRC}/cpuid.c)
+endif()
+
+# Create a script to detect SIMD and generate build files
+set(DETECT_SCRIPT ${CMAKE_BINARY_DIR}/detect_and_build.cmake)
+file(WRITE ${DETECT_SCRIPT} "
+# Run cpuid detector
+execute_process(
+    COMMAND ${CMAKE_BINARY_DIR}/cpuid_detector
+    OUTPUT_VARIABLE SIMD_FEATURES_RAW
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE CPUID_RESULT
+)
+
+if(NOT CPUID_RESULT EQUAL 0)
+    message(FATAL_ERROR \"cpuid detection failed\")
+endif()
+
+# Parse SIMD features
+string(REPLACE \"\\n\" \";\" SIMD_LIST \"\${SIMD_FEATURES_RAW}\")
+
+# Generate simd_config.cmake
+set(CONFIG_FILE \"${CMAKE_BINARY_DIR}/simd_config.cmake\")
+file(WRITE \"\${CONFIG_FILE}\" \"# Auto-generated SIMD configuration\\n\")
+file(APPEND \"\${CONFIG_FILE}\" \"set(SIMD_FEATURES\")
+
+set(SIMD_DEFS \"\")
+set(MARCH_FLAG \"\")
+
+foreach(SIMD IN LISTS SIMD_LIST)
+    string(STRIP \"\${SIMD}\" SIMD)
+    if(SIMD)
+        file(APPEND \"\${CONFIG_FILE}\" \" \${SIMD}\")
+        list(APPEND SIMD_DEFS \"\${SIMD}\")
+        
+        # Determine MARCH_FLAG for ARM64
+        if(\"${ARCH}\" STREQUAL \"arm64\")
+            if(\"\${SIMD}\" MATCHES \".*_SME_.*\")
+                set(MARCH_FLAG \"-march=armv9-a+sme\")
+            elseif(\"\${SIMD}\" MATCHES \".*_SVE_.*\")
+                set(MARCH_FLAG \"-march=armv8-a+sve\")
+            endif()
+        endif()
+    endif()
+endforeach()
+
+file(APPEND \"\${CONFIG_FILE}\" \")\\n\")
+file(APPEND \"\${CONFIG_FILE}\" \"set(MARCH_FLAG \\\"\${MARCH_FLAG}\\\")\\n\")
+
+# Generate build script for SIMD objects
+file(APPEND \"\${CONFIG_FILE}\" \"\\n# SIMD object files\\n\")
+file(APPEND \"\${CONFIG_FILE}\" \"set(SIMD_OBJECTS\\n\")
+
+foreach(SIMD IN LISTS SIMD_LIST)
+    string(STRIP \"\${SIMD}\" SIMD)
+    if(SIMD)
+        set(ASM_FILE \"${ASM}/\${SIMD}.S\")
+        if(EXISTS \"\${ASM_FILE}\")
+            file(APPEND \"\${CONFIG_FILE}\" \"    ${CMAKE_BINARY_DIR}/\${SIMD}.o\\n\")
+        endif()
+    endif()
+endforeach()
+
+file(APPEND \"\${CONFIG_FILE}\" \")\\n\")
+
+message(STATUS \"SIMD features detected: \${SIMD_DEFS}\")
+message(STATUS \"MARCH_FLAG: \${MARCH_FLAG}\")
+")
+
+# Custom target to run detection
+add_custom_command(
+    OUTPUT ${CMAKE_BINARY_DIR}/simd_config.cmake
+    COMMAND ${CMAKE_COMMAND} -P ${DETECT_SCRIPT}
+    DEPENDS cpuid_detector ${DETECT_SCRIPT}
+    COMMENT "Detecting CPU SIMD features..."
+)
+
+add_custom_target(detect_simd ALL
+    DEPENDS ${CMAKE_BINARY_DIR}/simd_config.cmake
+)
+
+# Include the generated config if it exists
+if(EXISTS ${CMAKE_BINARY_DIR}/simd_config.cmake)
+    include(${CMAKE_BINARY_DIR}/simd_config.cmake)
+else()
+    # First time configuration - set empty lists
+    set(SIMD_FEATURES "")
+    set(SIMD_OBJECTS "")
+    set(MARCH_FLAG "")
+endif()
+
+# Generate build rules for SIMD assembly files
+foreach(SIMD ${SIMD_FEATURES})
+    set(ASM_FILE ${ASM}/${SIMD}.S)
+    set(OBJ_FILE ${CMAKE_BINARY_DIR}/${SIMD}.o)
+    
+    if(EXISTS ${ASM_FILE})
+        if(ARCH STREQUAL "x64")
+            add_custom_command(
+                OUTPUT ${OBJ_FILE}
+                COMMAND ${CMAKE_CXX_COMPILER} -c ${ASM_FILE} -o ${OBJ_FILE}
+                DEPENDS ${ASM_FILE}
+                COMMENT "Assembling ${SIMD}.S for x64"
+            )
+        elseif(ARCH STREQUAL "riscv64")
+            add_custom_command(
+                OUTPUT ${OBJ_FILE}
+                COMMAND as -march=rv64gcv_zfh -c ${ASM_FILE} -o ${OBJ_FILE}
+                DEPENDS ${ASM_FILE}
+                COMMENT "Assembling ${SIMD}.S for RISC-V"
+            )
+        elseif(ARCH STREQUAL "arm64")
+            set(ASM_FLAGS "")
+            if(SIMD STREQUAL "_BF16_")
+                set(ASM_FLAGS "-march=armv8.2-a+bf16")
+            elseif(SIMD STREQUAL "_I8MM_")
+                set(ASM_FLAGS "-march=armv8.2-a+i8mm")
+            elseif(SIMD STREQUAL "_SME_")
+                set(ASM_FLAGS "-march=armv9-a+sme")
+            elseif(SIMD STREQUAL "_SME2_")
+                set(ASM_FLAGS "-march=armv9-a+sme2")
+            elseif(SIMD STREQUAL "_SMEf64_")
+                set(ASM_FLAGS "-march=armv9-a+sme2+sme-f64f64")
+            elseif(SIMD STREQUAL "_SVE_")
+                set(ASM_FLAGS "-march=armv8-a+sve")
+            else()
+                set(ASM_FLAGS "-march=native")
+            endif()
+            
+            if(IS_ANDROID AND CMAKE_CROSSCOMPILING)
+                set(ASM_FLAGS "${ASM_FLAGS} -DCROSS_COMPILE")
+            endif()
+            
+            add_custom_command(
+                OUTPUT ${OBJ_FILE}
+                COMMAND ${CMAKE_C_COMPILER} ${ASM_FLAGS} -g -w -I${ASM} -c ${ASM_FILE} -o ${OBJ_FILE}
+                DEPENDS ${ASM_FILE}
+                COMMENT "Assembling ${SIMD}.S for ARM64"
+            )
+        endif()
+    endif()
+endforeach()
+
+# ARM64 access.S
+if(ARCH STREQUAL "arm64")
+    set(ACCESS_ASM ${ASM}/access.S)
+    set(ACCESS_OBJ ${CMAKE_BINARY_DIR}/access.o)
+    if(EXISTS ${ACCESS_ASM})
+        add_custom_command(
+            OUTPUT ${ACCESS_OBJ}
+            COMMAND ${CMAKE_CXX_COMPILER} -g -w -c ${ACCESS_ASM} -o ${ACCESS_OBJ}
+            DEPENDS ${ACCESS_ASM}
+            COMMENT "Assembling access.S"
+        )
+        list(APPEND SIMD_OBJECTS ${ACCESS_OBJ})
+    endif()
+endif()
+
+# Custom target for SIMD objects
+if(SIMD_OBJECTS)
+    add_custom_target(simd_objects DEPENDS ${SIMD_OBJECTS})
+endif()
+
+# Main cpufb sources
+set(CPUFB_SOURCES ${SRC}/cpufb.cpp)
+
+# Architecture-specific sources
+if(ARCH STREQUAL "x64" OR ARCH STREQUAL "arm64")
+    list(APPEND CPUFB_SOURCES 
+        ${KERNEL}/frequency.cpp
+        ${KERNEL}/load.cpp
+    )
+    
+    # macOS AMX support
+    if(ARCH STREQUAL "arm64" AND CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        set(AMX_KERNEL ${SRC}/kernel/amx_kernel.cpp)
+        if(EXISTS ${AMX_KERNEL})
+            add_library(amx_kernel OBJECT ${AMX_KERNEL})
+            target_compile_options(amx_kernel PRIVATE -O3 -g -w)
+            target_include_directories(amx_kernel PRIVATE ${COMM} ${KERNEL})
+            list(APPEND CPUFB_SOURCES $<TARGET_OBJECTS:amx_kernel>)
+        endif()
+    endif()
+endif()
+
+# Create main executable
+add_executable(cpufb ${CPUFB_SOURCES})
+
+# Add dependencies
+add_dependencies(cpufb detect_simd)
+if(TARGET simd_objects)
+    add_dependencies(cpufb simd_objects)
+endif()
+
+# Include directories
+target_include_directories(cpufb PRIVATE ${COMM} ${KERNEL})
+
+# Compile definitions
+foreach(DEF ${SIMD_FEATURES})
+    target_compile_definitions(cpufb PRIVATE ${DEF})
+endforeach()
+
+# Compile options
+if(ARCH STREQUAL "x64")
+    target_compile_options(cpufb PRIVATE -g -O2)
+    target_compile_options(common_lib PRIVATE -pthread)
+    set_source_files_properties(${KERNEL}/frequency.cpp PROPERTIES COMPILE_FLAGS "-g -O0")
+    set_source_files_properties(${KERNEL}/load.cpp PROPERTIES COMPILE_FLAGS "-g -O0")
+elseif(ARCH STREQUAL "riscv64")
+    target_compile_options(cpufb PRIVATE -O3 -march=rv64gcv_zfh)
+    target_compile_options(common_lib PRIVATE -O3)
+elseif(ARCH STREQUAL "arm64")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        target_compile_options(cpufb PRIVATE -O0 -g -w)
+    else()
+        target_compile_options(cpufb PRIVATE -O2 -g -w)
+    endif()
+    
+    if(MARCH_FLAG)
+        target_compile_options(cpufb PRIVATE ${MARCH_FLAG})
+    endif()
+    
+    set_source_files_properties(${KERNEL}/frequency.cpp PROPERTIES COMPILE_FLAGS "-O2 -g -w")
+endif()
+
+# Link libraries
+target_link_libraries(cpufb PRIVATE 
+    common_lib
+    ${SIMD_OBJECTS}
+    pthread
+)
+
+# Link options
+if(ARCH STREQUAL "x64" OR ARCH STREQUAL "riscv64")
+    target_link_options(cpufb PRIVATE -z noexecstack)
+elseif(IS_ANDROID AND CMAKE_CROSSCOMPILING)
+    target_link_options(cpufb PRIVATE -static)
+endif()
+
+# Android: add custom targets for pushing and running
+if(IS_ANDROID)
+    add_custom_target(push_android
+        COMMAND adb push $<TARGET_FILE:cpufb> /data/local/tmp/
+        DEPENDS cpufb
+        COMMENT "Pushing cpufb to Android device"
+    )
+    
+    add_custom_target(run_android_core0
+        COMMAND adb shell taskset 1 /data/local/tmp/cpufb --thread_pool=[0]
+        DEPENDS push_android
+        COMMENT "Running on core 0"
+    )
+    
+    add_custom_target(run_android_core1
+        COMMAND adb shell taskset 2 /data/local/tmp/cpufb --thread_pool=[1]
+        DEPENDS push_android
+        COMMENT "Running on core 1"
+    )
+    
+    add_custom_target(run_android_core7
+        COMMAND adb shell taskset 8 /data/local/tmp/cpufb --thread_pool=[7]
+        DEPENDS push_android
+        COMMENT "Running on core 7"
+    )
+endif()

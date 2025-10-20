@@ -29,7 +29,7 @@ $CXX $CFLAG -O2 -c $COMM/table.cpp -o $BUILD_DIR/table.o
 $CXX $CFLAG -O2 -pthread -c $COMM/thread_pool.cpp -o $BUILD_DIR/thread_pool.o
 
 # gen benchmark macro according to cpuid feature
-CXX -O2 $CFLAG $SRC/cpuid.cpp -o $BUILD_DIR/cpuid
+$CXX -O2 $CFLAG $SRC/cpuid.cpp -o $BUILD_DIR/cpuid
 MARCH_FLAG=" "
 SIMD_MACRO=" "
 SIMD_OBJ=" "

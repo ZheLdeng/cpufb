@@ -157,11 +157,11 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
         tm = tpool_create(set_of_threads);
 
         // traverse task list
-        cpubm_riscv64_one(sh, bm_list[0], table);
+        cpubm_riscv64_one(tm, bm_list[0], table);
         for (i = 1; i < bm_list.size(); i++)
         {
             sleep(idle_time);
-            cpubm_riscv64_one(sh, bm_list[i], table);
+            cpubm_riscv64_one(tm, bm_list[i], table);
         }
 
         table.print();
@@ -174,73 +174,6 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
     }
 }
 
-static void parse_thread_pool(char *sets,
-    vector<int> &set_of_threads)
-{
-    if (sets[0] != '[')
-    {
-        return;
-    }
-    int pos = 1;
-    int left = 0, right = 0;
-    int state = 0;
-    while (sets[pos] != ']' && sets[pos] != '\0')
-    {
-        if (state == 0)
-        {
-            if (sets[pos] >= '0' && sets[pos] <= '9')
-            {
-                left *= 10;
-                left += (int)(sets[pos] - '0');
-            }
-            else if (sets[pos] == ',')
-            {
-                set_of_threads.push_back(left);
-                left = 0;
-            }
-            else if (sets[pos] == '-')
-            {
-                right = 0;
-                state = 1;
-            }
-        }
-        else if (state == 1)
-        {
-            if (sets[pos] >= '0' && sets[pos] <= '9')
-            {
-                right *= 10;
-                right += (int)(sets[pos] - '0');
-            }
-            else if (sets[pos] == ',')
-            {
-                int i;
-                for (i = left; i <= right; i++)
-                {
-                    set_of_threads.push_back(i);
-                }
-                left = 0;
-                state = 0;
-            }
-        }
-        pos++;
-    }
-    if (sets[pos] != ']')
-    {
-        return;
-    }
-    if (state == 0)
-    {
-        set_of_threads.push_back(left);
-    }
-    else if (state == 1)
-    {
-        int i;
-        for (i = left; i <= right; i++)
-        {
-            set_of_threads.push_back(i);
-        }
-    }
-}
 
 static void cpufp_register_isa()
 {

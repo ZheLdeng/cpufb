@@ -101,7 +101,7 @@ static void cpubm_riscv64_one(tpool_t *tm,
     IPC = item.loop_time * 24 * tm->thread_num / time_used / freq[0] / 1e9;
     stringstream ss1, ss2;
     ss1 << setprecision(5) << perf << " " << perfUnit << item.dim;
-     if (item.type.find("latency") != string::npos) {
+    if (item.type.find("latency") != string::npos) {
         g_latency = round(1 / IPC);
     } else {
         vector<string> cont;

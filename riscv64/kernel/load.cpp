@@ -29,7 +29,7 @@
 #else
 #define WINDOW_SIZE 32 * 1024 * 1024
 #endif
-#define LOOP_TIME 1000
+#define LOOP_TIME 100000
 
 #define PTR_BITS 3
 #define MAX_RAND 100000
@@ -158,7 +158,7 @@ static inline double inloop(int group, int win_size)
     int64_t *ptr = (int64_t*)malloc(win_size);
     int read_stride = int(log(cacheline) / log(2));
     int total_num = (win_size) >> read_stride; //每cacheline byte 1个数
-    int test_time = 10; 
+    int test_time = 100; 
 
     vector<int64_t> ptr_index(total_num) ;
     for (i = 0; i < test_time; i++) {
@@ -177,7 +177,7 @@ static inline double inloop(int group, int win_size)
         usleep(1000);
     }
     free(ptr);
-    // printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
+    printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
 
     return sum_time_used / test_time;
 }
@@ -237,7 +237,7 @@ static inline int find_L1_point(const vector<double>& values)
 
 static inline void random_access(vector<double>& time_used) {
     for (int win_size = 2 * 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
-        cout << "win_size = " << win_size << " " << int(win_size * 1.5 / 1024 / 64) << endl;
+        // cout << "win_size = " << win_size << " " << int(win_size * 1.5 / 1024 / 64) << endl;
         time_used.push_back(inloop(max(1, win_size / 1024 / 64), win_size));
         time_used.push_back(inloop(max(1, int(win_size * 1.5 / 1024 / 64)), win_size * 1.5));
     }
@@ -348,10 +348,12 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     get_slope(time_used, slope);
     get_validation(time_used, validation);
     L1_size_num = find_L1_point(slope);
-    // cout << "L1_size = " << L1_size_num << endl;
+    cout << "L1_size = " << cache_size->theory_L1 << endl;
     cache_size->test_L1 = pow(2, L1_size_num / 2 + 1) * (1 + 0.5 * (L1_size_num % 2));
-    // cout << "L1_size == " << cache_size->test_L1 << endl;
+    cout << "L1_size test == " << cache_size->test_L1 << endl;
     cache_size->test_L2 = find_L2_point(validation, L1_size_num, validation.size());
+    cout << "L2_size = " << cache_size->theory_L2 << endl;
+    cout << "L2_size test == " << cache_size->test_L2 << endl;
 }
 
 void get_multiway(struct CacheData *cache_size, int cpu_id)

@@ -39,7 +39,7 @@
 
 using namespace std;
 
-double cacheline = 0;
+double cacheline = 64;
 #include <stdint.h>
 
 static inline void load_ptr(int looptime, int64_t *ptr)

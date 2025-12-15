@@ -123,6 +123,38 @@ static void cpubm_riscv64_one(tpool_t *tm,
     cont[2] = ss.str();
     table.addOneItem(cont);
 }
+static void cpubm_riscv64_load(cpubm_t &item, Table &table)
+{
+    double perf = 0;
+
+    vector<string> cont;
+    cont.resize(table.getCol());
+    //cout << "test load begin" << endl;
+
+    if (item.isa == "L1 Cache"){
+        load_pl = cache_size.test_L1;
+        cont[3] = to_string(cache_size.theory_L1) + " KB";
+        cont[4] = to_string(load_pl) + " KB";
+    } else if (item.isa == "L2 Cache"){
+        load_pl = cache_size.test_L2;
+        cont[3] = to_string(cache_size.theory_L2) + " KB";
+        cont[4] = to_string(load_pl) + " KB";
+    } 
+
+    perf = get_bandwith(item.loop_time, (double)load_pl, item.type, item.bench);
+
+    stringstream ss1;
+
+    ss1 << setprecision(5) << perf << " " << item.dim;
+
+    cont[0] = item.isa;
+    cont[1] = item.type;
+    cont[2] = ss1.str();
+   
+    table.addOneItem(cont);
+    //cout << "test load end" << endl;
+}
+
 
 static void cpubm_do_bench(std::vector<int> &set_of_threads,
     uint32_t idle_time)
@@ -157,11 +189,20 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
         tm = tpool_create(set_of_threads);
 
         // traverse task list
-        cpubm_riscv64_one(sh, bm_list[0], table);
+        cpubm_riscv64_one(tm, bm_list[0], table);
         for (i = 1; i < bm_list.size(); i++)
         {
             sleep(idle_time);
-            cpubm_riscv64_one(sh, bm_list[i], table);
+            if (bm_list[i].dim.find("OPS") != string::npos) {
+                cpubm_riscv64_one(tm, bm_list[i], table);
+            } else if (bm_list[i].dim.find("Byte/Cycle") != string::npos) {
+                cpubm_riscv64_load(bm_list[i], *tables[1]);
+            } else if (bm_list[i].dim.find("IPC") != string::npos) {
+                // cpubm_riscv64_multiple_issue(tm, bm_list[i], *tables[4]);
+            } else {
+                cout << "Wrong dimension !" << endl;
+                break;
+            }
         }
 
         table.print();
@@ -174,73 +215,6 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
     }
 }
 
-static void parse_thread_pool(char *sets,
-    vector<int> &set_of_threads)
-{
-    if (sets[0] != '[')
-    {
-        return;
-    }
-    int pos = 1;
-    int left = 0, right = 0;
-    int state = 0;
-    while (sets[pos] != ']' && sets[pos] != '\0')
-    {
-        if (state == 0)
-        {
-            if (sets[pos] >= '0' && sets[pos] <= '9')
-            {
-                left *= 10;
-                left += (int)(sets[pos] - '0');
-            }
-            else if (sets[pos] == ',')
-            {
-                set_of_threads.push_back(left);
-                left = 0;
-            }
-            else if (sets[pos] == '-')
-            {
-                right = 0;
-                state = 1;
-            }
-        }
-        else if (state == 1)
-        {
-            if (sets[pos] >= '0' && sets[pos] <= '9')
-            {
-                right *= 10;
-                right += (int)(sets[pos] - '0');
-            }
-            else if (sets[pos] == ',')
-            {
-                int i;
-                for (i = left; i <= right; i++)
-                {
-                    set_of_threads.push_back(i);
-                }
-                left = 0;
-                state = 0;
-            }
-        }
-        pos++;
-    }
-    if (sets[pos] != ']')
-    {
-        return;
-    }
-    if (state == 0)
-    {
-        set_of_threads.push_back(left);
-    }
-    else if (state == 1)
-    {
-        int i;
-        for (i = left; i <= right; i++)
-        {
-            set_of_threads.push_back(i);
-        }
-    }
-}
 
 static void cpufb_register_isa()
 {

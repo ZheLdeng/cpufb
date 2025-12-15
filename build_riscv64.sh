@@ -1,7 +1,12 @@
 SRC=riscv64
 ASM=$SRC/asm
+KERNEL=$SRC/kernel
 COMM=common
 BUILD_DIR=build_dir
+
+CXX=g++
+CC=gcc
+CFLAG="-g -w"
 
 # make directory
 if [ -d "$BUILD_DIR" ]; then
@@ -25,6 +30,9 @@ do
     as -march=rv64gcv_zfh -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
 done
 
+$CXX $CFLAG -O2 -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/frequency.cpp -o $BUILD_DIR/frequency.o
+$CXX $CFLAG -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load.o
+
 # compile cpufb
-g++ -O3 -march=rv64gcv_zfh -I$COMM $SIMD_MACRO -c $SRC/cpufb.cpp -o $BUILD_DIR/cpufb.o
-g++ -O3 -z noexecstack -pthread -o cpufb $BUILD_DIR/cpufb.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ
+$CXX $CFLAG -O3 -march=rv64gcv_zfh -I$KERNEL -I$COMM $SIMD_MACRO -c $SRC/cpufb.cpp -o $BUILD_DIR/cpufb.o
+$CXX $CFLAG -O3 -z noexecstack -pthread -o cpufb $BUILD_DIR/cpufb.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $BUILD_DIR/load.o $BUILD_DIR/frequency.o $SIMD_OBJ

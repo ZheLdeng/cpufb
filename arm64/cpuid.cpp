@@ -59,6 +59,14 @@ void test_bf16(void) {
     );
 }
 
+void test_fhm(void) {
+    // FMLAL v0.4s, v0.4h, v0.4h  (FEAT_FHM / fp16fml)
+    __asm__ volatile(
+        ".inst 0x4e20ec00\n"
+        ::: "v0"
+    );
+}
+
 void test_sve(void) {
     __asm__ volatile(
         ".inst 0x2518e3e0\n"  // PTRUE p0.b
@@ -66,9 +74,69 @@ void test_sve(void) {
     );
 }
 
+void test_sve_i8mm(void) {
+    // SMMLA z0.s, z0.b, z0.b -> 0x45009800
+    __asm__ volatile(
+        ".inst 0x45009800\n"
+        ::: "memory"
+    );
+}
+
+void test_sve_bf16(void) {
+    // BFMMLA z0.s, z0.h, z0.h -> 0x6464e400
+    __asm__ volatile(
+        ".inst 0x6464e400\n"
+        ::: "memory"
+    );
+}
+
+void test_sve_f32mm(void) {
+    // FMMLA z0.s, z0.s, z0.s  (FEAT_F32MM)
+    __asm__ volatile(
+        ".inst 0x64a0e400\n"
+        ::: "memory"
+    );
+}
+
+void test_sve_f64mm(void) {
+    // FMMLA z0.d, z0.d, z0.d  (FEAT_F64MM)
+    __asm__ volatile(
+        ".inst 0x64e0e400\n"
+        ::: "memory"
+    );
+}
+
+void test_sve_fp16_fmla(void) {
+    // FMLA z0.h, p0/m, z0.h, z0.h  (FEAT_SVE with FP16)
+    __asm__ volatile(
+        ".inst 0x65600000\n"
+        ::: "memory"
+    );
+}
+
 void test_sve2(void) {
     __asm__ volatile(
         ".inst 0x45004000\n"  // SADDLB z0.h, z0.b, z0.b
+        :::
+    );
+}
+
+void test_sme_f16f16(void) {
+    // FMOPA za0.h, p0/m, p0/m, z0.h, z0.h  (FEAT_SME_F16F16)
+    __asm__ volatile(
+        ".inst 0xd503477f\n"  // SMSTART
+        ".inst 0x81800008\n"
+        ".inst 0xd503467f\n"  // SMSTOP
+        :::
+    );
+}
+
+void test_sme_i16i32(void) {
+    // SMOPA za0.s, p0/m, p0/m, z0.h, z0.h  (FEAT_SME_I16I32 / part of sme-i16i64)
+    __asm__ volatile(
+        ".inst 0xd503477f\n"  // SMSTART
+        ".inst 0xa0800008\n"
+        ".inst 0xd503467f\n"  // SMSTOP
         :::
     );
 }
@@ -122,10 +190,18 @@ void test_bf16(void) {
 }
 
 void test_sve(void) { }
+void test_sve_i8mm(void) { }
+void test_sve_bf16(void) { }
 void test_sve2(void) { }
 void test_sme(void) { }
 void test_sme2(void) { }
 void test_sme_f64(void) { }
+void test_fhm(void) { }
+void test_sve_f32mm(void) { }
+void test_sve_f64mm(void) { }
+void test_sve_fp16_fmla(void) { }
+void test_sme_f16f16(void) { }
+void test_sme_i16i32(void) { }
 
 #endif
 
@@ -197,13 +273,19 @@ int get_cpuid(void) {
     test_instruction_in_child(test_asimd_dp, "ASIMD_DP");
     test_instruction_in_child(test_i8mm, "I8MM");
     test_instruction_in_child(test_bf16, "BF16");
-    
+    test_instruction_in_child(test_fhm, "FHM");
+
     // SVE 和 SVE2
     bool sve_supported = test_instruction_in_child(test_sve, "SVE");
     if (sve_supported) {
         test_instruction_in_child(test_sve2, "SVE2");
+        test_instruction_in_child(test_sve_i8mm, "SVE_I8MM");
+        test_instruction_in_child(test_sve_bf16, "SVE_BF16");
+        test_instruction_in_child(test_sve_f32mm, "SVE_F32MM");
+        test_instruction_in_child(test_sve_f64mm, "SVE_F64MM");
+        test_instruction_in_child(test_sve_fp16_fmla, "SVE_FP16_FMLA");
     }
-    
+
     // SME 系列
     bool sme_supported = test_instruction_in_child(test_sme, "SME");
     if (sme_supported) {
@@ -211,6 +293,8 @@ int get_cpuid(void) {
         if (sme2_supported) {
             test_instruction_in_child(test_sme_f64, "SMEf64");
         }
+        test_instruction_in_child(test_sme_f16f16, "SME_F16F16");
+        test_instruction_in_child(test_sme_i16i32, "SME_I16I32");
     }
     
     // 这些总是支持的（ARMv8基础特性）

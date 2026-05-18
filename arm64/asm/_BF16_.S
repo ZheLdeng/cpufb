@@ -3,6 +3,8 @@
 #void asimd_mmla_fp32bf16bf16(int64_t);
 #void asimd_dp2a_vs_fp32bf16bf16(int64_t);
 #void asimd_dp2a_vv_fp32bf16bf16(int64_t);
+#void asimd_bfmlalb_fp32bf16bf16(int64_t);
+#void asimd_bfmlalt_fp32bf16bf16(int64_t);
     PROLOGUE asimd_mmla_fp32bf16bf16
 
     preserve_caller_vec
@@ -102,4 +104,69 @@
     bne .asimd.dp2a.vv.fp32bf16bf16.L1
     restore_caller_vec
     ret
-
+###############################
+    PROLOGUE asimd_bfmlalb_fp32bf16bf16
+    preserve_caller_vec
+    INIT
+.asimd.bfmlalb.fp32bf16bf16.L1:
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v9.4s, v0.8h, v1.8h
+    bfmlalb v10.4s, v0.8h, v1.8h
+    bfmlalb v11.4s, v0.8h, v1.8h
+    bfmlalb v12.4s, v0.8h, v1.8h
+    bfmlalb v13.4s, v0.8h, v1.8h
+    bfmlalb v14.4s, v0.8h, v1.8h
+    bfmlalb v15.4s, v0.8h, v1.8h
+    bfmlalb v16.4s, v0.8h, v1.8h
+    bfmlalb v17.4s, v0.8h, v1.8h
+    bfmlalb v18.4s, v0.8h, v1.8h
+    bfmlalb v19.4s, v0.8h, v1.8h
+    subs x0, x0, #1
+    bfmlalb v20.4s, v0.8h, v1.8h
+    bfmlalb v21.4s, v0.8h, v1.8h
+    bfmlalb v22.4s, v0.8h, v1.8h
+    bfmlalb v23.4s, v0.8h, v1.8h
+    bfmlalb v24.4s, v0.8h, v1.8h
+    bfmlalb v25.4s, v0.8h, v1.8h
+    bfmlalb v26.4s, v0.8h, v1.8h
+    bfmlalb v27.4s, v0.8h, v1.8h
+    bfmlalb v28.4s, v0.8h, v1.8h
+    bfmlalb v29.4s, v0.8h, v1.8h
+    bfmlalb v30.4s, v0.8h, v1.8h
+    bfmlalb v31.4s, v0.8h, v1.8h
+    bne .asimd.bfmlalb.fp32bf16bf16.L1
+    restore_caller_vec
+    ret
+###############################
+    PROLOGUE asimd_bfmlalt_fp32bf16bf16
+    preserve_caller_vec
+    INIT
+.asimd.bfmlalt.fp32bf16bf16.L1:
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v9.4s, v0.8h, v1.8h
+    bfmlalt v10.4s, v0.8h, v1.8h
+    bfmlalt v11.4s, v0.8h, v1.8h
+    bfmlalt v12.4s, v0.8h, v1.8h
+    bfmlalt v13.4s, v0.8h, v1.8h
+    bfmlalt v14.4s, v0.8h, v1.8h
+    bfmlalt v15.4s, v0.8h, v1.8h
+    bfmlalt v16.4s, v0.8h, v1.8h
+    bfmlalt v17.4s, v0.8h, v1.8h
+    bfmlalt v18.4s, v0.8h, v1.8h
+    bfmlalt v19.4s, v0.8h, v1.8h
+    subs x0, x0, #1
+    bfmlalt v20.4s, v0.8h, v1.8h
+    bfmlalt v21.4s, v0.8h, v1.8h
+    bfmlalt v22.4s, v0.8h, v1.8h
+    bfmlalt v23.4s, v0.8h, v1.8h
+    bfmlalt v24.4s, v0.8h, v1.8h
+    bfmlalt v25.4s, v0.8h, v1.8h
+    bfmlalt v26.4s, v0.8h, v1.8h
+    bfmlalt v27.4s, v0.8h, v1.8h
+    bfmlalt v28.4s, v0.8h, v1.8h
+    bfmlalt v29.4s, v0.8h, v1.8h
+    bfmlalt v30.4s, v0.8h, v1.8h
+    bfmlalt v31.4s, v0.8h, v1.8h
+    bne .asimd.bfmlalt.fp32bf16bf16.L1
+    restore_caller_vec
+    ret

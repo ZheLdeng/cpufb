@@ -46,9 +46,16 @@ multiple issue.
 |SIMD|sve|Vector|fp32/fp64|From AWS Graviton3|
 |SIMD|asimd_hp|Vector|fp16|From Cortex-A75/A55|
 |SIMD|asimd_dp|Vector|int8|From Cortex-A75/A55|
+|SIMD|FHM (fp16fml)|Vector|fp32 ← fp16 × fp16|From Cortex-A75/A55, Apple M1+|
 |SIMD|bf16|Matrix|bf16|From Cortex-X2/A710/A510|
 |SIMD|i8mm|Matrix|int8|From Cortex-X2/A710/A510|
-|SIMD|i8mm|Matrix|int8|From Cortex-X2/A710/A510|
+|SIMD|sve_fp16|Vector|fp16|SVE cores with FP16 (Neoverse V1+/Graviton3+)|
+|SIMD|sve2|Vector|int16|From Graviton3+/Armv9-A (representative: sqrdmlah)|
+|SIMD|sve_f32mm|Matrix|fp32|From Neoverse V1+/Graviton3+/Grace|
+|SIMD|sve_f64mm|Matrix|fp64|From Neoverse V1+/Graviton3+/Grace|
+|DSA|sme (i8)|Matrix|int8 + mixed-sign (umopa/usmopa/sumopa)|Apple M4, Armv9.0-A SME|
+|DSA|sme_f16f16|Matrix|fp16 ← fp16 (fp16 ZA acc)|Armv9.2+ SME-F16F16 (req. SME2)|
+|DSA|sme_i16i32|Matrix|int32 ← int16 × int16|Armv9.2+ SME-I16I64 family (req. SME2)|
 
 ## Support riscv64 VECTOR ISA
 

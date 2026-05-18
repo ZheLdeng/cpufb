@@ -99,6 +99,14 @@ static void cpubm_arm64_one(tpool_t *tm,
 
     int i;
     int num_threads = tm->thread_num;
+
+    // 多次测量取最小值，降低线程池调度开销与单次抖动对结果的影响
+#ifdef __APPLE__
+    constexpr int kBenchRepeats = 5;
+#else
+    constexpr int kBenchRepeats = 20;
+#endif
+    double best_time = 1e30;
 #ifndef __APPLE__
      // warm up
     
@@ -107,12 +115,16 @@ static void cpubm_arm64_one(tpool_t *tm,
     }
     tpool_wait(tm);
 
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    for (i = 0; i < tm->thread_num; i++) {
-        tpool_add_work(tm, thread_func, (void*)&item);
+    for (int rep = 0; rep < kBenchRepeats; ++rep) {
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+        for (i = 0; i < tm->thread_num; i++) {
+            tpool_add_work(tm, thread_func, (void*)&item);
+        }
+        tpool_wait(tm);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        double t = get_time(&start, &end);
+        if (t < best_time) best_time = t;
     }
-    tpool_wait(tm);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 #else
      // warm up
     //pthread_set_qos_class_self_np( QOS_CLASS_UTILITY, 0 );
@@ -121,13 +133,17 @@ static void cpubm_arm64_one(tpool_t *tm,
         dispatch_group_async(tm->group, tm->queue, ^{((void(*)(int64_t))item.bench)(item.loop_time);});
     }
     dispatch_group_wait(tm->group, DISPATCH_TIME_FOREVER);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    for (int i = 0; i < tm->thread_num; ++i) {
-        // ((void(*)(int64_t))item.bench)(item.loop_time);
-        dispatch_group_async(tm->group, tm->queue, ^{((void(*)(int64_t))item.bench)(item.loop_time);});
+    for (int rep = 0; rep < kBenchRepeats; ++rep) {
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+        for (int j = 0; j < tm->thread_num; ++j) {
+            // ((void(*)(int64_t))item.bench)(item.loop_time);
+            dispatch_group_async(tm->group, tm->queue, ^{((void(*)(int64_t))item.bench)(item.loop_time);});
+        }
+        dispatch_group_wait(tm->group, DISPATCH_TIME_FOREVER);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        double t = get_time(&start, &end);
+        if (t < best_time) best_time = t;
     }
-    dispatch_group_wait(tm->group, DISPATCH_TIME_FOREVER);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 #endif
 
 
@@ -147,12 +163,15 @@ static void cpubm_arm64_one(tpool_t *tm,
     } else if (has_opa && first_param.find("64") != string::npos) {
         item.comp_pl = item.comp_pl * rdsvl() * rdsvl() / 8 / 8;
         //cout << type << " op = " << item.comp_pl << endl;
+    } else if (has_opa && first_param.find("16") != string::npos) {
+        // 16-bit accumulator (SME_F16F16): rows=cols=SVL/2.
+        item.comp_pl = item.comp_pl * rdsvl() * rdsvl() / 2 / 2;
     } else if (type.find("sme") != string::npos) {
         item.comp_pl = item.comp_pl * rdsvl();
         //cout << type << " is sme " << item.comp_pl <<endl;
     }
 #endif
-    time_used = get_time(&start, &end);
+    time_used = best_time;
     perf = item.loop_time * item.comp_pl * num_threads /
         time_used;
     if (perf > 1e12)
@@ -423,267 +442,412 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
 
 static void cpufb_register_isa()
 {
-
+#ifdef __APPLE__
+    constexpr int64_t kComputeLoopTime = 0x40000LL;
+    constexpr int64_t kLatencyLoopTime = 0x4000LL;
+    constexpr int64_t kLoadLoopTime = 0x40000LL;
+    constexpr int64_t kMultiIssueLoopTime = 0x40000LL;
+#else
+    constexpr int64_t kComputeLoopTime = 0x100000LL;
+    constexpr int64_t kLatencyLoopTime = 0x10000LL;
+    constexpr int64_t kLoadLoopTime = 0x186A00LL;
+    constexpr int64_t kMultiIssueLoopTime = 0x186A00LL;
+#endif
 
 #ifdef _I8MM_
     reg_new_isa("i8mm", "mmla(s32,s8,s8)", "OPS",
-        0x100000LL, 1536LL, (void*)asimd_mmla_s32s8s8);
+        kComputeLoopTime, 1536LL, (void*)asimd_mmla_s32s8s8);
     reg_new_isa("i8mm", "mmla(u32,u8,u8)", "OPS",
-        0x100000LL, 1536LL, (void*)asimd_mmla_u32u8u8);
+        kComputeLoopTime, 1536LL, (void*)asimd_mmla_u32u8u8);
     reg_new_isa("i8mm", "mmla(s32,u8,s8)", "OPS",
-        0x100000LL, 1536LL, (void*)asimd_mmla_s32u8s8);
+        kComputeLoopTime, 1536LL, (void*)asimd_mmla_s32u8s8);
 
     reg_new_isa("i8mm", "dp4a.vs(s32,s8,u8)", "OPS",
-        0x100000LL, 768LL, (void*)asimd_dp4a_vs_s32s8u8);
+        kComputeLoopTime, 768LL, (void*)asimd_dp4a_vs_s32s8u8);
     reg_new_isa("i8mm", "dp4a.vs(s32,u8,s8)", "OPS",
-        0x100000LL, 768LL, (void*)asimd_dp4a_vs_s32u8s8);
+        kComputeLoopTime, 768LL, (void*)asimd_dp4a_vs_s32u8s8);
     reg_new_isa("i8mm", "dp4a.vv(s32,u8,s8)", "OPS",
-        0x100000LL, 768LL, (void*)asimd_dp4a_vv_s32u8s8);
+        kComputeLoopTime, 768LL, (void*)asimd_dp4a_vv_s32u8s8);
 #endif
 
 #ifdef _ASIMD_DP_
     reg_new_isa("asimd_dp", "dp4a.vs(s32,s8,s8)", "OPS",
-        0x100000LL, 768LL, (void*)asimd_dp4a_vs_s32s8s8);
+        kComputeLoopTime, 768LL, (void*)asimd_dp4a_vs_s32s8s8);
     reg_new_isa("asimd_dp", "dp4a.vv(s32,s8,s8)", "OPS",
-        0x100000LL, 768LL, (void*)asimd_dp4a_vv_s32s8s8);
+        kComputeLoopTime, 768LL, (void*)asimd_dp4a_vv_s32s8s8);
     reg_new_isa("asimd_dp", "dp4a.vs(u32,u8,u8)", "OPS",
-        0x100000LL, 768LL, (void*)asimd_dp4a_vs_u32u8u8);
+        kComputeLoopTime, 768LL, (void*)asimd_dp4a_vs_u32u8u8);
     reg_new_isa("asimd_dp", "dp4a.vv(u32,u8,u8)", "OPS",
-        0x100000LL, 768LL, (void*)asimd_dp4a_vv_u32u8u8);
+        kComputeLoopTime, 768LL, (void*)asimd_dp4a_vv_u32u8u8);
 #endif
 
 #ifdef _BF16_
     reg_new_isa("bf16", "mmla(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 768LL, (void*)asimd_mmla_fp32bf16bf16);
+        kComputeLoopTime, 768LL, (void*)asimd_mmla_fp32bf16bf16);
     reg_new_isa("bf16", "dp2a.vs(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 384LL, (void*)asimd_dp2a_vs_fp32bf16bf16);
+        kComputeLoopTime, 384LL, (void*)asimd_dp2a_vs_fp32bf16bf16);
     reg_new_isa("bf16", "dp2a.vv(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 384LL, (void*)asimd_dp2a_vv_fp32bf16bf16);
+        kComputeLoopTime, 384LL, (void*)asimd_dp2a_vv_fp32bf16bf16);
+    reg_new_isa("bf16", "bfmlalb(f32,bf16,bf16)", "FLOPS",
+        kComputeLoopTime, 192LL, (void*)asimd_bfmlalb_fp32bf16bf16);
+    reg_new_isa("bf16", "bfmlalt(f32,bf16,bf16)", "FLOPS",
+        kComputeLoopTime, 192LL, (void*)asimd_bfmlalt_fp32bf16bf16);
+#endif
+
+#ifdef _FHM_
+    reg_new_isa("FHM", "fmlal.vv(f32,f16,f16)", "FLOPS",
+        kComputeLoopTime, 192LL, (void*)asimd_fmlal_vv_f32f16f16);
+    reg_new_isa("FHM", "fmlal.vv(f32,f16,f16)_latency", "FLOPS",
+        kLatencyLoopTime, 192LL, (void*)asimd_fmlal_vv_f32f16f16_latency);
+    reg_new_isa("FHM", "fmlal2.vv(f32,f16,f16)", "FLOPS",
+        kComputeLoopTime, 192LL, (void*)asimd_fmlal2_vv_f32f16f16);
+    reg_new_isa("FHM", "fmlal2.vv(f32,f16,f16)_latency", "FLOPS",
+        kLatencyLoopTime, 192LL, (void*)asimd_fmlal2_vv_f32f16f16_latency);
+    reg_new_isa("FHM", "fmlal.vs(f32,f16,f16)", "FLOPS",
+        kComputeLoopTime, 192LL, (void*)asimd_fmlal_vs_f32f16f16);
+    reg_new_isa("FHM", "fmlal_pair.vv(f32,f16,f16)", "FLOPS",
+        kComputeLoopTime, 192LL, (void*)asimd_fmlal_pair_vv_f32f16f16);
 #endif
 
 #ifdef _ASIMD_HP_
     reg_new_isa("asimd_hp", "fmla.vs(fp16,fp16,fp16)", "FLOPS",
-        0x100000LL, 384LL, (void*)asimd_fmla_vs_fp16fp16fp16);
+        kComputeLoopTime, 384LL, (void*)asimd_fmla_vs_fp16fp16fp16);
     reg_new_isa("asimd_hp", "fmla.vv(fp16,fp16,fp16)", "FLOPS",
-        0x100000LL, 384LL, (void*)asimd_fmla_vv_fp16fp16fp16);
+        kComputeLoopTime, 384LL, (void*)asimd_fmla_vv_fp16fp16fp16);
 #endif
 
 #ifdef _ASIMD_
     reg_new_isa("asimd", "fmla.vs(f32,f32,f32)_latency", "FLOPS",
-        0x10000LL, 192LL, (void*)asimd_fmla2_vs_f32f32f32);
+        kLatencyLoopTime, 192LL, (void*)asimd_fmla2_vs_f32f32f32);
     reg_new_isa("asimd", "fmla.vs(f32,f32,f32)", "FLOPS",
-        0x100000LL, 192LL, (void*)asimd_fmla_vs_f32f32f32);
+        kComputeLoopTime, 192LL, (void*)asimd_fmla_vs_f32f32f32);
     reg_new_isa("asimd", "fmla.vv(f32,f32,f32)_latency", "FLOPS",
-        0x10000LL, 192LL, (void*)asimd_fmla2_vv_f32f32f32);
+        kLatencyLoopTime, 192LL, (void*)asimd_fmla2_vv_f32f32f32);
     reg_new_isa("asimd", "fmla.vv(f32,f32,f32)", "FLOPS",
-        0x100000LL, 192LL, (void*)asimd_fmla_vv_f32f32f32);
+        kComputeLoopTime, 192LL, (void*)asimd_fmla_vv_f32f32f32);
     reg_new_isa("asimd", "fmla.vs(f64,f64,f64)_latency", "FLOPS",
-        0x10000LL, 96LL, (void*)asimd_fmla2_vs_f64f64f64);
+        kLatencyLoopTime, 96LL, (void*)asimd_fmla2_vs_f64f64f64);
     reg_new_isa("asimd", "fmla.vs(f64,f64,f64)", "FLOPS",
-        0x100000LL, 96LL, (void*)asimd_fmla_vs_f64f64f64);
+        kComputeLoopTime, 96LL, (void*)asimd_fmla_vs_f64f64f64);
     reg_new_isa("asimd", "fmla.vv(f64,f64,f64)_latency", "FLOPS",
-        0x10000LL, 96LL, (void*)asimd_fmla2_vv_f64f64f64);
+        kLatencyLoopTime, 96LL, (void*)asimd_fmla2_vv_f64f64f64);
     reg_new_isa("asimd", "fmla.vv(f64,f64,f64)", "FLOPS",
-        0x100000LL, 96LL, (void*)asimd_fmla_vv_f64f64f64);
+        kComputeLoopTime, 96LL, (void*)asimd_fmla_vv_f64f64f64);
+    reg_new_isa("asimd", "hybrid_fp32_mla_6x16", "FLOPS",
+        kComputeLoopTime, 768LL, (void*)asimd_hybrid_fp32_mla_6x16);
 #endif
 #ifdef _SVE_
     reg_new_isa("asimd", "sve_fmla.vs(f32,f32,f32)", "FLOPS",
-        0x100000LL, 12LL, (void*)sve_fmla_vs_f32f32f32);
+        kComputeLoopTime, 12LL, (void*)sve_fmla_vs_f32f32f32);
     reg_new_isa("asimd", "sve_fmla.vv(f32,f32,f32)_latency", "FLOPS",
-        0x10000LL, 12LL, (void*)sve_fmla2_vv_f32f32f32);
+        kLatencyLoopTime, 12LL, (void*)sve_fmla2_vv_f32f32f32);
     reg_new_isa("asimd", "sve_fmla.vv(f32,f32,f32)", "FLOPS",
-        0x100000LL, 12LL, (void*)sve_fmla_vv_f32f32f32);
+        kComputeLoopTime, 12LL, (void*)sve_fmla_vv_f32f32f32);
     reg_new_isa("asimd", "sve_fmla.vs(f64,f64,f64)", "FLOPS",
-        0x100000LL, 6LL, (void*)sve_fmla_vs_f64f64f64);
+        kComputeLoopTime, 6LL, (void*)sve_fmla_vs_f64f64f64);
     reg_new_isa("asimd", "sve_fmla.vv(f64,f64,f64)_latency", "FLOPS",
-        0x10000LL, 6LL, (void*)sve_fmla2_vv_f64f64f64);
+        kLatencyLoopTime, 6LL, (void*)sve_fmla2_vv_f64f64f64);
     reg_new_isa("asimd", "sve_fmla.vv(f64,f64,f64)", "FLOPS",
-        0x100000LL, 6LL, (void*)sve_fmla_vv_f64f64f64);
+        kComputeLoopTime, 6LL, (void*)sve_fmla_vv_f64f64f64);
+#endif
+
+#ifdef _SVE_I8MM_
+    reg_new_isa("sve_i8mm", "sve_mmla(s32,s8,s8)", "OPS",
+        kComputeLoopTime, 96LL, (void*)sve_mmla_s32s8s8);
+    reg_new_isa("sve_i8mm", "sve_mmla(u32,u8,u8)", "OPS",
+        kComputeLoopTime, 96LL, (void*)sve_mmla_u32u8u8);
+    reg_new_isa("sve_i8mm", "sve_mmla(s32,u8,s8)", "OPS",
+        kComputeLoopTime, 96LL, (void*)sve_mmla_s32u8s8);
+    reg_new_isa("sve_i8mm", "sve_dp4a.vv(s32,s8,s8)", "OPS",
+        kComputeLoopTime, 12LL, (void*)sve_dp4a_vv_s32s8s8);
+    reg_new_isa("sve_i8mm", "sve_dp4a.vv(s32,u8,u8)", "OPS",
+        kComputeLoopTime, 12LL, (void*)sve_dp4a_vv_s32u8u8);
+    reg_new_isa("sve_i8mm", "sve_dp4a.vv(s32,u8,s8)", "OPS",
+        kComputeLoopTime, 12LL, (void*)sve_dp4a_vv_s32u8s8);
+#endif
+
+#ifdef _SVE_BF16_
+    reg_new_isa("sve_bf16", "sve_bfmmla(f32,bf16,bf16)", "FLOPS",
+        kComputeLoopTime, 48LL, (void*)sve_bfmmla_f32bf16bf16);
+    reg_new_isa("sve_bf16", "sve_bfdot.vv(f32,bf16,bf16)", "FLOPS",
+        kComputeLoopTime, 24LL, (void*)sve_bfdot_vv_f32bf16bf16);
+    reg_new_isa("sve_bf16", "sve_bfdot.vs(f32,bf16,bf16)", "FLOPS",
+        kComputeLoopTime, 24LL, (void*)sve_bfdot_vs_f32bf16bf16);
+#endif
+
+#ifdef _SVE_F32MM_
+    // 24 inst * 32 FLOPs/inst (at VL=128b) / 16 (svcntb scaling unit) = 48
+    reg_new_isa("sve_f32mm", "sve_fmmla(f32,f32,f32)", "FLOPS",
+        kComputeLoopTime, 48LL, (void*)sve_fmmla_f32f32f32);
+    reg_new_isa("sve_f32mm", "sve_fmmla(f32,f32,f32)_latency", "FLOPS",
+        kLatencyLoopTime, 48LL, (void*)sve_fmmla_f32f32f32_latency);
+#endif
+
+#ifdef _SVE_F64MM_
+    // 24 inst * 8 FLOPs/inst (at VL=128b) / 16 = 12
+    reg_new_isa("sve_f64mm", "sve_fmmla(f64,f64,f64)", "FLOPS",
+        kComputeLoopTime, 12LL, (void*)sve_fmmla_f64f64f64);
+    reg_new_isa("sve_f64mm", "sve_fmmla(f64,f64,f64)_latency", "FLOPS",
+        kLatencyLoopTime, 12LL, (void*)sve_fmmla_f64f64f64_latency);
+#endif
+
+#ifdef _SVE_FP16_FMLA_
+    // 24 inst * 16 FLOPs/inst (at VL=128b, 8 fp16 lanes * 2 ops) / 16 = 24
+    reg_new_isa("sve_fp16", "sve_fmla.vv(f16,f16,f16)", "FLOPS",
+        kComputeLoopTime, 24LL, (void*)sve_fmla_vv_f16f16f16);
+    reg_new_isa("sve_fp16", "sve_fmla.vs(f16,f16,f16)", "FLOPS",
+        kComputeLoopTime, 24LL, (void*)sve_fmla_vs_f16f16f16);
+    reg_new_isa("sve_fp16", "sve_fmla.vv(f16,f16,f16)_latency", "FLOPS",
+        kLatencyLoopTime, 24LL, (void*)sve_fmla_vv_f16f16f16_latency);
+#endif
+
+#ifdef _SVE2_
+    // 24 inst * 16 OPs/inst (at VL=128b, 8 i16 lanes * 2 ops) / 16 = 24
+    reg_new_isa("sve2", "sve2_sqrdmlah.vv(s16,s16,s16)", "OPS",
+        kComputeLoopTime, 24LL, (void*)sve2_sqrdmlah_vv_s16s16s16);
+    reg_new_isa("sve2", "sve2_sqrdmlah.vv(s16,s16,s16)_latency", "OPS",
+        kLatencyLoopTime, 24LL, (void*)sve2_sqrdmlah_vv_s16s16s16_latency);
 #endif
 
 #ifdef _SME_
     reg_new_isa("SME", "sme_bfmopa.vv(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 96LL, (void*)sme_bfmopa_vv_f32bf16bf16);
+        kComputeLoopTime, 96LL, (void*)sme_bfmopa_vv_f32bf16bf16);
     reg_new_isa("SME", "sme_fmopa.vv(f32,f32,f32)_latency", "FLOPS",
-        0x10000LL, 48LL, (void*)sme_fmopa2_vv_f32f32f32);
+        kLatencyLoopTime, 48LL, (void*)sme_fmopa2_vv_f32f32f32);
     reg_new_isa("SME", "sme_fmopa.vv(f32,f32,f32)", "FLOPS",
-        0x100000LL, 48LL, (void*)sme_fmopa_vv_f32f32f32);
+        kComputeLoopTime, 48LL, (void*)sme_fmopa_vv_f32f32f32);
     reg_new_isa("SME", "sme_fmopa.vv(f32,f16,f16)", "FLOPS",
-        0x100000LL, 96LL, (void*)sme_fmopa_vv_f32f16f16);
+        kComputeLoopTime, 96LL, (void*)sme_fmopa_vv_f32f16f16);
     reg_new_isa("SME", "sme_smopa.vv(i32,i8,i8)", "FLOPS",
-        0x100000LL, 192LL, (void*)sme_smopa_vv_i32i8i8);
+        kComputeLoopTime, 192LL, (void*)sme_smopa_vv_i32i8i8);
+    reg_new_isa("SME", "sme_umopa.vv(u32,u8,u8)", "FLOPS",
+        kComputeLoopTime, 192LL, (void*)sme_umopa_vv_u32u8u8);
+    reg_new_isa("SME", "sme_usmopa.vv(s32,u8,s8)", "FLOPS",
+        kComputeLoopTime, 192LL, (void*)sme_usmopa_vv_s32u8s8);
+    reg_new_isa("SME", "sme_sumopa.vv(s32,s8,u8)", "FLOPS",
+        kComputeLoopTime, 192LL, (void*)sme_sumopa_vv_s32s8u8);
     reg_new_isa("SME_MULTI_ISSUE", "ldr/fmopa", "IPC",
         0x186A0LL, 40LL, (void*)sme_multiple_issue);
 #endif
 
+#ifdef _SME_F16F16_
+    // f16 acc: rows=cols=SVL/2, per inst = SVL^2/2 FLOPs.
+    // Scaling rule (16 branch): comp_pl * SVL^2 / 4. Register 48 (=24*2).
+    reg_new_isa("SME_F16F16", "sme_fmopa.vv(f16,f16,f16)", "FLOPS",
+        kComputeLoopTime, 48LL, (void*)sme_fmopa_vv_f16f16f16);
+    reg_new_isa("SME_F16F16", "sme_fmopa.vv(f16,f16,f16)_latency", "FLOPS",
+        kLatencyLoopTime, 48LL, (void*)sme_fmopa2_vv_f16f16f16);
+#endif
+
+#ifdef _SME_I16I32_
+    // i32 acc, i16 elems: rows=cols=SVL/4, per inst = SVL^2/4 OPs.
+    // Scaling rule (32 branch): comp_pl * SVL^2 / 16. Register 96 (=24*4).
+    reg_new_isa("SME_I16I32", "sme_smopa.vv(i32,i16,i16)", "OPS",
+        kComputeLoopTime, 96LL, (void*)sme_smopa_vv_i32i16i16);
+    reg_new_isa("SME_I16I32", "sme_smopa.vv(i32,i16,i16)_latency", "OPS",
+        kLatencyLoopTime, 96LL, (void*)sme_smopa2_vv_i32i16i16);
+    reg_new_isa("SME_I16I32", "sme_umopa.vv(i32,i16,i16)", "OPS",
+        kComputeLoopTime, 96LL, (void*)sme_umopa_vv_i32i16i16);
+    reg_new_isa("SME_I16I32", "sme_umopa.vv(i32,i16,i16)_latency", "OPS",
+        kLatencyLoopTime, 96LL, (void*)sme_umopa2_vv_i32i16i16);
+#endif
+
 #ifdef _SME2_
     reg_new_isa("SME2", "sme2_bfmlal.vs(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 24LL, (void*)sme2_bfmlal_vs_f32bf16bf16);
+        kComputeLoopTime, 24LL, (void*)sme2_bfmlal_vs_f32bf16bf16);
     reg_new_isa("SME2", "sme2_bfmlal4.vs(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 96LL, (void*)sme2_bfmlal4_vs_f32bf16bf16);
+        kComputeLoopTime, 96LL, (void*)sme2_bfmlal4_vs_f32bf16bf16);
     reg_new_isa("SME2", "sme2_bfmlal.vv(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 24LL, (void*)sme2_bfmlal_vv_f32bf16bf16);
+        kComputeLoopTime, 24LL, (void*)sme2_bfmlal_vv_f32bf16bf16);
     reg_new_isa("SME2", "sme2_bfmlal4.vv(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 96LL, (void*)sme2_bfmlal4_vv_f32bf16bf16);
+        kComputeLoopTime, 96LL, (void*)sme2_bfmlal4_vv_f32bf16bf16);
     reg_new_isa("SME2", "sme2_bfmlal.mvv(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 24LL, (void*)sme2_bfmlal_mvv_f32bf16bf16);
+        kComputeLoopTime, 24LL, (void*)sme2_bfmlal_mvv_f32bf16bf16);
     reg_new_isa("SME2", "sme2_bfmlal4.mvv(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 96LL, (void*)sme2_bfmlal4_mvv_f32bf16bf16);
+        kComputeLoopTime, 96LL, (void*)sme2_bfmlal4_mvv_f32bf16bf16);
 
     reg_new_isa("SME2", "sme2_bfdot.vs(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 24LL, (void*)sme2_bfdot_vs_f32bf16bf16);
+        kComputeLoopTime, 24LL, (void*)sme2_bfdot_vs_f32bf16bf16);
     reg_new_isa("SME2", "sme2_bfdot4.vs(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 96LL, (void*)sme2_bfdot4_vs_f32bf16bf16);
+        kComputeLoopTime, 96LL, (void*)sme2_bfdot4_vs_f32bf16bf16);
     reg_new_isa("SME2", "sme2_bfdot.vv(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 24LL, (void*)sme2_bfdot_vv_f32bf16bf16);
+        kComputeLoopTime, 24LL, (void*)sme2_bfdot_vv_f32bf16bf16);
     reg_new_isa("SME2", "sme2_bfdot4.vv(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 96LL, (void*)sme2_bfdot4_vv_f32bf16bf16);
+        kComputeLoopTime, 96LL, (void*)sme2_bfdot4_vv_f32bf16bf16);
     reg_new_isa("SME2", "sme2_bfdot.mvv(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 24LL, (void*)sme2_bfdot_mvv_f32bf16bf16);
+        kComputeLoopTime, 24LL, (void*)sme2_bfdot_mvv_f32bf16bf16);
     reg_new_isa("SME2", "sme2_bfdot4.mvv(f32,bf16,bf16)", "FLOPS",
-        0x100000LL, 96LL, (void*)sme2_bfdot4_mvv_f32bf16bf16);
+        kComputeLoopTime, 96LL, (void*)sme2_bfdot4_mvv_f32bf16bf16);
     
     reg_new_isa("SME2", "sme2_fmla.vs(f32,f32,f32)", "FLOPS",
-        0x100000LL, 12LL, (void*)sme2_fmla_vs_f32f32f32);
+        kComputeLoopTime, 12LL, (void*)sme2_fmla_vs_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla4.vs(f32,f32,f32)", "FLOPS",
-        0x100000LL, 48LL, (void*)sme2_fmla4_vs_f32f32f32);
+        kComputeLoopTime, 48LL, (void*)sme2_fmla4_vs_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla.vv(f32,f32,f32)", "FLOPS",
-        0x100000LL, 12LL, (void*)sme2_fmla_vv_f32f32f32);
+        kComputeLoopTime, 12LL, (void*)sme2_fmla_vv_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla4.vv(f32,f32,f32)", "FLOPS",
-        0x100000LL, 48LL, (void*)sme2_fmla4_vv_f32f32f32);
+        kComputeLoopTime, 48LL, (void*)sme2_fmla4_vv_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla.mvv(f32,f32,f32)_latency", "FLOPS",
-        0x10000LL, 12LL, (void*)sme2_fmla2_mvv_f32f32f32);
+        kLatencyLoopTime, 12LL, (void*)sme2_fmla2_mvv_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla.mvv(f32,f32,f32)", "FLOPS",
-        0x100000LL, 12LL, (void*)sme2_fmla_mvv_f32f32f32);
+        kComputeLoopTime, 12LL, (void*)sme2_fmla_mvv_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla4.mvv(f32,f32,f32)", "FLOPS",
-        0x100000LL, 48LL, (void*)sme2_fmla4_mvv_f32f32f32);
+        kComputeLoopTime, 48LL, (void*)sme2_fmla4_mvv_f32f32f32);
 
     reg_new_isa("SME2", "sme2_fmlal.vs(f32,f16,f16)", "FLOPS",
-        0x100000LL, 24LL, (void*)sme2_fmlal_vs_f32f16f16);
+        kComputeLoopTime, 24LL, (void*)sme2_fmlal_vs_f32f16f16);
     reg_new_isa("SME2", "sme2_fmlal4.vs(f32,f16,f16)", "FLOPS",
-        0x100000LL, 96LL, (void*)sme2_fmlal4_vs_f32f16f16);
+        kComputeLoopTime, 96LL, (void*)sme2_fmlal4_vs_f32f16f16);
     reg_new_isa("SME2", "sme2_fmlal.vv(f32,f16,f16)", "FLOPS",
-        0x100000LL, 24LL, (void*)sme2_fmlal_vv_f32f16f16);
+        kComputeLoopTime, 24LL, (void*)sme2_fmlal_vv_f32f16f16);
     reg_new_isa("SME2", "sme2_fmlal4.vv(f32,f16,f16)", "FLOPS",
-        0x100000LL, 96LL, (void*)sme2_fmlal4_vv_f32f16f16);
+        kComputeLoopTime, 96LL, (void*)sme2_fmlal4_vv_f32f16f16);
     reg_new_isa("SME2", "sme2_fmlal.mvv(f32,f16,f16)", "FLOPS",
-        0x100000LL, 24LL, (void*)sme2_fmlal_mvv_f32f16f16);
+        kComputeLoopTime, 24LL, (void*)sme2_fmlal_mvv_f32f16f16);
     reg_new_isa("SME2", "sme2_fmlal4.mvv(f32,f16,f16)", "FLOPS",
-        0x100000LL, 96LL, (void*)sme2_fmlal4_mvv_f32f16f16);
+        kComputeLoopTime, 96LL, (void*)sme2_fmlal4_mvv_f32f16f16);
     
     reg_new_isa("SME2", "sme2_fvdot.vs(f32,f16,f16)", "FLOPS",
-        0x100000LL, 36LL, (void*)sme2_fvdot_vs_f32f16f16);
+        kComputeLoopTime, 36LL, (void*)sme2_fvdot_vs_f32f16f16);
     reg_new_isa("SME2", "sme2_fvdot2.vs(f32,f16,f16)", "FLOPS",
-        0x100000LL, 72LL, (void*)sme2_fvdot2_vs_f32f16f16);
+        kComputeLoopTime, 72LL, (void*)sme2_fvdot2_vs_f32f16f16);
     
     reg_new_isa("SME2", "sme2_fdot.vs(f32,f16,f16)", "FLOPS",
-        0x100000LL, 24LL, (void*)sme2_fdot_vs_f32f16f16);
+        kComputeLoopTime, 24LL, (void*)sme2_fdot_vs_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot4.vs(f32,f16,f16)", "FLOPS",
-        0x100000LL, 96LL, (void*)sme2_fdot4_vs_f32f16f16);
+        kComputeLoopTime, 96LL, (void*)sme2_fdot4_vs_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot.vv(f32,f16,f16)", "FLOPS",
-        0x100000LL, 24LL, (void*)sme2_fdot_vv_f32f16f16);
+        kComputeLoopTime, 24LL, (void*)sme2_fdot_vv_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot4.vv(f32,f16,f16)", "FLOPS",
-        0x100000LL, 96LL, (void*)sme2_fdot4_vv_f32f16f16);
+        kComputeLoopTime, 96LL, (void*)sme2_fdot4_vv_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot.vv(f32,f16,f16)", "FLOPS",
-        0x100000LL, 24LL, (void*)sme2_fdot_vv_f32f16f16);
+        kComputeLoopTime, 24LL, (void*)sme2_fdot_vv_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot4.mvv(f32,f16,f16)", "FLOPS",
-        0x100000LL, 96LL, (void*)sme2_fdot4_mvv_f32f16f16);
+        kComputeLoopTime, 96LL, (void*)sme2_fdot4_mvv_f32f16f16);
 #endif
 
 
 #ifdef _SMEf64_
     reg_new_isa("SMEf64", "sme_fmopa2.vv(f64,f64,f64)_latency", "FLOPS",
-    0x100000LL, 48LL, (void*)sme_fmopa2_vv_f64f64f64);
+    kComputeLoopTime, 48LL, (void*)sme_fmopa2_vv_f64f64f64);
     reg_new_isa("SMEf64", "sme_fmopa.vv(f64,f64,f64)", "FLOPS",
-        0x100000LL, 48LL, (void*)sme_fmopa_vv_f64f64f64); 
+        kComputeLoopTime, 48LL, (void*)sme_fmopa_vv_f64f64f64); 
     reg_new_isa("SMEf64", "sme2_fmla.vs(f64,f64,f64)_latency", "FLOPS",
-        0x100000LL, 6LL, (void*)sme2_fmla2_vs_f64f64f64);
+        kComputeLoopTime, 6LL, (void*)sme2_fmla2_vs_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla.vs(f64,f64,f64)", "FLOPS",
-        0x100000LL, 6LL, (void*)sme2_fmla_vs_f64f64f64);
+        kComputeLoopTime, 6LL, (void*)sme2_fmla_vs_f64f64f64);
     
     reg_new_isa("SMEf64", "sme2_fmla4.vs(f64,f64,f64)", "FLOPS",
 
-        0x100000LL, 24LL, (void*)sme2_fmla4_vs_f64f64f64);
+        kComputeLoopTime, 24LL, (void*)sme2_fmla4_vs_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla.vv(f64,f64,f64)_latency", "FLOPS",
-        0x100000LL, 6LL, (void*)sme2_fmla2_vv_f64f64f64);
+        kComputeLoopTime, 6LL, (void*)sme2_fmla2_vv_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla.vv(f64,f64,f64)", "FLOPS",
-        0x100000LL, 6LL, (void*)sme2_fmla_vv_f64f64f64);
+        kComputeLoopTime, 6LL, (void*)sme2_fmla_vv_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla4.vv(f64,f64,f64)", "FLOPS",
-        0x100000LL, 24LL, (void*)sme2_fmla4_vv_f64f64f64);
+        kComputeLoopTime, 24LL, (void*)sme2_fmla4_vv_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla.mvv(f64,f64,f64)", "FLOPS",
-        0x100000LL, 6LL, (void*)sme2_fmla_mvv_f64f64f64);
+        kComputeLoopTime, 6LL, (void*)sme2_fmla_mvv_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla4.mvv(f64,f64,f64)", "FLOPS",
-        0x100000LL, 24LL, (void*)sme2_fmla4_mvv_f64f64f64);
+        kComputeLoopTime, 24LL, (void*)sme2_fmla4_mvv_f64f64f64);
 #endif
     reg_new_isa("L1 Cache", "ldp(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, (void*)load_ldp_kernel);
+        kLoadLoopTime, 32LL, (void*)load_ldp_kernel);
+    reg_new_isa("--------", "neon-ld1b(u8)", "Byte/Cycle",
+        kLoadLoopTime, 32LL, (void*)load_neon_ld1b_kernel);
+    reg_new_isa("--------", "neon-ld1h(f16)", "Byte/Cycle",
+        kLoadLoopTime, 32LL, (void*)load_neon_ld1h_kernel);
+    reg_new_isa("--------", "neon-ld1w(f32)", "Byte/Cycle",
+        kLoadLoopTime, 32LL, (void*)load_neon_ld1w_kernel);
+    reg_new_isa("--------", "neon-ld1d(f64)", "Byte/Cycle",
+        kLoadLoopTime, 32LL, (void*)load_neon_ld1d_kernel);
 #ifdef _SVE_
+    reg_new_isa("--------", "sve-ld1b(u8)", "Byte/Cycle",
+        kLoadLoopTime, 32LL, (void*)load_sve_ld1b_kernel);
+    reg_new_isa("--------", "sve-ld1h(f16)", "Byte/Cycle",
+        kLoadLoopTime, 32LL, (void*)load_sve_ld1h_kernel);
     reg_new_isa("--------", "sve-ld1w(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, (void*)load_ld1w_kernel);
+        kLoadLoopTime, 32LL, (void*)load_ld1w_kernel);
+    reg_new_isa("--------", "sve-ld1d(f64)", "Byte/Cycle",
+        kLoadLoopTime, 32LL, (void*)load_sve_ld1d_kernel);
 #endif
 #ifdef _SME_
     reg_new_isa("--------", "ldrZA(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, (void*)sme_ldr_kernel);
+        kLoadLoopTime, 32LL, (void*)sme_ldr_kernel);
     reg_new_isa("--------", "ld1wZAV(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, (void*)sme_ld1wV_kernel);
+        kLoadLoopTime, 32LL, (void*)sme_ld1wV_kernel);
     reg_new_isa("--------", "ld1wZAH(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, (void*)sme_ld1wH_kernel);
+        kLoadLoopTime, 32LL, (void*)sme_ld1wH_kernel);
 #endif
 #ifdef _SME2_
     reg_new_isa("--------", "ld1w(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, (void*)sme_ld1w_kernel);
+        kLoadLoopTime, 32LL, (void*)sme_ld1w_kernel);
 #endif
     reg_new_isa("L2 Cache", "ldp(f32)", "Byte/Cycle",
-        0x186A00LL, 128LL, (void*)load_ldp_kernel);
+        kLoadLoopTime, 128LL, (void*)load_ldp_kernel);
+    reg_new_isa("--------", "neon-ld1b(u8)", "Byte/Cycle",
+        kLoadLoopTime, 128LL, (void*)load_neon_ld1b_kernel);
+    reg_new_isa("--------", "neon-ld1h(f16)", "Byte/Cycle",
+        kLoadLoopTime, 128LL, (void*)load_neon_ld1h_kernel);
+    reg_new_isa("--------", "neon-ld1w(f32)", "Byte/Cycle",
+        kLoadLoopTime, 128LL, (void*)load_neon_ld1w_kernel);
+    reg_new_isa("--------", "neon-ld1d(f64)", "Byte/Cycle",
+        kLoadLoopTime, 128LL, (void*)load_neon_ld1d_kernel);
 #ifdef _SVE_
+    reg_new_isa("--------", "sve-ld1b(u8)", "Byte/Cycle",
+        kLoadLoopTime, 128LL, (void*)load_sve_ld1b_kernel);
+    reg_new_isa("--------", "sve-ld1h(f16)", "Byte/Cycle",
+        kLoadLoopTime, 128LL, (void*)load_sve_ld1h_kernel);
     reg_new_isa("--------", "sve-ld1w(f32)", "Byte/Cycle",
-        0x186A00LL, 128LL, (void*)load_ld1w_kernel);
+        kLoadLoopTime, 128LL, (void*)load_ld1w_kernel);
+    reg_new_isa("--------", "sve-ld1d(f64)", "Byte/Cycle",
+        kLoadLoopTime, 128LL, (void*)load_sve_ld1d_kernel);
 #endif
 #ifdef _SME_
     reg_new_isa("--------", "ldrZA(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, (void*)sme_ldr_kernel);   
+        kLoadLoopTime, 32LL, (void*)sme_ldr_kernel);   
     reg_new_isa("--------", "ld1wZAV(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, (void*)sme_ld1wV_kernel);
+        kLoadLoopTime, 32LL, (void*)sme_ld1wV_kernel);
     reg_new_isa("--------", "ld1wZAH(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, (void*)sme_ld1wH_kernel);     
+        kLoadLoopTime, 32LL, (void*)sme_ld1wH_kernel);     
 #endif
 #ifdef _SME2_
     reg_new_isa("--------", "ld1w(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, (void*)sme_ld1w_kernel);
+        kLoadLoopTime, 32LL, (void*)sme_ld1w_kernel);
 #endif
 #ifdef __APPLE__
     // reg_new_isa("Apple amx", "fmla.mat(f16,f16,f16)", "FLOPS",
-    //     0x100000LL, 16384LL, (void*)fmla16_benchmark_mat);
+    //     kComputeLoopTime, 16384LL, (void*)fmla16_benchmark_mat);
     // reg_new_isa("Apple amx", "fmla.mat(f32,f32,f32)", "FLOPS",
-    //     0x100000LL, 4096LL, (void*)fmla32_benchmark_mat);
+    //     kComputeLoopTime, 4096LL, (void*)fmla32_benchmark_mat);
     // reg_new_isa("Apple amx", "fmla.mat(f64,f64,f64)", "FLOPS",
-    //     0x100000LL, 1024LL, (void*)fmla64_benchmark_mat);
+    //     kComputeLoopTime, 1024LL, (void*)fmla64_benchmark_mat);
 
     // reg_new_isa("Apple amx", "fmla.vec(f16,f16,f16)", "FLOPS",
-    //     0x100000LL, 512LL, (void*)fmla16_benchmark_vec);
+    //     kComputeLoopTime, 512LL, (void*)fmla16_benchmark_vec);
     // reg_new_isa("Apple amx", "fmla.vec(f32,f32,f32)", "FLOPS",
-    //     0x100000LL, 256LL, (void*)fmla32_benchmark_vec);
+    //     kComputeLoopTime, 256LL, (void*)fmla32_benchmark_vec);
     // reg_new_isa("Apple amx", "fmla.vec(f64,f64,f64)", "FLOPS",
-    //     0x100000LL, 128LL, (void*)fmla64_benchmark_vec);
+    //     kComputeLoopTime, 128LL, (void*)fmla64_benchmark_vec);
 
     // reg_new_isa("Apple amx", "mat.mat(i8,i8,i8)", "OPS",
-    //     0x100000LL, 65536LL, (void*)matint_i8i8_benchmark);
+    //     kComputeLoopTime, 65536LL, (void*)matint_i8i8_benchmark);
     // reg_new_isa("Apple amx", "fmla.mat(i8,i16,i16)", "OPS",
-    //     0x100000LL, 32768LL, (void*)matint_i8i16_benchmark);
+    //     kComputeLoopTime, 32768LL, (void*)matint_i8i16_benchmark);
     // reg_new_isa("Apple amx", "fmla.mat(i16,i16,i16)", "OPS",
-    //     0x100000LL, 16384LL, (void*)matint_i16i16_benchmark);
+    //     kComputeLoopTime, 16384LL, (void*)matint_i16i16_benchmark);
 
     // reg_new_isa("Apple amx", "ldx 1 reg", "Byte/Cycle",
-    //     0x186A00LL, 32LL, (void*)load_benchmark_1);   
+    //     kLoadLoopTime, 32LL, (void*)load_benchmark_1);   
     // reg_new_isa("Apple amx", "ldx 2 reg", "Byte/Cycle",
-    //     0x186A00LL, 32LL, (void*)load_benchmark_2);
+    //     kLoadLoopTime, 32LL, (void*)load_benchmark_2);
     // reg_new_isa("Apple amx", "ldx 4 reg", "Byte/Cycle",
-    //     0x186A00LL, 32LL, (void*)load_benchmark_4);    
+    //     kLoadLoopTime, 32LL, (void*)load_benchmark_4);    
     
     
 #endif
     reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC",
-        0x186A00LL, 50LL, (void*)multiple_issue);
+        kMultiIssueLoopTime, 50LL, (void*)multiple_issue);
 }
 
 int main(int argc, char *argv[])
@@ -725,4 +889,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-

@@ -35,7 +35,11 @@ vector<double> freq;
 static void* thread_function_freq(void* arg){
     struct FrequencyData* data = (FrequencyData*)malloc(sizeof(FrequencyData));
     double CPU_freq;
+#ifdef __APPLE__
+    int64_t looptime = 20000000;
+#else
     int64_t looptime = 100000000;
+#endif
     struct timespec start, end;
     double time_used;
 

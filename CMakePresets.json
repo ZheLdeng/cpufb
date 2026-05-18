@@ -1,0 +1,94 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 19,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "_base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "generator": "Unix Makefiles"
+    },
+    {
+      "name": "native-release",
+      "displayName": "Native Release (auto-detect arch)",
+      "description": "Build for the host architecture, optimized.",
+      "inherits": "_base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "native-debug",
+      "displayName": "Native Debug",
+      "inherits": "_base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "macos-arm64",
+      "displayName": "macOS Apple Silicon",
+      "description": "Native build on macOS arm64; matches the legacy build_arm64.sh quirks (-O0 main TU).",
+      "inherits": "_base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "aarch64-cross",
+      "displayName": "aarch64-linux-gnu cross",
+      "description": "Cross-compile for ARM64 Linux (also used for adb push to Android /data/local/tmp).",
+      "inherits": "_base",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/aarch64-linux-gnu.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CPUFB_ENABLE_ANDROID_DEPLOY": "ON"
+      }
+    },
+    {
+      "name": "riscv64-cross",
+      "displayName": "riscv64-linux-gnu cross",
+      "inherits": "_base",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/riscv64-linux-gnu.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "native-release",
+      "configurePreset": "native-release",
+      "jobs": 0
+    },
+    {
+      "name": "native-debug",
+      "configurePreset": "native-debug",
+      "jobs": 0
+    },
+    {
+      "name": "macos-arm64",
+      "configurePreset": "macos-arm64",
+      "jobs": 0
+    },
+    {
+      "name": "aarch64-cross",
+      "configurePreset": "aarch64-cross",
+      "jobs": 0
+    },
+    {
+      "name": "riscv64-cross",
+      "configurePreset": "riscv64-cross",
+      "jobs": 0
+    }
+  ]
+}

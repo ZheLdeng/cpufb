@@ -140,6 +140,14 @@ if(CPUFB_ARCH STREQUAL "x64")
 elseif(CPUFB_ARCH STREQUAL "arm64")
     set_source_files_properties("${CPUFB_KERNEL_DIR}/frequency.cpp"
         PROPERTIES COMPILE_FLAGS "-O2 -g -w")
+    # Match legacy build_arm64.sh: load.cpp is compiled with no explicit -O
+    # (i.e. -O0). The benchmarked work is in the asm load_ptr() loop, but the
+    # Fisher-Yates init and other setup code in this TU is sensitive to the
+    # optimization level and we want runtime to match the legacy script.
+    # The trailing -O0 here overrides the target-level -O2 because GCC/Clang
+    # honor the last -O flag on the command line.
+    set_source_files_properties("${CPUFB_KERNEL_DIR}/load.cpp"
+        PROPERTIES COMPILE_FLAGS "-O0 -g -w")
 endif()
 
 # ---------------------------------------------------------------------------

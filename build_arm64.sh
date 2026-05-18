@@ -1,4 +1,11 @@
 #set -x
+
+# DEPRECATED: kept only as a historical reference. Use the CMake build:
+#   ./build.sh                                 # native preset
+#   cmake --preset native-release && cmake --build --preset native-release
+# See README.md for the full preset list.
+echo "[DEPRECATED] $0 is no longer maintained; see README.md for the CMake build." >&2
+
 SRC=arm64
 ASM=$SRC/asm
 KERNEL=$SRC/kernel

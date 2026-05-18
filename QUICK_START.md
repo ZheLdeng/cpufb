@@ -7,100 +7,81 @@
 chmod +x build.sh
 
 # Common commands
-./build.sh              # Local build
-./build.sh -a           # Android build
-./build.sh -a --push    # Android build and push
-./build.sh -r           # Clean rebuild
+./build.sh                    # native release build
+./build.sh -d                 # native debug build
+./build.sh -a                 # cross-compile for ARM64 (Android-friendly)
+./build.sh -a --push          # ...and adb-push the binary
+./build.sh -r                 # wipe build dir + rebuild
 ```
+
+Output binary: `build/<preset>/cpufb`.
 
 ## Common Scenarios
 
-| Scenario | Command |
-|----------|---------|
-| Local build | `./build.sh` |
-| Android build | `./build.sh -a` |
-| Push to device | `./build.sh -a --push` |
-| Run on core 0 | `./build.sh -a --run-core 0` |
-| Clean rebuild | `./build.sh -r` |
-| Debug mode | `./build.sh -d` |
-| Custom threads | `./build.sh -j16` |
-| Show help | `./build.sh --help` |
+| Scenario                    | Command                             |
+| --------------------------- | ----------------------------------- |
+| Local release build         | `./build.sh`                        |
+| Local debug build           | `./build.sh -d`                     |
+| Android cross-compile       | `./build.sh -a`                     |
+| Push to device              | `./build.sh -a --push`              |
+| Run on core 0               | `./build.sh -a --run-core 0`        |
+| Clean rebuild               | `./build.sh -r`                     |
+| Use a specific CMake preset | `./build.sh --preset macos-arm64`   |
 
-## Migration from Old Scripts
+## Direct CMake usage
 
-| Old Command | New Command |
-|-------------|-------------|
-| `./build_x64.sh` | `./build.sh` |
-| `./build_arm64.sh` | `./build.sh` |
-| `./build_android.sh` | `./build.sh -a` |
-| Manual adb push | `./build.sh -a --push` |
+```bash
+cmake --list-presets
+cmake --preset native-release
+cmake --build --preset native-release
+cmake --install build/native-release --prefix /tmp/cpufb-install
+```
 
-## All Options
+Available configure presets: `native-release`, `native-debug`, `macos-arm64`,
+`aarch64-cross`, `riscv64-cross`.
 
-| Option | Description |
-|--------|-------------|
-| `-h, --help` | Show help message |
-| `-a, --android` | Build for Android |
-| `-c, --clean` | Clean before building |
-| `-j, --jobs N` | Parallel jobs count |
-| `-d, --debug` | Debug mode |
-| `-r, --rebuild` | Clean + build |
-| `--push` | Push to device |
-| `--run-core N` | Run on core N |
-| `--toolchain FILE` | Custom toolchain |
+## SIMD detection override
+
+By default the configure step runs the per-arch `cpuid` detector via
+`try_run`. When cross-compiling that's not possible; pass the feature list
+explicitly:
+
+```bash
+cmake --preset aarch64-cross \
+    -DCPUFB_SIMD_FEATURES_OVERRIDE="_BF16_;_I8MM_;_SVE_;_SVE2_"
+```
+
+## Legacy scripts (deprecated)
+
+`build_x64.sh`, `build_arm64.sh`, `build_android.sh`, `build_riscv64.sh` and
+`clean.sh` still exist for reference but print a `[DEPRECATED]` notice. Use
+the CMake build above.
+
+| Old command            | New command                                              |
+| ---------------------- | -------------------------------------------------------- |
+| `./build_x64.sh`       | `./build.sh` (on x64 host)                               |
+| `./build_arm64.sh`     | `./build.sh` (on arm64 host) or `--preset macos-arm64`   |
+| `./build_android.sh`   | `./build.sh -a` (or `cmake --preset aarch64-cross`)      |
+| `./build_riscv64.sh`   | `./build.sh --preset riscv64-cross`                      |
+| `./clean.sh`           | `rm -rf build/`                                          |
 
 ## Troubleshooting
 
 ```bash
-# Install cross-compiler
-sudo apt-get install g++-aarch64-linux-gnu gcc-aarch64-linux-gnu
-
-# Check Android connection
-adb devices
-
-# Force rebuild
+# Force a clean reconfigure
 ./build.sh -r
 
-# Verbose output
-cd build && make VERBOSE=1
+# Verbose build output
+cmake --build --preset native-release --verbose
+
+# See which SIMD features were detected
+grep "detected SIMD" build/native-release/CMakeFiles/CMakeOutput.log \
+  || cmake --preset native-release  # re-run configure to print it
 ```
 
-## Build Output
-
-```
-build/cpufb              # Native build
-build-android/cpufb      # Android build
-build/simd_config.cmake  # SIMD features
-```
-
-## Common Issues
-
-| Issue | Solution |
-|-------|----------|
-| Cross-compiler not found | Install: `g++-aarch64-linux-gnu` |
-| Device not found | Enable USB debugging |
-| Permission denied | Run: `chmod +x build.sh` |
-| Build fails | Try: `./build.sh -r` |
-
-## Example Workflows
-
-### Development
-```bash
-./build.sh              # Initial build
-# edit code
-./build.sh              # Rebuild
-./build/cpufb           # Test
-```
-
-### Android Testing
-```bash
-./build.sh -a --push
-adb shell /data/local/tmp/cpufb --thread_pool=[0]
-```
-
-### Multi-Platform
-```bash
-./build.sh              # Native
-./build.sh -a           # Android
-file build/cpufb build-android/cpufb
-```
+| Issue                      | Solution                                              |
+| -------------------------- | ----------------------------------------------------- |
+| `cmake --preset` missing   | Upgrade CMake to 3.19+                                |
+| Cross-compiler not found   | Install `g++-aarch64-linux-gnu` / `riscv64-linux-gnu` |
+| adb device not found       | Enable USB debugging; check `adb devices`             |
+| `Permission denied`        | `chmod +x build.sh`                                   |

@@ -74,16 +74,44 @@ int main() {
     if (find("bf16",features,count)) {
         printf("_BF16_\n");
     }
+    if (find("asimdfhm",features,count) || find("fhm",features,count)) {
+        printf("_FHM_\n");
+    }
     if (find("sme",features,count)) {
         printf("_SME_\n");
     }
     if (find("sve",features,count)) {
         printf("_SVE_\n");
+        if (find("svei8mm",features,count)) {
+            printf("_SVE_I8MM_\n");
+        }
+        if (find("svebf16",features,count)) {
+            printf("_SVE_BF16_\n");
+        }
+        if (find("svef32mm",features,count)) {
+            printf("_SVE_F32MM_\n");
+        }
+        if (find("svef64mm",features,count)) {
+            printf("_SVE_F64MM_\n");
+        }
+        // SVE FP16 FMLA: implied when SVE + asimdhp are present
+        if (find("asimdhp",features,count)) {
+            printf("_SVE_FP16_FMLA_\n");
+        }
+        if (find("sve2",features,count)) {
+            printf("_SVE2_\n");
+        }
     }
     if (find("sme2",features,count)) {
         printf("_SME2_\n");
         if (find("sme_f64f64",features,count)) {
             printf("_SMEf64_\n");
+        }
+        if (find("sme_f16f16",features,count)) {
+            printf("_SME_F16F16_\n");
+        }
+        if (find("sme_i16i64",features,count)) {
+            printf("_SME_I16I32_\n");
         }
     }
     printf("_LDP_\n");     

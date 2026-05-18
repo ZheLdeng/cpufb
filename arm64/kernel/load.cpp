@@ -23,13 +23,23 @@
 #define CACHE_LINE 64
 //测试WINDOW的数量上限
 #define WINDOW_NUM 2048
-//WINDOW 大小 4MB
 #ifndef __APPLE__
+//WINDOW 大小 4MB
 #define WINDOW_SIZE 4 * 1024 * 1024
-#else
-#define WINDOW_SIZE 32 * 1024 * 1024
-#endif
 #define LOOP_TIME 1000000
+#define CACHE_PROBE_REPEAT 100
+#define CACHELINE_REPEAT 1000
+#define MULTIWAY_LOOP_TIME 1000000
+#define MULTIWAY_TEST_TIME 100
+#else
+// macOS 上 perf counter 和绑核能力有限，使用较短循环避免整轮 benchmark 过慢
+#define WINDOW_SIZE 8 * 1024 * 1024
+#define LOOP_TIME 200000
+#define CACHE_PROBE_REPEAT 20
+#define CACHELINE_REPEAT 200
+#define MULTIWAY_LOOP_TIME 200000
+#define MULTIWAY_TEST_TIME 20
+#endif
 
 #define PTR_BITS 3
 #define MAX_RAND 100000
@@ -43,6 +53,25 @@ double cacheline = 0;
 typedef void (*load_bench)(float*, int, int64_t);
 extern "C" {
     void load_ptr(int looptime, int64_t *ptr);
+}
+
+static inline int get_load_bytes_per_inner_loop(const string& type)
+{
+#ifdef _SVE_
+    if (type.find("sve-ld1") != string::npos) {
+        return static_cast<int>(16 * load_sve_vector_bytes());
+    }
+#endif
+    if (type.find("neon-ld1") != string::npos) {
+        return 256;
+    }
+    if (type.find("ld1w") != string::npos || type.find("ZA") != string::npos) {
+        return static_cast<int>(sizeof(float));
+    }
+    if (type.find("ldp") != string::npos) {
+        return 512;
+    }
+    return 512;
 }
 
 static inline void shuffleVector(std::vector<int64_t>& vec) {
@@ -149,7 +178,7 @@ static inline double inloop(int group, int win_size)
     int total_num = (win_size) >> read_stride; //每cacheline byte 1个数
 
     vector<int64_t> ptr_index(total_num) ;
-    for (i = 0; i < 100; i++) {
+    for (i = 0; i < CACHE_PROBE_REPEAT; i++) {
         // cout << "main loop start " << i << endl;
         int64_t index = 0;
         for (int64_t m = 0; m < total_num; ++m) {
@@ -165,9 +194,9 @@ static inline double inloop(int group, int win_size)
         usleep(1000);
     }
     free(ptr);
-    // printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
+    // printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / CACHE_PROBE_REPEAT);
 
-    return sum_time_used / 100;
+    return sum_time_used / CACHE_PROBE_REPEAT;
 }
 
 static inline void get_slope(vector<double>& data, vector<double>& slope)
@@ -274,7 +303,7 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
         ptr[(j * buf) >> 3] = (uintptr_t)&ptr[0];
         ptr[((j * buf) >> 3) + n] = (uintptr_t)&ptr[n];
 #ifdef __APPLE__
-        for(i = 0; i < 1000 ; i++){
+        for(i = 0; i < CACHELINE_REPEAT ; i++){
             for(k = 0; k < datasize >> 3; k++){
                 flush_cache_line(&ptr[k]);
             }
@@ -305,7 +334,7 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
         }
     }
 #else
-        for(i = 0; i < 1000 ; i++){
+        for(i = 0; i < CACHELINE_REPEAT ; i++){
             for(k = 0; k < datasize >> 3; k++){
                 flush_cache_line(&ptr[k]);
             }
@@ -382,7 +411,7 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
     struct timespec start, end;
     double time_used = 0, pre_time_used = 0;
     int i, j, k, w;
-    int64_t loop_time = 1000000, test_time = 100;
+    int64_t loop_time = MULTIWAY_LOOP_TIME, test_time = MULTIWAY_TEST_TIME;
 #ifdef __linux__
     pid_t pid = syscall(SYS_gettid);
     cpu_set_t mask;
@@ -446,11 +475,9 @@ double get_bandwith(uint64_t looptime, double data_size, string type, void* benc
     for (int i = 0; i < data_size * 1024/sizeof(float); i++) {
         cache_data[i] = i;
     }
-    if (type.find("ld1w") == string::npos && type.find("ZA")== string::npos) {
-        
-        inner_loop = data_size * 1024 / sizeof(float) / (4 * 32);
-    } else {
-        inner_loop = data_size * 1024 / sizeof(float);
+    inner_loop = static_cast<int>(data_size * 1024 / get_load_bytes_per_inner_loop(type));
+    if (inner_loop < 1) {
+        inner_loop = 1;
     }
    
     load_bench bench_ptr = reinterpret_cast<load_bench>(bench);

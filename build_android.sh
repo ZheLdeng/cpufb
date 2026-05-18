@@ -56,22 +56,66 @@ do
     $CC -march=armv8.2-a+bf16 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _I8MM_ = $SIMD ]; then
     $CC -march=armv8.2-a+i8mm $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    elif [ _ASIMD_DP_ = $SIMD ]; then
+    $CC -march=armv8.2-a+dotprod $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    elif [ _FHM_ = $SIMD ]; then
+    $CC -march=armv8.2-a+fp16+fp16fml $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SME_ = $SIMD ]; then
     $CC -march=armv9-a+sme $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SME2_ = $SIMD ]; then
     $CC -march=armv9-a+sme2 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SMEf64_ = $SIMD ]; then
     $CC -march=armv9-a+sme2+sme-f64f64 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    elif [ _SME_F16F16_ = $SIMD ]; then
+    $CC -march=armv9.2-a+sme2+sme-f16f16 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    elif [ _SME_I16I32_ = $SIMD ]; then
+    $CC -march=armv9.2-a+sme2+sme-i16i64 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    elif [ _SVE_I8MM_ = $SIMD ]; then
+    $CC -march=armv8.6-a+sve $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    elif [ _SVE_BF16_ = $SIMD ]; then
+    $CC -march=armv8.6-a+sve $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    elif [ _SVE_F32MM_ = $SIMD ]; then
+    $CC -march=armv8.6-a+sve+f32mm $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    elif [ _SVE_F64MM_ = $SIMD ]; then
+    $CC -march=armv8.6-a+sve+f64mm $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    elif [ _SVE_FP16_FMLA_ = $SIMD ]; then
+    $CC -march=armv8.2-a+sve+fp16 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    elif [ _SVE2_ = $SIMD ]; then
+    $CC -march=armv9-a+sve2 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SVE_ = $SIMD ]; then
     $CC -march=armv8-a+sve $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     else
     $CC -march=native $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     fi
     case "$SIMD" in
-    *_SME_*) 
+    *_SME_F16F16_*)
+        MARCH_FLAG="-march=armv9.2-a+sme2+sme-f16f16 "
+        ;;
+    *_SME_I16I32_*)
+        MARCH_FLAG="-march=armv9.2-a+sme2+sme-i16i64 "
+        ;;
+    *_SME_*)
         MARCH_FLAG="-march=armv9-a+sme "
         ;;
-    *_SVE_*) 
+    *_SVE_F32MM_*)
+        MARCH_FLAG="-march=armv8.6-a+sve+f32mm "
+        ;;
+    *_SVE_F64MM_*)
+        MARCH_FLAG="-march=armv8.6-a+sve+f64mm "
+        ;;
+    *_SVE_FP16_FMLA_*)
+        MARCH_FLAG="-march=armv8.2-a+sve+fp16 "
+        ;;
+    *_SVE_I8MM_*)
+        MARCH_FLAG="-march=armv8.6-a+sve "
+        ;;
+    *_SVE_BF16_*)
+        MARCH_FLAG="-march=armv8.6-a+sve "
+        ;;
+    *_SVE2_*)
+        MARCH_FLAG="-march=armv9-a+sve2 "
+        ;;
+    *_SVE_*)
         MARCH_FLAG="-march=armv8-a+sve "
         ;;
     esac

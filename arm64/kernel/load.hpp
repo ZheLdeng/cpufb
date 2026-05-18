@@ -8,8 +8,16 @@ extern "C"
 {
     void load_ldp_kernel(float*, int, int64_t);
     void load_ldr_kernel(float*, int64_t);
+    void load_neon_ld1b_kernel(float*, int, int64_t);
+    void load_neon_ld1h_kernel(float*, int, int64_t);
+    void load_neon_ld1w_kernel(float*, int, int64_t);
+    void load_neon_ld1d_kernel(float*, int, int64_t);
 #ifdef _SVE_
-    void load_ld1w_kernel(float*, int ,int);
+    uint64_t load_sve_vector_bytes(void);
+    void load_sve_ld1b_kernel(float*, int, int64_t);
+    void load_sve_ld1h_kernel(float*, int, int64_t);
+    void load_ld1w_kernel(float*, int, int64_t);
+    void load_sve_ld1d_kernel(float*, int, int64_t);
 #endif
 #ifdef _SME_
     void sme_ldr_kernel(float*, int ,int);

@@ -1,5 +1,12 @@
 .align 5
 #include "common_arm64.h"
+
+############
+#uint64_t load_sve_vector_bytes(void);
+    PROLOGUE load_sve_vector_bytes
+    cntb x0
+    ret
+
 .macro SVE_INIT
     fmov z0.s, p0/m, #0
     fmov z1.s, p0/m, #0
@@ -172,31 +179,139 @@
     restore_caller_vec
     ret
 ############
-#void void load_ld1w_kernel(float*, int ,int);
-    PROLOGUE load_ld1w_kernel
-    mov x11, x2
-    ptrue p2.s
-outer_loop:
-    mov x9, x0
-    mov x10, x1
-    whilelt p1.b, xzr, x10
-inner_loop:
-    ld1w z0.s, p2/z, [x9]
-    ld1w z1.s, p2/z, [x9, #1, MUL VL]
-    ld1w z2.s, p2/z, [x9, #2, MUL VL]
-    ld1w z3.s, p2/z, [x9, #3, MUL VL]
-    ld1w z4.s, p2/z, [x9, #4, MUL VL]
-    ld1w z5.s, p2/z, [x9, #5, MUL VL]
-    ld1w z6.s, p2/z, [x9, #6, MUL VL]
-    ld1w z7.s, p2/z, [x9, #7, MUL VL]
-    incb  x9, POW2, MUL#8
-    decb x10, pow2, mul#2
-    whilelt p1.s, xzr, x10
-    b.first inner_loop
+#void load_sve_ld1b_kernel(float*, int, int64_t);
+    PROLOGUE load_sve_ld1b_kernel
+    mov x4, x2
+    ptrue p0.b
+    2:
+    mov x3, x1
+    mov x5, x0
+    1:
+    mov x6, x5
+    addvl x6, x6, #8
+    ld1b z0.b, p0/z, [x5]
+    ld1b z1.b, p0/z, [x5, #1, MUL VL]
+    ld1b z2.b, p0/z, [x5, #2, MUL VL]
+    ld1b z3.b, p0/z, [x5, #3, MUL VL]
+    ld1b z4.b, p0/z, [x5, #4, MUL VL]
+    ld1b z5.b, p0/z, [x5, #5, MUL VL]
+    ld1b z6.b, p0/z, [x5, #6, MUL VL]
+    ld1b z7.b, p0/z, [x5, #7, MUL VL]
+    ld1b z16.b, p0/z, [x6]
+    ld1b z17.b, p0/z, [x6, #1, MUL VL]
+    ld1b z18.b, p0/z, [x6, #2, MUL VL]
+    ld1b z19.b, p0/z, [x6, #3, MUL VL]
+    ld1b z20.b, p0/z, [x6, #4, MUL VL]
+    ld1b z21.b, p0/z, [x6, #5, MUL VL]
+    ld1b z22.b, p0/z, [x6, #6, MUL VL]
+    ld1b z23.b, p0/z, [x6, #7, MUL VL]
+    addvl x5, x5, #16
+    subs x3, x3, #1
+    bne 1b
+    subs x4, x4, #1
+    bne 2b
+    ret
 
-    subs x11, x11, #1
-    bne outer_loop
-out:
+############
+#void load_sve_ld1h_kernel(float*, int, int64_t);
+    PROLOGUE load_sve_ld1h_kernel
+    mov x4, x2
+    ptrue p0.h
+    2:
+    mov x3, x1
+    mov x5, x0
+    1:
+    mov x6, x5
+    addvl x6, x6, #8
+    ld1h z0.h, p0/z, [x5]
+    ld1h z1.h, p0/z, [x5, #1, MUL VL]
+    ld1h z2.h, p0/z, [x5, #2, MUL VL]
+    ld1h z3.h, p0/z, [x5, #3, MUL VL]
+    ld1h z4.h, p0/z, [x5, #4, MUL VL]
+    ld1h z5.h, p0/z, [x5, #5, MUL VL]
+    ld1h z6.h, p0/z, [x5, #6, MUL VL]
+    ld1h z7.h, p0/z, [x5, #7, MUL VL]
+    ld1h z16.h, p0/z, [x6]
+    ld1h z17.h, p0/z, [x6, #1, MUL VL]
+    ld1h z18.h, p0/z, [x6, #2, MUL VL]
+    ld1h z19.h, p0/z, [x6, #3, MUL VL]
+    ld1h z20.h, p0/z, [x6, #4, MUL VL]
+    ld1h z21.h, p0/z, [x6, #5, MUL VL]
+    ld1h z22.h, p0/z, [x6, #6, MUL VL]
+    ld1h z23.h, p0/z, [x6, #7, MUL VL]
+    addvl x5, x5, #16
+    subs x3, x3, #1
+    bne 1b
+    subs x4, x4, #1
+    bne 2b
+    ret
+
+############
+#void load_ld1w_kernel(float*, int, int64_t);
+    PROLOGUE load_ld1w_kernel
+    mov x4, x2
+    ptrue p0.s
+    2:
+    mov x3, x1
+    mov x5, x0
+    1:
+    mov x6, x5
+    addvl x6, x6, #8
+    ld1w z0.s, p0/z, [x5]
+    ld1w z1.s, p0/z, [x5, #1, MUL VL]
+    ld1w z2.s, p0/z, [x5, #2, MUL VL]
+    ld1w z3.s, p0/z, [x5, #3, MUL VL]
+    ld1w z4.s, p0/z, [x5, #4, MUL VL]
+    ld1w z5.s, p0/z, [x5, #5, MUL VL]
+    ld1w z6.s, p0/z, [x5, #6, MUL VL]
+    ld1w z7.s, p0/z, [x5, #7, MUL VL]
+    ld1w z16.s, p0/z, [x6]
+    ld1w z17.s, p0/z, [x6, #1, MUL VL]
+    ld1w z18.s, p0/z, [x6, #2, MUL VL]
+    ld1w z19.s, p0/z, [x6, #3, MUL VL]
+    ld1w z20.s, p0/z, [x6, #4, MUL VL]
+    ld1w z21.s, p0/z, [x6, #5, MUL VL]
+    ld1w z22.s, p0/z, [x6, #6, MUL VL]
+    ld1w z23.s, p0/z, [x6, #7, MUL VL]
+    addvl x5, x5, #16
+    subs x3, x3, #1
+    bne 1b
+    subs x4, x4, #1
+    bne 2b
+    ret
+
+############
+#void load_sve_ld1d_kernel(float*, int, int64_t);
+    PROLOGUE load_sve_ld1d_kernel
+    mov x4, x2
+    ptrue p0.d
+    2:
+    mov x3, x1
+    mov x5, x0
+    1:
+    mov x6, x5
+    addvl x6, x6, #8
+    ld1d z0.d, p0/z, [x5]
+    ld1d z1.d, p0/z, [x5, #1, MUL VL]
+    ld1d z2.d, p0/z, [x5, #2, MUL VL]
+    ld1d z3.d, p0/z, [x5, #3, MUL VL]
+    ld1d z4.d, p0/z, [x5, #4, MUL VL]
+    ld1d z5.d, p0/z, [x5, #5, MUL VL]
+    ld1d z6.d, p0/z, [x5, #6, MUL VL]
+    ld1d z7.d, p0/z, [x5, #7, MUL VL]
+    ld1d z16.d, p0/z, [x6]
+    ld1d z17.d, p0/z, [x6, #1, MUL VL]
+    ld1d z18.d, p0/z, [x6, #2, MUL VL]
+    ld1d z19.d, p0/z, [x6, #3, MUL VL]
+    ld1d z20.d, p0/z, [x6, #4, MUL VL]
+    ld1d z21.d, p0/z, [x6, #5, MUL VL]
+    ld1d z22.d, p0/z, [x6, #6, MUL VL]
+    ld1d z23.d, p0/z, [x6, #7, MUL VL]
+    addvl x5, x5, #16
+    subs x3, x3, #1
+    bne 1b
+    subs x4, x4, #1
+    bne 2b
     ret
 ############
     PROLOGUE sve_fmla2_vv_f32f32f32

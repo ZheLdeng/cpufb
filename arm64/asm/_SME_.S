@@ -211,6 +211,113 @@
     smstop
     ret
 ############
+# UMOPA / USMOPA / SUMOPA for i8 -> i32 (base SME, mixed-sign variants).
+# Same comp_pl as smopa i32i8i8 (192).
+    PROLOGUE sme_umopa_vv_u32u8u8
+    preserve_caller_vec
+    smstart
+    SME_INIT
+.sme_umopa_vv_u32u8u8L1:
+    UMOPA za0.S, p0/M, p1/M, z8.B, z9.B
+    UMOPA za1.S, p0/M, p1/M, z10.B, z11.B
+    UMOPA za2.S, p0/M, p1/M, z12.B, z13.B
+    UMOPA za3.S, p0/M, p1/M, z14.B, z15.B
+    UMOPA za0.S, p0/M, p1/M, z16.B, z17.B
+    UMOPA za1.S, p0/M, p1/M, z18.B, z19.B
+    UMOPA za2.S, p0/M, p1/M, z20.B, z21.B
+    UMOPA za3.S, p0/M, p1/M, z22.B, z23.B
+    UMOPA za0.S, p0/M, p1/M, z24.B, z25.B
+    UMOPA za1.S, p0/M, p1/M, z26.B, z27.B
+    UMOPA za2.S, p0/M, p1/M, z28.B, z29.B
+    UMOPA za3.S, p0/M, p1/M, z30.B, z31.B
+    subs x0, x0, #1
+    UMOPA za0.S, p0/M, p1/M, z8.B, z9.B
+    UMOPA za1.S, p0/M, p1/M, z10.B, z11.B
+    UMOPA za2.S, p0/M, p1/M, z12.B, z13.B
+    UMOPA za3.S, p0/M, p1/M, z14.B, z15.B
+    UMOPA za0.S, p0/M, p1/M, z16.B, z17.B
+    UMOPA za1.S, p0/M, p1/M, z18.B, z19.B
+    UMOPA za2.S, p0/M, p1/M, z20.B, z21.B
+    UMOPA za3.S, p0/M, p1/M, z22.B, z23.B
+    UMOPA za0.S, p0/M, p1/M, z24.B, z25.B
+    UMOPA za1.S, p0/M, p1/M, z26.B, z27.B
+    UMOPA za2.S, p0/M, p1/M, z28.B, z29.B
+    UMOPA za3.S, p0/M, p1/M, z30.B, z31.B
+    bne .sme_umopa_vv_u32u8u8L1
+    restore_caller_vec
+    smstop
+    ret
+############
+    PROLOGUE sme_usmopa_vv_s32u8s8
+    preserve_caller_vec
+    smstart
+    SME_INIT
+.sme_usmopa_vv_s32u8s8L1:
+    USMOPA za0.S, p0/M, p1/M, z8.B, z9.B
+    USMOPA za1.S, p0/M, p1/M, z10.B, z11.B
+    USMOPA za2.S, p0/M, p1/M, z12.B, z13.B
+    USMOPA za3.S, p0/M, p1/M, z14.B, z15.B
+    USMOPA za0.S, p0/M, p1/M, z16.B, z17.B
+    USMOPA za1.S, p0/M, p1/M, z18.B, z19.B
+    USMOPA za2.S, p0/M, p1/M, z20.B, z21.B
+    USMOPA za3.S, p0/M, p1/M, z22.B, z23.B
+    USMOPA za0.S, p0/M, p1/M, z24.B, z25.B
+    USMOPA za1.S, p0/M, p1/M, z26.B, z27.B
+    USMOPA za2.S, p0/M, p1/M, z28.B, z29.B
+    USMOPA za3.S, p0/M, p1/M, z30.B, z31.B
+    subs x0, x0, #1
+    USMOPA za0.S, p0/M, p1/M, z8.B, z9.B
+    USMOPA za1.S, p0/M, p1/M, z10.B, z11.B
+    USMOPA za2.S, p0/M, p1/M, z12.B, z13.B
+    USMOPA za3.S, p0/M, p1/M, z14.B, z15.B
+    USMOPA za0.S, p0/M, p1/M, z16.B, z17.B
+    USMOPA za1.S, p0/M, p1/M, z18.B, z19.B
+    USMOPA za2.S, p0/M, p1/M, z20.B, z21.B
+    USMOPA za3.S, p0/M, p1/M, z22.B, z23.B
+    USMOPA za0.S, p0/M, p1/M, z24.B, z25.B
+    USMOPA za1.S, p0/M, p1/M, z26.B, z27.B
+    USMOPA za2.S, p0/M, p1/M, z28.B, z29.B
+    USMOPA za3.S, p0/M, p1/M, z30.B, z31.B
+    bne .sme_usmopa_vv_s32u8s8L1
+    restore_caller_vec
+    smstop
+    ret
+############
+    PROLOGUE sme_sumopa_vv_s32s8u8
+    preserve_caller_vec
+    smstart
+    SME_INIT
+.sme_sumopa_vv_s32s8u8L1:
+    SUMOPA za0.S, p0/M, p1/M, z8.B, z9.B
+    SUMOPA za1.S, p0/M, p1/M, z10.B, z11.B
+    SUMOPA za2.S, p0/M, p1/M, z12.B, z13.B
+    SUMOPA za3.S, p0/M, p1/M, z14.B, z15.B
+    SUMOPA za0.S, p0/M, p1/M, z16.B, z17.B
+    SUMOPA za1.S, p0/M, p1/M, z18.B, z19.B
+    SUMOPA za2.S, p0/M, p1/M, z20.B, z21.B
+    SUMOPA za3.S, p0/M, p1/M, z22.B, z23.B
+    SUMOPA za0.S, p0/M, p1/M, z24.B, z25.B
+    SUMOPA za1.S, p0/M, p1/M, z26.B, z27.B
+    SUMOPA za2.S, p0/M, p1/M, z28.B, z29.B
+    SUMOPA za3.S, p0/M, p1/M, z30.B, z31.B
+    subs x0, x0, #1
+    SUMOPA za0.S, p0/M, p1/M, z8.B, z9.B
+    SUMOPA za1.S, p0/M, p1/M, z10.B, z11.B
+    SUMOPA za2.S, p0/M, p1/M, z12.B, z13.B
+    SUMOPA za3.S, p0/M, p1/M, z14.B, z15.B
+    SUMOPA za0.S, p0/M, p1/M, z16.B, z17.B
+    SUMOPA za1.S, p0/M, p1/M, z18.B, z19.B
+    SUMOPA za2.S, p0/M, p1/M, z20.B, z21.B
+    SUMOPA za3.S, p0/M, p1/M, z22.B, z23.B
+    SUMOPA za0.S, p0/M, p1/M, z24.B, z25.B
+    SUMOPA za1.S, p0/M, p1/M, z26.B, z27.B
+    SUMOPA za2.S, p0/M, p1/M, z28.B, z29.B
+    SUMOPA za3.S, p0/M, p1/M, z30.B, z31.B
+    bne .sme_sumopa_vv_s32s8u8L1
+    restore_caller_vec
+    smstop
+    ret
+############
     PROLOGUE sme_ldr_kernel
     preserve_caller_vec
     RDSVL x6, #1

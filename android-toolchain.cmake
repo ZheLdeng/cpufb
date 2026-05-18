@@ -1,3 +1,9 @@
+# DEPRECATED: this file has moved to cmake/toolchains/aarch64-linux-gnu.cmake.
+# It is kept here so that older shell scripts referring to it still work.
+message(WARNING "android-toolchain.cmake is deprecated; "
+                "use cmake/toolchains/aarch64-linux-gnu.cmake "
+                "(picked up automatically by the aarch64-cross preset).")
+
 # Android Cross-Compilation Toolchain File
 set(CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_SYSTEM_PROCESSOR aarch64)

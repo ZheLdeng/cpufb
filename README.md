@@ -67,35 +67,71 @@ multiple issue.
 ---
 ### Dependencies
 
-If you need to benchmark the SVE instruction set, please upgrade GCC to version 8.x.
+* CMake **3.19** or newer (required for `CMakePresets.json`).
+* A C/C++ toolchain (gcc/clang) and `make` (or any other CMake generator).
+* If you need to benchmark the SVE instruction set, please upgrade GCC to version 8.x.
 
-### Normal compile
+### Quick start
 
-build x64 version:
+```sh
+# Native build (auto-detects host architecture and SIMD features)
+./build.sh                  # release
+./build.sh -d               # debug
+./build.sh -r               # rebuild from scratch
 
-`./build_x64.sh`
+# Cross-compile for ARM64 (Android-friendly)
+./build.sh -a               # configure + build
+./build.sh -a --push        # ...and adb push to /data/local/tmp/cpufb
+./build.sh -a --run-core 0  # ...and run pinned to core 0
+```
 
-build arm64 version:
+The output binary is at `build/<preset>/cpufb`.
 
-`./build_arm64.sh`
+### Using CMake directly
 
-build arm64 android version:
+`build.sh` is just a thin wrapper around `cmake --preset`. The presets are:
 
-`./build_android.sh`
+| Preset           | Purpose                                                  |
+| ---------------- | -------------------------------------------------------- |
+| `native-release` | Build for the host arch (Linux x64, arm64, riscv64; macOS arm64). |
+| `native-debug`   | Same, with `CMAKE_BUILD_TYPE=Debug`.                     |
+| `macos-arm64`    | Apple Silicon, matches legacy `build_arm64.sh` quirks.   |
+| `aarch64-cross`  | Cross-compile to `aarch64-linux-gnu` (Android deploy).   |
+| `riscv64-cross`  | Cross-compile to `riscv64-linux-gnu`.                    |
 
-build riscv64 version:
+```sh
+cmake --preset native-release
+cmake --build --preset native-release
+```
 
-`./build_riscv64.sh`
+To cross-compile and bypass runtime SIMD detection, pass the feature list:
 
-clean:
+```sh
+cmake --preset aarch64-cross \
+    -DCPUFB_SIMD_FEATURES_OVERRIDE="_BF16_;_I8MM_;_SVE_;_SVE2_"
+cmake --build --preset aarch64-cross
+```
 
-`./clean.sh`
+### Cross compile for Android
 
-### Cross compile for android
+Use the `aarch64-cross` preset (or `./build.sh -a`). It uses
+`cmake/toolchains/aarch64-linux-gnu.cmake` and statically links the binary so
+that `/data/local/tmp/cpufb` runs on bare Android. With
+`CPUFB_ENABLE_ANDROID_DEPLOY=ON` (the preset turns this on by default), the
+extra targets `push_android` / `run_android_core{0,1,7}` are available:
 
-Use the build_android.sh. We used `aarch64-linux-gnu` as the default cross compile. If you need to use other cross toolchains, then find the #Cross compile part in build_android.sh. Set CXX to point to the cross C++ compiler, CC to the cross C compiler, and AS to the asm compiler. The target must be specified explicitly when cross compiling.
+```sh
+cmake --build --preset aarch64-cross --target push_android
+cmake --build --preset aarch64-cross --target run_android_core0
+```
 
-* You must ensure that the device can be connected via `adb shell` during compilation.
+You must ensure that the device can be reached via `adb shell` during build.
+
+### Legacy shell scripts (deprecated)
+
+The old `build_x64.sh`, `build_arm64.sh`, `build_android.sh`, `build_riscv64.sh`
+and `clean.sh` are kept for reference only and will print a `[DEPRECATED]`
+notice. New code should use the CMake build above.
 
 ## How to benchmark
 

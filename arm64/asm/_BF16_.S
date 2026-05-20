@@ -170,3 +170,171 @@
     bne .asimd.bfmlalt.fp32bf16bf16.L1
     restore_caller_vec
     ret
+###############################
+// Latency variants: all 24 unrolled instructions write to v8 to form a
+// 24-long RAW chain through the accumulator (Pattern A).
+###############################
+    PROLOGUE asimd_mmla_fp32bf16bf16_latency
+    preserve_caller_vec
+    INIT
+.asimd.mmla.fp32bf16bf16.lat.L1:
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    subs x0, x0, #1
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bfmmla v8.4s, v0.8h, v1.8h
+    bne .asimd.mmla.fp32bf16bf16.lat.L1
+    restore_caller_vec
+    ret
+###############################
+    PROLOGUE asimd_dp2a_vs_fp32bf16bf16_latency
+    preserve_caller_vec
+    INIT
+.asimd.dp2a.vs.fp32bf16bf16.lat.L1:
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    subs x0, x0, #1
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bfdot v8.4s, v0.8h, v1.2h[0]
+    bne .asimd.dp2a.vs.fp32bf16bf16.lat.L1
+    restore_caller_vec
+    ret
+###############################
+    PROLOGUE asimd_dp2a_vv_fp32bf16bf16_latency
+    preserve_caller_vec
+    INIT
+.asimd.dp2a.vv.fp32bf16bf16.lat.L1:
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    subs x0, x0, #1
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bfdot v8.4s, v0.8h, v1.8h
+    bne .asimd.dp2a.vv.fp32bf16bf16.lat.L1
+    restore_caller_vec
+    ret
+###############################
+    PROLOGUE asimd_bfmlalb_fp32bf16bf16_latency
+    preserve_caller_vec
+    INIT
+.asimd.bfmlalb.fp32bf16bf16.lat.L1:
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    subs x0, x0, #1
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bfmlalb v8.4s, v0.8h, v1.8h
+    bne .asimd.bfmlalb.fp32bf16bf16.lat.L1
+    restore_caller_vec
+    ret
+###############################
+    PROLOGUE asimd_bfmlalt_fp32bf16bf16_latency
+    preserve_caller_vec
+    INIT
+.asimd.bfmlalt.fp32bf16bf16.lat.L1:
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    subs x0, x0, #1
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bfmlalt v8.4s, v0.8h, v1.8h
+    bne .asimd.bfmlalt.fp32bf16bf16.lat.L1
+    restore_caller_vec
+    ret

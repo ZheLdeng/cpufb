@@ -107,6 +107,10 @@ if(_simd_sources)
     add_library(cpufb_simd OBJECT ${_simd_sources})
     target_include_directories(cpufb_simd PRIVATE "${CPUFB_ASM_DIR}")
     target_compile_options(cpufb_simd PRIVATE -g -w)
+    # Pass detected SIMD feature tokens through to the .S preprocessor so
+    # asm files can do conditional compilation (e.g. fp16 lanes inside an
+    # otherwise-base-asimd file guarded by `#ifdef _ASIMD_HP_`).
+    target_compile_definitions(cpufb_simd PRIVATE ${CPUFB_SIMD_FEATURES})
     if(ANDROID AND CMAKE_CROSSCOMPILING)
         target_compile_definitions(cpufb_simd PRIVATE CROSS_COMPILE)
     endif()

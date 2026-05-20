@@ -399,3 +399,289 @@
     restore_caller_vec
     ret
 ###############################
+// fmls.vv : fused negate-multiply-add. Same op count as fmla (4 lane * 2 op).
+#void asimd_fmls_vv_f32f32f32(int64_t);
+    PROLOGUE asimd_fmls_vv_f32f32f32
+    preserve_caller_vec
+    INIT
+.asimd.fmls.vv.f32f32f32.L1:
+    fmls v8.4s , v0.4s, v1.4s
+    fmls v9.4s , v0.4s, v1.4s
+    fmls v10.4s, v0.4s, v1.4s
+    fmls v11.4s, v0.4s, v1.4s
+    fmls v12.4s, v0.4s, v1.4s
+    fmls v13.4s, v0.4s, v1.4s
+    fmls v14.4s, v0.4s, v1.4s
+    fmls v15.4s, v0.4s, v1.4s
+    fmls v16.4s, v0.4s, v1.4s
+    fmls v17.4s, v0.4s, v1.4s
+    fmls v18.4s, v0.4s, v1.4s
+    fmls v19.4s, v0.4s, v1.4s
+    subs x0, x0, #1
+    fmls v20.4s, v0.4s, v1.4s
+    fmls v21.4s, v0.4s, v1.4s
+    fmls v22.4s, v0.4s, v1.4s
+    fmls v23.4s, v0.4s, v1.4s
+    fmls v24.4s, v0.4s, v1.4s
+    fmls v25.4s, v0.4s, v1.4s
+    fmls v26.4s, v0.4s, v1.4s
+    fmls v27.4s, v0.4s, v1.4s
+    fmls v28.4s, v0.4s, v1.4s
+    fmls v29.4s, v0.4s, v1.4s
+    fmls v30.4s, v0.4s, v1.4s
+    fmls v31.4s, v0.4s, v1.4s
+    bne .asimd.fmls.vv.f32f32f32.L1
+    restore_caller_vec
+    ret
+###############################
+// fneg + fmla : exposes whether fneg shares the issue port with fmla.
+// Pair: fneg vN, v0 ; fmla vAcc, vN, v1  (12 pairs = 24 instructions).
+#void asimd_fneg_fmla_vv_f32f32f32(int64_t);
+    PROLOGUE asimd_fneg_fmla_vv_f32f32f32
+    preserve_caller_vec
+    INIT
+.asimd.fneg.fmla.vv.f32f32f32.L1:
+    fneg v2.4s,  v0.4s
+    fmla v8.4s , v2.4s, v1.4s
+    fneg v3.4s,  v0.4s
+    fmla v9.4s , v3.4s, v1.4s
+    fneg v4.4s,  v0.4s
+    fmla v10.4s, v4.4s, v1.4s
+    fneg v5.4s,  v0.4s
+    fmla v11.4s, v5.4s, v1.4s
+    fneg v6.4s,  v0.4s
+    fmla v12.4s, v6.4s, v1.4s
+    fneg v7.4s,  v0.4s
+    fmla v13.4s, v7.4s, v1.4s
+    subs x0, x0, #1
+    fneg v2.4s,  v0.4s
+    fmla v14.4s, v2.4s, v1.4s
+    fneg v3.4s,  v0.4s
+    fmla v15.4s, v3.4s, v1.4s
+    fneg v4.4s,  v0.4s
+    fmla v16.4s, v4.4s, v1.4s
+    fneg v5.4s,  v0.4s
+    fmla v17.4s, v5.4s, v1.4s
+    fneg v6.4s,  v0.4s
+    fmla v18.4s, v6.4s, v1.4s
+    fneg v7.4s,  v0.4s
+    fmla v19.4s, v7.4s, v1.4s
+    bne .asimd.fneg.fmla.vv.f32f32f32.L1
+    restore_caller_vec
+    ret
+###############################
+// fadd : non-FMA add. 4 lane * 1 op = 4 FLOPS / instr.
+#void asimd_fadd_vv_f32f32f32(int64_t);
+    PROLOGUE asimd_fadd_vv_f32f32f32
+    preserve_caller_vec
+    INIT
+.asimd.fadd.vv.f32f32f32.L1:
+    fadd v8.4s , v0.4s, v1.4s
+    fadd v9.4s , v0.4s, v1.4s
+    fadd v10.4s, v0.4s, v1.4s
+    fadd v11.4s, v0.4s, v1.4s
+    fadd v12.4s, v0.4s, v1.4s
+    fadd v13.4s, v0.4s, v1.4s
+    fadd v14.4s, v0.4s, v1.4s
+    fadd v15.4s, v0.4s, v1.4s
+    fadd v16.4s, v0.4s, v1.4s
+    fadd v17.4s, v0.4s, v1.4s
+    fadd v18.4s, v0.4s, v1.4s
+    fadd v19.4s, v0.4s, v1.4s
+    subs x0, x0, #1
+    fadd v20.4s, v0.4s, v1.4s
+    fadd v21.4s, v0.4s, v1.4s
+    fadd v22.4s, v0.4s, v1.4s
+    fadd v23.4s, v0.4s, v1.4s
+    fadd v24.4s, v0.4s, v1.4s
+    fadd v25.4s, v0.4s, v1.4s
+    fadd v26.4s, v0.4s, v1.4s
+    fadd v27.4s, v0.4s, v1.4s
+    fadd v28.4s, v0.4s, v1.4s
+    fadd v29.4s, v0.4s, v1.4s
+    fadd v30.4s, v0.4s, v1.4s
+    fadd v31.4s, v0.4s, v1.4s
+    bne .asimd.fadd.vv.f32f32f32.L1
+    restore_caller_vec
+    ret
+###############################
+// fmul : non-FMA multiply. 4 lane * 1 op = 4 FLOPS / instr.
+#void asimd_fmul_vv_f32f32f32(int64_t);
+    PROLOGUE asimd_fmul_vv_f32f32f32
+    preserve_caller_vec
+    INIT
+.asimd.fmul.vv.f32f32f32.L1:
+    fmul v8.4s , v0.4s, v1.4s
+    fmul v9.4s , v0.4s, v1.4s
+    fmul v10.4s, v0.4s, v1.4s
+    fmul v11.4s, v0.4s, v1.4s
+    fmul v12.4s, v0.4s, v1.4s
+    fmul v13.4s, v0.4s, v1.4s
+    fmul v14.4s, v0.4s, v1.4s
+    fmul v15.4s, v0.4s, v1.4s
+    fmul v16.4s, v0.4s, v1.4s
+    fmul v17.4s, v0.4s, v1.4s
+    fmul v18.4s, v0.4s, v1.4s
+    fmul v19.4s, v0.4s, v1.4s
+    subs x0, x0, #1
+    fmul v20.4s, v0.4s, v1.4s
+    fmul v21.4s, v0.4s, v1.4s
+    fmul v22.4s, v0.4s, v1.4s
+    fmul v23.4s, v0.4s, v1.4s
+    fmul v24.4s, v0.4s, v1.4s
+    fmul v25.4s, v0.4s, v1.4s
+    fmul v26.4s, v0.4s, v1.4s
+    fmul v27.4s, v0.4s, v1.4s
+    fmul v28.4s, v0.4s, v1.4s
+    fmul v29.4s, v0.4s, v1.4s
+    fmul v30.4s, v0.4s, v1.4s
+    fmul v31.4s, v0.4s, v1.4s
+    bne .asimd.fmul.vv.f32f32f32.L1
+    restore_caller_vec
+    ret
+###############################
+// Tier-2 latency variants.
+// fmls: Pattern A (vd is RMW accumulator).
+#void asimd_fmls_vv_f32f32f32_latency(int64_t);
+    PROLOGUE asimd_fmls_vv_f32f32f32_latency
+    preserve_caller_vec
+    INIT
+.asimd.fmls.vv.f32f32f32.lat.L1:
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    subs x0, x0, #1
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    fmls v8.4s, v0.4s, v1.4s
+    bne .asimd.fmls.vv.f32f32f32.lat.L1
+    restore_caller_vec
+    ret
+###############################
+// fneg+fmla: Pattern B (combo chain through v8).
+#void asimd_fneg_fmla_vv_f32f32f32_latency(int64_t);
+    PROLOGUE asimd_fneg_fmla_vv_f32f32f32_latency
+    preserve_caller_vec
+    INIT
+.asimd.fneg.fmla.vv.f32f32f32.lat.L1:
+    fneg v8.4s, v8.4s
+    fmla v8.4s, v8.4s, v0.4s
+    fneg v8.4s, v8.4s
+    fmla v8.4s, v8.4s, v0.4s
+    fneg v8.4s, v8.4s
+    fmla v8.4s, v8.4s, v0.4s
+    fneg v8.4s, v8.4s
+    fmla v8.4s, v8.4s, v0.4s
+    fneg v8.4s, v8.4s
+    fmla v8.4s, v8.4s, v0.4s
+    fneg v8.4s, v8.4s
+    fmla v8.4s, v8.4s, v0.4s
+    subs x0, x0, #1
+    fneg v8.4s, v8.4s
+    fmla v8.4s, v8.4s, v0.4s
+    fneg v8.4s, v8.4s
+    fmla v8.4s, v8.4s, v0.4s
+    fneg v8.4s, v8.4s
+    fmla v8.4s, v8.4s, v0.4s
+    fneg v8.4s, v8.4s
+    fmla v8.4s, v8.4s, v0.4s
+    fneg v8.4s, v8.4s
+    fmla v8.4s, v8.4s, v0.4s
+    fneg v8.4s, v8.4s
+    fmla v8.4s, v8.4s, v0.4s
+    bne .asimd.fneg.fmla.vv.f32f32f32.lat.L1
+    restore_caller_vec
+    ret
+###############################
+// fadd: Pattern A' (vd is not RMW; feed vd back into vn to force RAW chain).
+#void asimd_fadd_vv_f32f32f32_latency(int64_t);
+    PROLOGUE asimd_fadd_vv_f32f32f32_latency
+    preserve_caller_vec
+    INIT
+.asimd.fadd.vv.f32f32f32.lat.L1:
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    subs x0, x0, #1
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    fadd v8.4s, v8.4s, v0.4s
+    bne .asimd.fadd.vv.f32f32f32.lat.L1
+    restore_caller_vec
+    ret
+###############################
+// fmul: Pattern A' (vd fed back into vn).
+#void asimd_fmul_vv_f32f32f32_latency(int64_t);
+    PROLOGUE asimd_fmul_vv_f32f32f32_latency
+    preserve_caller_vec
+    INIT
+    // v0 must be non-zero or fmul chain stays at zero forever; INIT zeroes it.
+    // Set v0 = 1.0 in all lanes so fmul has stable, non-degenerate input.
+    fmov v0.4s, #1.0
+    fmov v8.4s, #1.0
+.asimd.fmul.vv.f32f32f32.lat.L1:
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    subs x0, x0, #1
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    fmul v8.4s, v8.4s, v0.4s
+    bne .asimd.fmul.vv.f32f32f32.lat.L1
+    restore_caller_vec
+    ret
+###############################

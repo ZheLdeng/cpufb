@@ -61,6 +61,10 @@ int main() {
     // }
     if (find("asimd",features,count)) {
         printf("_ASIMD_\n");
+        printf("_ASIMD_REDUCE_\n");
+        printf("_ASIMD_RECIP_\n");
+        printf("_ASIMD_INT_MAC_\n");
+        printf("_ASIMD_TBL_\n");
     }
     if (find("asimddp",features,count)) {
         printf("_ASIMD_DP_\n");
@@ -76,6 +80,9 @@ int main() {
     }
     if (find("asimdfhm",features,count) || find("fhm",features,count)) {
         printf("_FHM_\n");
+    }
+    if (find("fcma",features,count)) {
+        printf("_ASIMD_FCMA_\n");
     }
     if (find("sme",features,count)) {
         printf("_SME_\n");

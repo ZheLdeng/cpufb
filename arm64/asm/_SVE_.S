@@ -383,3 +383,414 @@
     bne .sve_fmla2_vv_f64f64f64L1
     restore_caller_vec
     ret
+
+############
+// SVE complex FCMLA (predicated form):
+//   fcmla zda.s, p/m, zn.s, zm.s, #rot
+//   fcmla zda.d, p/m, zn.d, zm.d, #rot
+// Per-instruction op count is 2 ops/lane (half a complex FMA per pair).
+// 24 unrolled instructions per loop -> raw comp_pl = 24 * 2 = 48; the
+// cpufb.cpp SVE path multiplies by svcntb()/element_size to scale to SVL.
+
+.macro SVE_FCMLA_F32_LOOP rot, label
+.\label:
+    fcmla z8.s , p0/m, z0.s, z1.s, #\rot
+    fcmla z9.s , p0/m, z0.s, z1.s, #\rot
+    fcmla z10.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z11.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z12.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z13.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z14.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z15.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z16.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z17.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z18.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z19.s, p0/m, z0.s, z1.s, #\rot
+    subs x0, x0, #1
+    fcmla z20.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z21.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z22.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z23.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z24.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z25.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z26.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z27.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z28.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z29.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z30.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z31.s, p0/m, z0.s, z1.s, #\rot
+    bne .\label
+.endm
+
+.macro SVE_FCMLA_F64_LOOP rot, label
+.\label:
+    fcmla z8.d , p0/m, z0.d, z1.d, #\rot
+    fcmla z9.d , p0/m, z0.d, z1.d, #\rot
+    fcmla z10.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z11.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z12.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z13.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z14.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z15.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z16.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z17.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z18.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z19.d, p0/m, z0.d, z1.d, #\rot
+    subs x0, x0, #1
+    fcmla z20.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z21.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z22.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z23.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z24.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z25.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z26.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z27.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z28.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z29.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z30.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z31.d, p0/m, z0.d, z1.d, #\rot
+    bne .\label
+.endm
+
+############
+    PROLOGUE sve_fcmla_vv_f32f32f32_0
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_INIT
+    SVE_FCMLA_F32_LOOP 0, sve_fcmla_vv_f32_0_L1
+    restore_caller_vec
+    ret
+############
+    PROLOGUE sve_fcmla_vv_f32f32f32_90
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_INIT
+    SVE_FCMLA_F32_LOOP 90, sve_fcmla_vv_f32_90_L1
+    restore_caller_vec
+    ret
+############
+    PROLOGUE sve_fcmla_vv_f32f32f32_180
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_INIT
+    SVE_FCMLA_F32_LOOP 180, sve_fcmla_vv_f32_180_L1
+    restore_caller_vec
+    ret
+############
+    PROLOGUE sve_fcmla_vv_f32f32f32_270
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_INIT
+    SVE_FCMLA_F32_LOOP 270, sve_fcmla_vv_f32_270_L1
+    restore_caller_vec
+    ret
+############
+    PROLOGUE sve_fcmla_vv_f64f64f64_0
+    preserve_caller_vec
+    ptrue p0.d
+    SVE_INIT
+    SVE_FCMLA_F64_LOOP 0, sve_fcmla_vv_f64_0_L1
+    restore_caller_vec
+    ret
+############
+    PROLOGUE sve_fcmla_vv_f64f64f64_90
+    preserve_caller_vec
+    ptrue p0.d
+    SVE_INIT
+    SVE_FCMLA_F64_LOOP 90, sve_fcmla_vv_f64_90_L1
+    restore_caller_vec
+    ret
+############
+    PROLOGUE sve_fcmla_vv_f64f64f64_180
+    preserve_caller_vec
+    ptrue p0.d
+    SVE_INIT
+    SVE_FCMLA_F64_LOOP 180, sve_fcmla_vv_f64_180_L1
+    restore_caller_vec
+    ret
+############
+    PROLOGUE sve_fcmla_vv_f64f64f64_270
+    preserve_caller_vec
+    ptrue p0.d
+    SVE_INIT
+    SVE_FCMLA_F64_LOOP 270, sve_fcmla_vv_f64_270_L1
+    restore_caller_vec
+    ret
+
+############
+// SVE strict-order reduction: fadda sd, pg, sd, zn   (each lane folded in
+// numerical order into scalar destination -> serial dependency chain).
+// 24 instructions, all writing to the same scalar -> latency-bound.
+    PROLOGUE sve_fadda_v_f32
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_INIT
+    // GNU as rejects `fmov s8, #0.0` (VFP imm8 can't encode 0); use NEON
+    // eor to zero the bottom 128 bits of v8/z8, which covers s8.
+    eor v8.16b, v8.16b, v8.16b
+.sve_fadda_v_f32_L1:
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    subs x0, x0, #1
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    fadda s8, p0, s8, z0.s
+    bne .sve_fadda_v_f32_L1
+    restore_caller_vec
+    ret
+
+############
+    PROLOGUE sve_fadda_v_f64
+    preserve_caller_vec
+    ptrue p0.d
+    SVE_INIT
+    // SVE_INIT runs under ptrue.d here, so only every-other .s lane of z8
+    // gets the fmov-zero; clear bottom 128 b explicitly so d8 is deterministic.
+    eor v8.16b, v8.16b, v8.16b
+.sve_fadda_v_f64_L1:
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    subs x0, x0, #1
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    fadda d8, p0, d8, z0.d
+    bne .sve_fadda_v_f64_L1
+    restore_caller_vec
+    ret
+
+############
+// SVE any-order tree reduction: faddv sd, pg, zn. 24 distinct destinations
+// give independent issue. Throughput-bound, contrast with fadda above.
+    PROLOGUE sve_faddv_v_f32
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_INIT
+.sve_faddv_v_f32_L1:
+    faddv s8 , p0, z0.s
+    faddv s9 , p0, z0.s
+    faddv s10, p0, z0.s
+    faddv s11, p0, z0.s
+    faddv s12, p0, z0.s
+    faddv s13, p0, z0.s
+    faddv s14, p0, z0.s
+    faddv s15, p0, z0.s
+    faddv s16, p0, z0.s
+    faddv s17, p0, z0.s
+    faddv s18, p0, z0.s
+    faddv s19, p0, z0.s
+    subs x0, x0, #1
+    faddv s20, p0, z0.s
+    faddv s21, p0, z0.s
+    faddv s22, p0, z0.s
+    faddv s23, p0, z0.s
+    faddv s24, p0, z0.s
+    faddv s25, p0, z0.s
+    faddv s26, p0, z0.s
+    faddv s27, p0, z0.s
+    faddv s28, p0, z0.s
+    faddv s29, p0, z0.s
+    faddv s30, p0, z0.s
+    faddv s31, p0, z0.s
+    bne .sve_faddv_v_f32_L1
+    restore_caller_vec
+    ret
+
+############
+    PROLOGUE sve_faddv_v_f64
+    preserve_caller_vec
+    ptrue p0.d
+    SVE_INIT
+.sve_faddv_v_f64_L1:
+    faddv d8 , p0, z0.d
+    faddv d9 , p0, z0.d
+    faddv d10, p0, z0.d
+    faddv d11, p0, z0.d
+    faddv d12, p0, z0.d
+    faddv d13, p0, z0.d
+    faddv d14, p0, z0.d
+    faddv d15, p0, z0.d
+    faddv d16, p0, z0.d
+    faddv d17, p0, z0.d
+    faddv d18, p0, z0.d
+    faddv d19, p0, z0.d
+    subs x0, x0, #1
+    faddv d20, p0, z0.d
+    faddv d21, p0, z0.d
+    faddv d22, p0, z0.d
+    faddv d23, p0, z0.d
+    faddv d24, p0, z0.d
+    faddv d25, p0, z0.d
+    faddv d26, p0, z0.d
+    faddv d27, p0, z0.d
+    faddv d28, p0, z0.d
+    faddv d29, p0, z0.d
+    faddv d30, p0, z0.d
+    faddv d31, p0, z0.d
+    bne .sve_faddv_v_f64_L1
+    restore_caller_vec
+    ret
+
+############
+// SVE FCMLA latency variants: all 24 fcmla write to z8 (Pattern A).
+.macro SVE_FCMLA_F32_LAT_LOOP rot, label
+.\label:
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    subs x0, x0, #1
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    fcmla z8.s, p0/m, z0.s, z1.s, #\rot
+    bne .\label
+.endm
+
+.macro SVE_FCMLA_F64_LAT_LOOP rot, label
+.\label:
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    subs x0, x0, #1
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    fcmla z8.d, p0/m, z0.d, z1.d, #\rot
+    bne .\label
+.endm
+
+############
+    PROLOGUE sve_fcmla_vv_f32f32f32_0_latency
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_INIT
+    SVE_FCMLA_F32_LAT_LOOP 0, sve_fcmla_vv_f32_0_lat_L1
+    restore_caller_vec
+    ret
+############
+    PROLOGUE sve_fcmla_vv_f32f32f32_90_latency
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_INIT
+    SVE_FCMLA_F32_LAT_LOOP 90, sve_fcmla_vv_f32_90_lat_L1
+    restore_caller_vec
+    ret
+############
+    PROLOGUE sve_fcmla_vv_f32f32f32_180_latency
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_INIT
+    SVE_FCMLA_F32_LAT_LOOP 180, sve_fcmla_vv_f32_180_lat_L1
+    restore_caller_vec
+    ret
+############
+    PROLOGUE sve_fcmla_vv_f32f32f32_270_latency
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_INIT
+    SVE_FCMLA_F32_LAT_LOOP 270, sve_fcmla_vv_f32_270_lat_L1
+    restore_caller_vec
+    ret
+############
+    PROLOGUE sve_fcmla_vv_f64f64f64_0_latency
+    preserve_caller_vec
+    ptrue p0.d
+    SVE_INIT
+    SVE_FCMLA_F64_LAT_LOOP 0, sve_fcmla_vv_f64_0_lat_L1
+    restore_caller_vec
+    ret
+############
+    PROLOGUE sve_fcmla_vv_f64f64f64_90_latency
+    preserve_caller_vec
+    ptrue p0.d
+    SVE_INIT
+    SVE_FCMLA_F64_LAT_LOOP 90, sve_fcmla_vv_f64_90_lat_L1
+    restore_caller_vec
+    ret
+############
+    PROLOGUE sve_fcmla_vv_f64f64f64_180_latency
+    preserve_caller_vec
+    ptrue p0.d
+    SVE_INIT
+    SVE_FCMLA_F64_LAT_LOOP 180, sve_fcmla_vv_f64_180_lat_L1
+    restore_caller_vec
+    ret
+############
+    PROLOGUE sve_fcmla_vv_f64f64f64_270_latency
+    preserve_caller_vec
+    ptrue p0.d
+    SVE_INIT
+    SVE_FCMLA_F64_LAT_LOOP 270, sve_fcmla_vv_f64_270_lat_L1
+    restore_caller_vec
+    ret

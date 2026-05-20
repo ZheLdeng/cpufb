@@ -67,6 +67,14 @@ void test_fhm(void) {
     );
 }
 
+void test_asimd_fcma(void) {
+    // FCMLA v0.4s, v0.4s, v0.4s, #0  (FEAT_FCMA, mandatory in ARMv8.3-a)
+    __asm__ volatile(
+        ".inst 0x6e84c400\n"
+        ::: "v0"
+    );
+}
+
 void test_sve(void) {
     __asm__ volatile(
         ".inst 0x2518e3e0\n"  // PTRUE p0.b
@@ -197,6 +205,7 @@ void test_sme(void) { }
 void test_sme2(void) { }
 void test_sme_f64(void) { }
 void test_fhm(void) { }
+void test_asimd_fcma(void) { }
 void test_sve_f32mm(void) { }
 void test_sve_f64mm(void) { }
 void test_sve_fp16_fmla(void) { }
@@ -274,6 +283,7 @@ int get_cpuid(void) {
     test_instruction_in_child(test_i8mm, "I8MM");
     test_instruction_in_child(test_bf16, "BF16");
     test_instruction_in_child(test_fhm, "FHM");
+    test_instruction_in_child(test_asimd_fcma, "ASIMD_FCMA");
 
     // SVE 和 SVE2
     bool sve_supported = test_instruction_in_child(test_sve, "SVE");
@@ -300,6 +310,10 @@ int get_cpuid(void) {
     // 这些总是支持的（ARMv8基础特性）
     printf("_LDP_\n");
     printf("_ISSUE_\n");
+    printf("_ASIMD_REDUCE_\n");
+    printf("_ASIMD_RECIP_\n");
+    printf("_ASIMD_INT_MAC_\n");
+    printf("_ASIMD_TBL_\n");
     fflush(stdout);
     
     return 0;

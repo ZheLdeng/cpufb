@@ -212,3 +212,204 @@
     restore_caller_vec
     ret
 
+###############################
+// Latency variants: all 24 instructions write to v8 (Pattern A).
+###############################
+    PROLOGUE asimd_mmla_s32s8s8_latency
+    preserve_caller_vec
+    INIT
+.asimd.mmla.s32s8s8.lat.L1:
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    subs x0, x0, #1
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    smmla v8.4s, v0.16b, v1.16b
+    bne .asimd.mmla.s32s8s8.lat.L1
+    restore_caller_vec
+    ret
+###############################
+    PROLOGUE asimd_mmla_u32u8u8_latency
+    preserve_caller_vec
+    INIT
+.asimd.mmla.u32u8u8.lat.L1:
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    subs x0, x0, #1
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    ummla v8.4s, v0.16b, v1.16b
+    bne .asimd.mmla.u32u8u8.lat.L1
+    restore_caller_vec
+    ret
+###############################
+    PROLOGUE asimd_mmla_s32u8s8_latency
+    preserve_caller_vec
+    INIT
+.asimd.mmla.s32u8s8.lat.L1:
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    subs x0, x0, #1
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    usmmla v8.4s, v0.16b, v1.16b
+    bne .asimd.mmla.s32u8s8.lat.L1
+    restore_caller_vec
+    ret
+###############################
+    PROLOGUE asimd_dp4a_vs_s32s8u8_latency
+    preserve_caller_vec
+    INIT
+.asimd.dp4a.vs.s32s8u8.lat.L1:
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    subs x0, x0, #1
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    sudot v8.4s, v0.16b, v1.4b[0]
+    bne .asimd.dp4a.vs.s32s8u8.lat.L1
+    restore_caller_vec
+    ret
+###############################
+    PROLOGUE asimd_dp4a_vs_s32u8s8_latency
+    preserve_caller_vec
+    INIT
+.asimd.dp4a.vs.s32u8s8.lat.L1:
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    subs x0, x0, #1
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    usdot v8.4s, v0.16b, v1.4b[0]
+    bne .asimd.dp4a.vs.s32u8s8.lat.L1
+    restore_caller_vec
+    ret
+###############################
+    PROLOGUE asimd_dp4a_vv_s32u8s8_latency
+    preserve_caller_vec
+    INIT
+.asimd.dp4a.vv.s32u8s8.lat.L1:
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    subs x0, x0, #1
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    usdot v8.4s, v0.16b, v1.16b
+    bne .asimd.dp4a.vv.s32u8s8.lat.L1
+    restore_caller_vec
+    ret
+

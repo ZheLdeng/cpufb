@@ -252,3 +252,215 @@
     bne .sve_dp4a_vv_s32u8s8L1
     restore_caller_vec
     ret
+
+############
+// Latency variants: all 24 instructions write to z8 (Pattern A).
+############
+    PROLOGUE sve_mmla_s32s8s8_latency
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_I8_INIT
+.sve_mmla_s32s8s8_lat_L1:
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    subs x0, x0, #1
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    smmla z8.s, z0.b, z1.b
+    bne .sve_mmla_s32s8s8_lat_L1
+    restore_caller_vec
+    ret
+
+############
+    PROLOGUE sve_mmla_u32u8u8_latency
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_I8_INIT
+.sve_mmla_u32u8u8_lat_L1:
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    subs x0, x0, #1
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    ummla z8.s, z0.b, z1.b
+    bne .sve_mmla_u32u8u8_lat_L1
+    restore_caller_vec
+    ret
+
+############
+    PROLOGUE sve_mmla_s32u8s8_latency
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_I8_INIT
+.sve_mmla_s32u8s8_lat_L1:
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    subs x0, x0, #1
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    usmmla z8.s, z0.b, z1.b
+    bne .sve_mmla_s32u8s8_lat_L1
+    restore_caller_vec
+    ret
+
+############
+    PROLOGUE sve_dp4a_vv_s32s8s8_latency
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_I8_INIT
+.sve_dp4a_vv_s32s8s8_lat_L1:
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    subs x0, x0, #1
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    sdot z8.s, z0.b, z1.b
+    bne .sve_dp4a_vv_s32s8s8_lat_L1
+    restore_caller_vec
+    ret
+
+############
+    PROLOGUE sve_dp4a_vv_s32u8u8_latency
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_I8_INIT
+.sve_dp4a_vv_s32u8u8_lat_L1:
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    subs x0, x0, #1
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    udot z8.s, z0.b, z1.b
+    bne .sve_dp4a_vv_s32u8u8_lat_L1
+    restore_caller_vec
+    ret
+
+############
+    PROLOGUE sve_dp4a_vv_s32u8s8_latency
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_I8_INIT
+.sve_dp4a_vv_s32u8s8_lat_L1:
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    subs x0, x0, #1
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    usdot z8.s, z0.b, z1.b
+    bne .sve_dp4a_vv_s32u8s8_lat_L1
+    restore_caller_vec
+    ret

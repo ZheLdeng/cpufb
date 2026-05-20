@@ -13,6 +13,16 @@ extern "C"
     void asimd_fmla2_vv_f32f32f32(int64_t);
     void asimd_fmla2_vv_f64f64f64(int64_t);
     void asimd_hybrid_fp32_mla_6x16(int64_t);
+    // Tier-2 additions: non-FMA paths and negated-FMA chain.
+    void asimd_fmls_vv_f32f32f32(int64_t);
+    void asimd_fneg_fmla_vv_f32f32f32(int64_t);
+    void asimd_fadd_vv_f32f32f32(int64_t);
+    void asimd_fmul_vv_f32f32f32(int64_t);
+    // Tier-2 latency variants.
+    void asimd_fmls_vv_f32f32f32_latency(int64_t);
+    void asimd_fneg_fmla_vv_f32f32f32_latency(int64_t);
+    void asimd_fadd_vv_f32f32f32_latency(int64_t);
+    void asimd_fmul_vv_f32f32f32_latency(int64_t);
 #endif
 
 #ifdef _ASIMD_HP_
@@ -25,6 +35,11 @@ extern "C"
     void asimd_dp4a_vv_s32s8s8(int64_t);
     void asimd_dp4a_vs_u32u8u8(int64_t);
     void asimd_dp4a_vv_u32u8u8(int64_t);
+    // Latency variants.
+    void asimd_dp4a_vs_s32s8s8_latency(int64_t);
+    void asimd_dp4a_vv_s32s8s8_latency(int64_t);
+    void asimd_dp4a_vs_u32u8u8_latency(int64_t);
+    void asimd_dp4a_vv_u32u8u8_latency(int64_t);
 #endif
 
 #ifdef _BF16_
@@ -33,6 +48,12 @@ extern "C"
     void asimd_dp2a_vv_fp32bf16bf16(int64_t);
     void asimd_bfmlalb_fp32bf16bf16(int64_t);
     void asimd_bfmlalt_fp32bf16bf16(int64_t);
+    // Latency variants.
+    void asimd_mmla_fp32bf16bf16_latency(int64_t);
+    void asimd_dp2a_vs_fp32bf16bf16_latency(int64_t);
+    void asimd_dp2a_vv_fp32bf16bf16_latency(int64_t);
+    void asimd_bfmlalb_fp32bf16bf16_latency(int64_t);
+    void asimd_bfmlalt_fp32bf16bf16_latency(int64_t);
 #endif
 
 #ifdef _FHM_
@@ -52,6 +73,13 @@ extern "C"
     void asimd_dp4a_vs_s32s8u8(int64_t);
     void asimd_dp4a_vs_s32u8s8(int64_t);
     void asimd_dp4a_vv_s32u8s8(int64_t);
+    // Latency variants.
+    void asimd_mmla_s32s8s8_latency(int64_t);
+    void asimd_mmla_u32u8u8_latency(int64_t);
+    void asimd_mmla_s32u8s8_latency(int64_t);
+    void asimd_dp4a_vs_s32s8u8_latency(int64_t);
+    void asimd_dp4a_vs_s32u8s8_latency(int64_t);
+    void asimd_dp4a_vv_s32u8s8_latency(int64_t);
 #endif
 
 #ifdef _SVE_
@@ -61,6 +89,103 @@ extern "C"
     void sve_fmla_vv_f64f64f64(int64_t);
     void sve_fmla2_vv_f32f32f32(int64_t);
     void sve_fmla2_vv_f64f64f64(int64_t);
+    // Tier-2 additions: SVE complex FCMLA + reductions.
+    void sve_fcmla_vv_f32f32f32_0(int64_t);
+    void sve_fcmla_vv_f32f32f32_90(int64_t);
+    void sve_fcmla_vv_f32f32f32_180(int64_t);
+    void sve_fcmla_vv_f32f32f32_270(int64_t);
+    void sve_fcmla_vv_f64f64f64_0(int64_t);
+    void sve_fcmla_vv_f64f64f64_90(int64_t);
+    void sve_fcmla_vv_f64f64f64_180(int64_t);
+    void sve_fcmla_vv_f64f64f64_270(int64_t);
+    void sve_fadda_v_f32(int64_t);
+    void sve_fadda_v_f64(int64_t);
+    void sve_faddv_v_f32(int64_t);
+    void sve_faddv_v_f64(int64_t);
+    // Tier-2 latency variants for SVE FCMLA (sve_fadda is its own latency
+    // chain by construction, registered twice in cpufb.cpp -- no new asm).
+    void sve_fcmla_vv_f32f32f32_0_latency(int64_t);
+    void sve_fcmla_vv_f32f32f32_90_latency(int64_t);
+    void sve_fcmla_vv_f32f32f32_180_latency(int64_t);
+    void sve_fcmla_vv_f32f32f32_270_latency(int64_t);
+    void sve_fcmla_vv_f64f64f64_0_latency(int64_t);
+    void sve_fcmla_vv_f64f64f64_90_latency(int64_t);
+    void sve_fcmla_vv_f64f64f64_180_latency(int64_t);
+    void sve_fcmla_vv_f64f64f64_270_latency(int64_t);
+#endif
+
+#ifdef _ASIMD_FCMA_
+    void asimd_fcmla_vv_f32f32f32_0(int64_t);
+    void asimd_fcmla_vv_f32f32f32_90(int64_t);
+    void asimd_fcmla_vv_f32f32f32_180(int64_t);
+    void asimd_fcmla_vv_f32f32f32_270(int64_t);
+    void asimd_fcmla_pair_vv_f32f32f32(int64_t);
+  #ifdef _ASIMD_HP_
+    void asimd_fcmla_vv_f16f16f16_0(int64_t);
+    void asimd_fcmla_vv_f16f16f16_90(int64_t);
+    void asimd_fcmla_vv_f16f16f16_180(int64_t);
+    void asimd_fcmla_vv_f16f16f16_270(int64_t);
+  #endif
+    // Latency variants.
+    void asimd_fcmla_vv_f32f32f32_0_latency(int64_t);
+    void asimd_fcmla_vv_f32f32f32_90_latency(int64_t);
+    void asimd_fcmla_vv_f32f32f32_180_latency(int64_t);
+    void asimd_fcmla_vv_f32f32f32_270_latency(int64_t);
+  #ifdef _ASIMD_HP_
+    void asimd_fcmla_vv_f16f16f16_0_latency(int64_t);
+    void asimd_fcmla_vv_f16f16f16_90_latency(int64_t);
+    void asimd_fcmla_vv_f16f16f16_180_latency(int64_t);
+    void asimd_fcmla_vv_f16f16f16_270_latency(int64_t);
+  #endif
+#endif
+
+#ifdef _ASIMD_REDUCE_
+    void asimd_faddp_v_f32(int64_t);
+    void asimd_fmaxv_v_f32(int64_t);
+    void asimd_saddlv_v_s8(int64_t);
+    void asimd_smaxv_v_s32(int64_t);
+  #ifdef _ASIMD_HP_
+    void asimd_fmaxv_v_f16(int64_t);
+  #endif
+    // Latency variant for faddp only (Pattern A'). Scalar-output reductions
+    // skipped per plan because they require dup-back feedback.
+    void asimd_faddp_v_f32_latency(int64_t);
+#endif
+
+#ifdef _ASIMD_RECIP_
+    void asimd_frecpe_recps_v_f32(int64_t);
+    void asimd_frsqrte_rsqrts_v_f32(int64_t);
+  #ifdef _ASIMD_HP_
+    void asimd_frecpe_recps_v_f16(int64_t);
+  #endif
+    // Latency variants (Pattern B: dst fed back through both ops).
+    void asimd_frecpe_recps_v_f32_latency(int64_t);
+    void asimd_frsqrte_rsqrts_v_f32_latency(int64_t);
+  #ifdef _ASIMD_HP_
+    void asimd_frecpe_recps_v_f16_latency(int64_t);
+  #endif
+#endif
+
+#ifdef _ASIMD_INT_MAC_
+    void asimd_mla_vs_s32s32s32(int64_t);
+    void asimd_mla_vv_s32s32s32(int64_t);
+    void asimd_mla_vs_s16s16s16(int64_t);
+    void asimd_sqdmlal_vv_s32s16s16(int64_t);
+    void asimd_sqdmlal2_vv_s32s16s16(int64_t);
+    // Latency variants.
+    void asimd_mla_vs_s32s32s32_latency(int64_t);
+    void asimd_mla_vv_s32s32s32_latency(int64_t);
+    void asimd_mla_vs_s16s16s16_latency(int64_t);
+    void asimd_sqdmlal_vv_s32s16s16_latency(int64_t);
+    void asimd_sqdmlal2_vv_s32s16s16_latency(int64_t);
+#endif
+
+#ifdef _ASIMD_TBL_
+    void asimd_tbl_4table_v_u8(int64_t);
+    void asimd_tbx_4table_v_u8(int64_t);
+    // Latency variants (Pattern B: dst fed back as index).
+    void asimd_tbl_4table_v_u8_latency(int64_t);
+    void asimd_tbx_4table_v_u8_latency(int64_t);
 #endif
 
 #ifdef _SVE_I8MM_
@@ -70,12 +195,23 @@ extern "C"
     void sve_dp4a_vv_s32s8s8(int64_t);
     void sve_dp4a_vv_s32u8u8(int64_t);
     void sve_dp4a_vv_s32u8s8(int64_t);
+    // Latency variants.
+    void sve_mmla_s32s8s8_latency(int64_t);
+    void sve_mmla_u32u8u8_latency(int64_t);
+    void sve_mmla_s32u8s8_latency(int64_t);
+    void sve_dp4a_vv_s32s8s8_latency(int64_t);
+    void sve_dp4a_vv_s32u8u8_latency(int64_t);
+    void sve_dp4a_vv_s32u8s8_latency(int64_t);
 #endif
 
 #ifdef _SVE_BF16_
     void sve_bfmmla_f32bf16bf16(int64_t);
     void sve_bfdot_vv_f32bf16bf16(int64_t);
     void sve_bfdot_vs_f32bf16bf16(int64_t);
+    // Latency variants.
+    void sve_bfmmla_f32bf16bf16_latency(int64_t);
+    void sve_bfdot_vv_f32bf16bf16_latency(int64_t);
+    void sve_bfdot_vs_f32bf16bf16_latency(int64_t);
 #endif
 
 #ifdef _SVE_F32MM_

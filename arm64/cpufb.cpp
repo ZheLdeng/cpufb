@@ -455,41 +455,71 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _I8MM_
+    reg_new_isa("i8mm", "mmla(s32,s8,s8)_latency", "OPS",
+        kLatencyLoopTime, 1536LL, (void*)asimd_mmla_s32s8s8_latency);
     reg_new_isa("i8mm", "mmla(s32,s8,s8)", "OPS",
         kComputeLoopTime, 1536LL, (void*)asimd_mmla_s32s8s8);
+    reg_new_isa("i8mm", "mmla(u32,u8,u8)_latency", "OPS",
+        kLatencyLoopTime, 1536LL, (void*)asimd_mmla_u32u8u8_latency);
     reg_new_isa("i8mm", "mmla(u32,u8,u8)", "OPS",
         kComputeLoopTime, 1536LL, (void*)asimd_mmla_u32u8u8);
+    reg_new_isa("i8mm", "mmla(s32,u8,s8)_latency", "OPS",
+        kLatencyLoopTime, 1536LL, (void*)asimd_mmla_s32u8s8_latency);
     reg_new_isa("i8mm", "mmla(s32,u8,s8)", "OPS",
         kComputeLoopTime, 1536LL, (void*)asimd_mmla_s32u8s8);
 
+    reg_new_isa("i8mm", "dp4a.vs(s32,s8,u8)_latency", "OPS",
+        kLatencyLoopTime, 768LL, (void*)asimd_dp4a_vs_s32s8u8_latency);
     reg_new_isa("i8mm", "dp4a.vs(s32,s8,u8)", "OPS",
         kComputeLoopTime, 768LL, (void*)asimd_dp4a_vs_s32s8u8);
+    reg_new_isa("i8mm", "dp4a.vs(s32,u8,s8)_latency", "OPS",
+        kLatencyLoopTime, 768LL, (void*)asimd_dp4a_vs_s32u8s8_latency);
     reg_new_isa("i8mm", "dp4a.vs(s32,u8,s8)", "OPS",
         kComputeLoopTime, 768LL, (void*)asimd_dp4a_vs_s32u8s8);
+    reg_new_isa("i8mm", "dp4a.vv(s32,u8,s8)_latency", "OPS",
+        kLatencyLoopTime, 768LL, (void*)asimd_dp4a_vv_s32u8s8_latency);
     reg_new_isa("i8mm", "dp4a.vv(s32,u8,s8)", "OPS",
         kComputeLoopTime, 768LL, (void*)asimd_dp4a_vv_s32u8s8);
 #endif
 
 #ifdef _ASIMD_DP_
+    reg_new_isa("asimd_dp", "dp4a.vs(s32,s8,s8)_latency", "OPS",
+        kLatencyLoopTime, 768LL, (void*)asimd_dp4a_vs_s32s8s8_latency);
     reg_new_isa("asimd_dp", "dp4a.vs(s32,s8,s8)", "OPS",
         kComputeLoopTime, 768LL, (void*)asimd_dp4a_vs_s32s8s8);
+    reg_new_isa("asimd_dp", "dp4a.vv(s32,s8,s8)_latency", "OPS",
+        kLatencyLoopTime, 768LL, (void*)asimd_dp4a_vv_s32s8s8_latency);
     reg_new_isa("asimd_dp", "dp4a.vv(s32,s8,s8)", "OPS",
         kComputeLoopTime, 768LL, (void*)asimd_dp4a_vv_s32s8s8);
+    reg_new_isa("asimd_dp", "dp4a.vs(u32,u8,u8)_latency", "OPS",
+        kLatencyLoopTime, 768LL, (void*)asimd_dp4a_vs_u32u8u8_latency);
     reg_new_isa("asimd_dp", "dp4a.vs(u32,u8,u8)", "OPS",
         kComputeLoopTime, 768LL, (void*)asimd_dp4a_vs_u32u8u8);
+    reg_new_isa("asimd_dp", "dp4a.vv(u32,u8,u8)_latency", "OPS",
+        kLatencyLoopTime, 768LL, (void*)asimd_dp4a_vv_u32u8u8_latency);
     reg_new_isa("asimd_dp", "dp4a.vv(u32,u8,u8)", "OPS",
         kComputeLoopTime, 768LL, (void*)asimd_dp4a_vv_u32u8u8);
 #endif
 
 #ifdef _BF16_
+    reg_new_isa("bf16", "mmla(f32,bf16,bf16)_latency", "FLOPS",
+        kLatencyLoopTime, 768LL, (void*)asimd_mmla_fp32bf16bf16_latency);
     reg_new_isa("bf16", "mmla(f32,bf16,bf16)", "FLOPS",
         kComputeLoopTime, 768LL, (void*)asimd_mmla_fp32bf16bf16);
+    reg_new_isa("bf16", "dp2a.vs(f32,bf16,bf16)_latency", "FLOPS",
+        kLatencyLoopTime, 384LL, (void*)asimd_dp2a_vs_fp32bf16bf16_latency);
     reg_new_isa("bf16", "dp2a.vs(f32,bf16,bf16)", "FLOPS",
         kComputeLoopTime, 384LL, (void*)asimd_dp2a_vs_fp32bf16bf16);
+    reg_new_isa("bf16", "dp2a.vv(f32,bf16,bf16)_latency", "FLOPS",
+        kLatencyLoopTime, 384LL, (void*)asimd_dp2a_vv_fp32bf16bf16_latency);
     reg_new_isa("bf16", "dp2a.vv(f32,bf16,bf16)", "FLOPS",
         kComputeLoopTime, 384LL, (void*)asimd_dp2a_vv_fp32bf16bf16);
+    reg_new_isa("bf16", "bfmlalb(f32,bf16,bf16)_latency", "FLOPS",
+        kLatencyLoopTime, 192LL, (void*)asimd_bfmlalb_fp32bf16bf16_latency);
     reg_new_isa("bf16", "bfmlalb(f32,bf16,bf16)", "FLOPS",
         kComputeLoopTime, 192LL, (void*)asimd_bfmlalb_fp32bf16bf16);
+    reg_new_isa("bf16", "bfmlalt(f32,bf16,bf16)_latency", "FLOPS",
+        kLatencyLoopTime, 192LL, (void*)asimd_bfmlalt_fp32bf16bf16_latency);
     reg_new_isa("bf16", "bfmlalt(f32,bf16,bf16)", "FLOPS",
         kComputeLoopTime, 192LL, (void*)asimd_bfmlalt_fp32bf16bf16);
 #endif
@@ -535,6 +565,23 @@ static void cpufb_register_isa()
         kComputeLoopTime, 96LL, (void*)asimd_fmla_vv_f64f64f64);
     reg_new_isa("asimd", "hybrid_fp32_mla_6x16", "FLOPS",
         kComputeLoopTime, 768LL, (void*)asimd_hybrid_fp32_mla_6x16);
+    // Tier-2 additions: non-FMA paths and negated-FMA chain.
+    reg_new_isa("asimd", "fmls.vv(f32,f32,f32)_latency", "FLOPS",
+        kLatencyLoopTime, 192LL, (void*)asimd_fmls_vv_f32f32f32_latency);
+    reg_new_isa("asimd", "fmls.vv(f32,f32,f32)", "FLOPS",
+        kComputeLoopTime, 192LL, (void*)asimd_fmls_vv_f32f32f32);
+    reg_new_isa("asimd", "fneg+fmla.vv(f32,f32,f32)_latency", "FLOPS",
+        kLatencyLoopTime, 96LL, (void*)asimd_fneg_fmla_vv_f32f32f32_latency);
+    reg_new_isa("asimd", "fneg+fmla.vv(f32,f32,f32)", "FLOPS",
+        kComputeLoopTime, 96LL, (void*)asimd_fneg_fmla_vv_f32f32f32);
+    reg_new_isa("asimd", "fadd.vv(f32,f32,f32)_latency", "FLOPS",
+        kLatencyLoopTime, 96LL, (void*)asimd_fadd_vv_f32f32f32_latency);
+    reg_new_isa("asimd", "fadd.vv(f32,f32,f32)", "FLOPS",
+        kComputeLoopTime, 96LL, (void*)asimd_fadd_vv_f32f32f32);
+    reg_new_isa("asimd", "fmul.vv(f32,f32,f32)_latency", "FLOPS",
+        kLatencyLoopTime, 96LL, (void*)asimd_fmul_vv_f32f32f32_latency);
+    reg_new_isa("asimd", "fmul.vv(f32,f32,f32)", "FLOPS",
+        kComputeLoopTime, 96LL, (void*)asimd_fmul_vv_f32f32f32);
 #endif
 #ifdef _SVE_
     reg_new_isa("asimd", "sve_fmla.vs(f32,f32,f32)", "FLOPS",
@@ -549,28 +596,205 @@ static void cpufb_register_isa()
         kLatencyLoopTime, 6LL, (void*)sve_fmla2_vv_f64f64f64);
     reg_new_isa("asimd", "sve_fmla.vv(f64,f64,f64)", "FLOPS",
         kComputeLoopTime, 6LL, (void*)sve_fmla_vv_f64f64f64);
+    // Tier-2 additions: SVE complex FCMLA + reductions.
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f32,f32,f32)#0_latency", "FLOPS",
+        kLatencyLoopTime, 12LL, (void*)sve_fcmla_vv_f32f32f32_0_latency);
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f32,f32,f32)#0", "FLOPS",
+        kComputeLoopTime, 12LL, (void*)sve_fcmla_vv_f32f32f32_0);
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f32,f32,f32)#90_latency", "FLOPS",
+        kLatencyLoopTime, 12LL, (void*)sve_fcmla_vv_f32f32f32_90_latency);
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f32,f32,f32)#90", "FLOPS",
+        kComputeLoopTime, 12LL, (void*)sve_fcmla_vv_f32f32f32_90);
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f32,f32,f32)#180_latency", "FLOPS",
+        kLatencyLoopTime, 12LL, (void*)sve_fcmla_vv_f32f32f32_180_latency);
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f32,f32,f32)#180", "FLOPS",
+        kComputeLoopTime, 12LL, (void*)sve_fcmla_vv_f32f32f32_180);
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f32,f32,f32)#270_latency", "FLOPS",
+        kLatencyLoopTime, 12LL, (void*)sve_fcmla_vv_f32f32f32_270_latency);
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f32,f32,f32)#270", "FLOPS",
+        kComputeLoopTime, 12LL, (void*)sve_fcmla_vv_f32f32f32_270);
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f64,f64,f64)#0_latency", "FLOPS",
+        kLatencyLoopTime, 6LL, (void*)sve_fcmla_vv_f64f64f64_0_latency);
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f64,f64,f64)#0", "FLOPS",
+        kComputeLoopTime, 6LL, (void*)sve_fcmla_vv_f64f64f64_0);
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f64,f64,f64)#90_latency", "FLOPS",
+        kLatencyLoopTime, 6LL, (void*)sve_fcmla_vv_f64f64f64_90_latency);
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f64,f64,f64)#90", "FLOPS",
+        kComputeLoopTime, 6LL, (void*)sve_fcmla_vv_f64f64f64_90);
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f64,f64,f64)#180_latency", "FLOPS",
+        kLatencyLoopTime, 6LL, (void*)sve_fcmla_vv_f64f64f64_180_latency);
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f64,f64,f64)#180", "FLOPS",
+        kComputeLoopTime, 6LL, (void*)sve_fcmla_vv_f64f64f64_180);
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f64,f64,f64)#270_latency", "FLOPS",
+        kLatencyLoopTime, 6LL, (void*)sve_fcmla_vv_f64f64f64_270_latency);
+    reg_new_isa("sve_complex", "sve_fcmla.vv(f64,f64,f64)#270", "FLOPS",
+        kComputeLoopTime, 6LL, (void*)sve_fcmla_vv_f64f64f64_270);
+    // sve_fadda: Pattern D — same kernel registered twice (latency probe +
+    // displayed throughput row) so the displayed row carries fadda's own
+    // latency rather than leaking it onto the unrelated row that follows.
+    reg_new_isa("sve_reduce", "sve_fadda(f32)_latency", "FLOPS",
+        kLatencyLoopTime, 6LL, (void*)sve_fadda_v_f32);
+    reg_new_isa("sve_reduce", "sve_fadda(f32)", "FLOPS",
+        kLatencyLoopTime, 6LL, (void*)sve_fadda_v_f32);
+    reg_new_isa("sve_reduce", "sve_fadda(f64)_latency", "FLOPS",
+        kLatencyLoopTime, 3LL, (void*)sve_fadda_v_f64);
+    reg_new_isa("sve_reduce", "sve_fadda(f64)", "FLOPS",
+        kLatencyLoopTime, 3LL, (void*)sve_fadda_v_f64);
+    reg_new_isa("sve_reduce", "sve_faddv(f32)", "FLOPS",
+        kComputeLoopTime, 6LL, (void*)sve_faddv_v_f32);
+    reg_new_isa("sve_reduce", "sve_faddv(f64)", "FLOPS",
+        kComputeLoopTime, 3LL, (void*)sve_faddv_v_f64);
+#endif
+
+#ifdef _ASIMD_FCMA_
+    reg_new_isa("asimd_fcma", "fcmla.vv(f32,f32,f32)#0_latency", "FLOPS",
+        kLatencyLoopTime, 192LL, (void*)asimd_fcmla_vv_f32f32f32_0_latency);
+    reg_new_isa("asimd_fcma", "fcmla.vv(f32,f32,f32)#0", "FLOPS",
+        kComputeLoopTime, 192LL, (void*)asimd_fcmla_vv_f32f32f32_0);
+    reg_new_isa("asimd_fcma", "fcmla.vv(f32,f32,f32)#90_latency", "FLOPS",
+        kLatencyLoopTime, 192LL, (void*)asimd_fcmla_vv_f32f32f32_90_latency);
+    reg_new_isa("asimd_fcma", "fcmla.vv(f32,f32,f32)#90", "FLOPS",
+        kComputeLoopTime, 192LL, (void*)asimd_fcmla_vv_f32f32f32_90);
+    reg_new_isa("asimd_fcma", "fcmla.vv(f32,f32,f32)#180_latency", "FLOPS",
+        kLatencyLoopTime, 192LL, (void*)asimd_fcmla_vv_f32f32f32_180_latency);
+    reg_new_isa("asimd_fcma", "fcmla.vv(f32,f32,f32)#180", "FLOPS",
+        kComputeLoopTime, 192LL, (void*)asimd_fcmla_vv_f32f32f32_180);
+    reg_new_isa("asimd_fcma", "fcmla.vv(f32,f32,f32)#270_latency", "FLOPS",
+        kLatencyLoopTime, 192LL, (void*)asimd_fcmla_vv_f32f32f32_270_latency);
+    reg_new_isa("asimd_fcma", "fcmla.vv(f32,f32,f32)#270", "FLOPS",
+        kComputeLoopTime, 192LL, (void*)asimd_fcmla_vv_f32f32f32_270);
+    reg_new_isa("asimd_fcma", "fcmla_pair.vv(f32,f32,f32)", "FLOPS",
+        kComputeLoopTime, 192LL, (void*)asimd_fcmla_pair_vv_f32f32f32);
+  #ifdef _ASIMD_HP_
+    reg_new_isa("asimd_fcma", "fcmla.vv(f16,f16,f16)#0_latency", "FLOPS",
+        kLatencyLoopTime, 384LL, (void*)asimd_fcmla_vv_f16f16f16_0_latency);
+    reg_new_isa("asimd_fcma", "fcmla.vv(f16,f16,f16)#0", "FLOPS",
+        kComputeLoopTime, 384LL, (void*)asimd_fcmla_vv_f16f16f16_0);
+    reg_new_isa("asimd_fcma", "fcmla.vv(f16,f16,f16)#90_latency", "FLOPS",
+        kLatencyLoopTime, 384LL, (void*)asimd_fcmla_vv_f16f16f16_90_latency);
+    reg_new_isa("asimd_fcma", "fcmla.vv(f16,f16,f16)#90", "FLOPS",
+        kComputeLoopTime, 384LL, (void*)asimd_fcmla_vv_f16f16f16_90);
+    reg_new_isa("asimd_fcma", "fcmla.vv(f16,f16,f16)#180_latency", "FLOPS",
+        kLatencyLoopTime, 384LL, (void*)asimd_fcmla_vv_f16f16f16_180_latency);
+    reg_new_isa("asimd_fcma", "fcmla.vv(f16,f16,f16)#180", "FLOPS",
+        kComputeLoopTime, 384LL, (void*)asimd_fcmla_vv_f16f16f16_180);
+    reg_new_isa("asimd_fcma", "fcmla.vv(f16,f16,f16)#270_latency", "FLOPS",
+        kLatencyLoopTime, 384LL, (void*)asimd_fcmla_vv_f16f16f16_270_latency);
+    reg_new_isa("asimd_fcma", "fcmla.vv(f16,f16,f16)#270", "FLOPS",
+        kComputeLoopTime, 384LL, (void*)asimd_fcmla_vv_f16f16f16_270);
+  #endif
+#endif
+
+#ifdef _ASIMD_REDUCE_
+    reg_new_isa("asimd_reduce", "faddp.vvv(f32)_latency", "FLOPS",
+        kLatencyLoopTime, 96LL, (void*)asimd_faddp_v_f32_latency);
+    reg_new_isa("asimd_reduce", "faddp.vvv(f32)", "FLOPS",
+        kComputeLoopTime, 96LL, (void*)asimd_faddp_v_f32);
+    reg_new_isa("asimd_reduce", "fmaxv(f32)", "OPS",
+        kComputeLoopTime, 96LL, (void*)asimd_fmaxv_v_f32);
+    reg_new_isa("asimd_reduce", "saddlv(s8)", "OPS",
+        kComputeLoopTime, 384LL, (void*)asimd_saddlv_v_s8);
+    reg_new_isa("asimd_reduce", "smaxv(s32)", "OPS",
+        kComputeLoopTime, 96LL, (void*)asimd_smaxv_v_s32);
+  #ifdef _ASIMD_HP_
+    reg_new_isa("asimd_reduce", "fmaxv(f16)", "OPS",
+        kComputeLoopTime, 192LL, (void*)asimd_fmaxv_v_f16);
+  #endif
+#endif
+
+#ifdef _ASIMD_RECIP_
+    reg_new_isa("asimd_recip", "frecpe+frecps(f32)_latency", "FLOPS",
+        kLatencyLoopTime, 144LL, (void*)asimd_frecpe_recps_v_f32_latency);
+    reg_new_isa("asimd_recip", "frecpe+frecps(f32)", "FLOPS",
+        kComputeLoopTime, 144LL, (void*)asimd_frecpe_recps_v_f32);
+    reg_new_isa("asimd_recip", "frsqrte+frsqrts(f32)_latency", "FLOPS",
+        kLatencyLoopTime, 144LL, (void*)asimd_frsqrte_rsqrts_v_f32_latency);
+    reg_new_isa("asimd_recip", "frsqrte+frsqrts(f32)", "FLOPS",
+        kComputeLoopTime, 144LL, (void*)asimd_frsqrte_rsqrts_v_f32);
+  #ifdef _ASIMD_HP_
+    reg_new_isa("asimd_recip", "frecpe+frecps(f16)_latency", "FLOPS",
+        kLatencyLoopTime, 288LL, (void*)asimd_frecpe_recps_v_f16_latency);
+    reg_new_isa("asimd_recip", "frecpe+frecps(f16)", "FLOPS",
+        kComputeLoopTime, 288LL, (void*)asimd_frecpe_recps_v_f16);
+  #endif
+#endif
+
+#ifdef _ASIMD_INT_MAC_
+    reg_new_isa("asimd_int_mac", "mla.vs(s32,s32,s32)_latency", "OPS",
+        kLatencyLoopTime, 192LL, (void*)asimd_mla_vs_s32s32s32_latency);
+    reg_new_isa("asimd_int_mac", "mla.vs(s32,s32,s32)", "OPS",
+        kComputeLoopTime, 192LL, (void*)asimd_mla_vs_s32s32s32);
+    reg_new_isa("asimd_int_mac", "mla.vv(s32,s32,s32)_latency", "OPS",
+        kLatencyLoopTime, 192LL, (void*)asimd_mla_vv_s32s32s32_latency);
+    reg_new_isa("asimd_int_mac", "mla.vv(s32,s32,s32)", "OPS",
+        kComputeLoopTime, 192LL, (void*)asimd_mla_vv_s32s32s32);
+    reg_new_isa("asimd_int_mac", "mla.vs(s16,s16,s16)_latency", "OPS",
+        kLatencyLoopTime, 384LL, (void*)asimd_mla_vs_s16s16s16_latency);
+    reg_new_isa("asimd_int_mac", "mla.vs(s16,s16,s16)", "OPS",
+        kComputeLoopTime, 384LL, (void*)asimd_mla_vs_s16s16s16);
+    reg_new_isa("asimd_int_mac", "sqdmlal.vv(s32,s16,s16)_latency", "OPS",
+        kLatencyLoopTime, 192LL, (void*)asimd_sqdmlal_vv_s32s16s16_latency);
+    reg_new_isa("asimd_int_mac", "sqdmlal.vv(s32,s16,s16)", "OPS",
+        kComputeLoopTime, 192LL, (void*)asimd_sqdmlal_vv_s32s16s16);
+    reg_new_isa("asimd_int_mac", "sqdmlal2.vv(s32,s16,s16)_latency", "OPS",
+        kLatencyLoopTime, 192LL, (void*)asimd_sqdmlal2_vv_s32s16s16_latency);
+    reg_new_isa("asimd_int_mac", "sqdmlal2.vv(s32,s16,s16)", "OPS",
+        kComputeLoopTime, 192LL, (void*)asimd_sqdmlal2_vv_s32s16s16);
+#endif
+
+#ifdef _ASIMD_TBL_
+    // tbl/tbx do 16 lookups per .16b instr, so the OPS number doubles as
+    // Byte/Cycle (16 lookup-bytes/instr * IPC). The dispatcher routes any
+    // "Byte/Cycle" dim into cpubm_arm_load (different kernel ABI), so we
+    // only register the OPS form here; convert mentally as needed.
+    reg_new_isa("asimd_tbl", "tbl.4table(u8)_latency", "OPS",
+        kLatencyLoopTime, 384LL, (void*)asimd_tbl_4table_v_u8_latency);
+    reg_new_isa("asimd_tbl", "tbl.4table(u8)", "OPS",
+        kComputeLoopTime, 384LL, (void*)asimd_tbl_4table_v_u8);
+    reg_new_isa("asimd_tbl", "tbx.4table(u8)_latency", "OPS",
+        kLatencyLoopTime, 384LL, (void*)asimd_tbx_4table_v_u8_latency);
+    reg_new_isa("asimd_tbl", "tbx.4table(u8)", "OPS",
+        kComputeLoopTime, 384LL, (void*)asimd_tbx_4table_v_u8);
 #endif
 
 #ifdef _SVE_I8MM_
+    reg_new_isa("sve_i8mm", "sve_mmla(s32,s8,s8)_latency", "OPS",
+        kLatencyLoopTime, 96LL, (void*)sve_mmla_s32s8s8_latency);
     reg_new_isa("sve_i8mm", "sve_mmla(s32,s8,s8)", "OPS",
         kComputeLoopTime, 96LL, (void*)sve_mmla_s32s8s8);
+    reg_new_isa("sve_i8mm", "sve_mmla(u32,u8,u8)_latency", "OPS",
+        kLatencyLoopTime, 96LL, (void*)sve_mmla_u32u8u8_latency);
     reg_new_isa("sve_i8mm", "sve_mmla(u32,u8,u8)", "OPS",
         kComputeLoopTime, 96LL, (void*)sve_mmla_u32u8u8);
+    reg_new_isa("sve_i8mm", "sve_mmla(s32,u8,s8)_latency", "OPS",
+        kLatencyLoopTime, 96LL, (void*)sve_mmla_s32u8s8_latency);
     reg_new_isa("sve_i8mm", "sve_mmla(s32,u8,s8)", "OPS",
         kComputeLoopTime, 96LL, (void*)sve_mmla_s32u8s8);
+    reg_new_isa("sve_i8mm", "sve_dp4a.vv(s32,s8,s8)_latency", "OPS",
+        kLatencyLoopTime, 12LL, (void*)sve_dp4a_vv_s32s8s8_latency);
     reg_new_isa("sve_i8mm", "sve_dp4a.vv(s32,s8,s8)", "OPS",
         kComputeLoopTime, 12LL, (void*)sve_dp4a_vv_s32s8s8);
+    reg_new_isa("sve_i8mm", "sve_dp4a.vv(s32,u8,u8)_latency", "OPS",
+        kLatencyLoopTime, 12LL, (void*)sve_dp4a_vv_s32u8u8_latency);
     reg_new_isa("sve_i8mm", "sve_dp4a.vv(s32,u8,u8)", "OPS",
         kComputeLoopTime, 12LL, (void*)sve_dp4a_vv_s32u8u8);
+    reg_new_isa("sve_i8mm", "sve_dp4a.vv(s32,u8,s8)_latency", "OPS",
+        kLatencyLoopTime, 12LL, (void*)sve_dp4a_vv_s32u8s8_latency);
     reg_new_isa("sve_i8mm", "sve_dp4a.vv(s32,u8,s8)", "OPS",
         kComputeLoopTime, 12LL, (void*)sve_dp4a_vv_s32u8s8);
 #endif
 
 #ifdef _SVE_BF16_
+    reg_new_isa("sve_bf16", "sve_bfmmla(f32,bf16,bf16)_latency", "FLOPS",
+        kLatencyLoopTime, 48LL, (void*)sve_bfmmla_f32bf16bf16_latency);
     reg_new_isa("sve_bf16", "sve_bfmmla(f32,bf16,bf16)", "FLOPS",
         kComputeLoopTime, 48LL, (void*)sve_bfmmla_f32bf16bf16);
+    reg_new_isa("sve_bf16", "sve_bfdot.vv(f32,bf16,bf16)_latency", "FLOPS",
+        kLatencyLoopTime, 24LL, (void*)sve_bfdot_vv_f32bf16bf16_latency);
     reg_new_isa("sve_bf16", "sve_bfdot.vv(f32,bf16,bf16)", "FLOPS",
         kComputeLoopTime, 24LL, (void*)sve_bfdot_vv_f32bf16bf16);
+    reg_new_isa("sve_bf16", "sve_bfdot.vs(f32,bf16,bf16)_latency", "FLOPS",
+        kLatencyLoopTime, 24LL, (void*)sve_bfdot_vs_f32bf16bf16_latency);
     reg_new_isa("sve_bf16", "sve_bfdot.vs(f32,bf16,bf16)", "FLOPS",
         kComputeLoopTime, 24LL, (void*)sve_bfdot_vs_f32bf16bf16);
 #endif

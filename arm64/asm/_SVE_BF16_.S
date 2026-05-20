@@ -150,3 +150,110 @@
     bne .sve_bfdot_vs_f32bf16bf16L1
     restore_caller_vec
     ret
+
+############
+// Latency variants: all 24 instructions write to z8 (Pattern A).
+############
+    PROLOGUE sve_bfmmla_f32bf16bf16_latency
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_BF16_INIT
+.sve_bfmmla_f32bf16bf16_lat_L1:
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    subs x0, x0, #1
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bfmmla z8.s, z0.h, z1.h
+    bne .sve_bfmmla_f32bf16bf16_lat_L1
+    restore_caller_vec
+    ret
+
+############
+    PROLOGUE sve_bfdot_vv_f32bf16bf16_latency
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_BF16_INIT
+.sve_bfdot_vv_f32bf16bf16_lat_L1:
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    subs x0, x0, #1
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bfdot z8.s, z0.h, z1.h
+    bne .sve_bfdot_vv_f32bf16bf16_lat_L1
+    restore_caller_vec
+    ret
+
+############
+    PROLOGUE sve_bfdot_vs_f32bf16bf16_latency
+    preserve_caller_vec
+    ptrue p0.s
+    SVE_BF16_INIT
+.sve_bfdot_vs_f32bf16bf16_lat_L1:
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    subs x0, x0, #1
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bfdot z8.s, z1.h, z0.h[0]
+    bne .sve_bfdot_vs_f32bf16bf16_lat_L1
+    restore_caller_vec
+    ret

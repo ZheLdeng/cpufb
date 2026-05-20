@@ -21,6 +21,18 @@ function(cpufb_simd_asm_flags arch feature out_var)
             set(flag "-march=armv8.2-a+dotprod")
         elseif(feature STREQUAL "_FHM_")
             set(flag "-march=armv8.2-a+fp16+fp16fml")
+        elseif(feature STREQUAL "_ASIMD_FCMA_")
+            set(flag "-march=armv8.3-a+fp16")
+        elseif(feature STREQUAL "_ASIMD_REDUCE_"
+                OR feature STREQUAL "_ASIMD_RECIP_")
+            # fp16 lanes inside these files are guarded by `#ifdef _ASIMD_HP_`,
+            # but the assembler still needs `+fp16` so the (potentially
+            # included) fp16 ops parse. Harmless on hosts without HP — those
+            # blocks are excluded by the preprocessor.
+            set(flag "-march=armv8.2-a+fp16")
+        elseif(feature STREQUAL "_ASIMD_INT_MAC_"
+                OR feature STREQUAL "_ASIMD_TBL_")
+            set(flag "-march=armv8-a")
         elseif(feature STREQUAL "_SME_")
             set(flag "-march=armv9-a+sme")
         elseif(feature STREQUAL "_SME2_")

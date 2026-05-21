@@ -49,7 +49,10 @@
 
 using namespace std;
 
-double cacheline = 0;
+// Safe default; overwritten by get_cacheline() once it runs. Prevents
+// log(0) -> -inf in inloop() if both the OS query and the empirical probe
+// fail to produce a positive value.
+double cacheline = CACHE_LINE;
 typedef void (*load_bench)(float*, int, int64_t);
 extern "C" {
     void load_ptr(int looptime, int64_t *ptr);
@@ -326,10 +329,20 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
         // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
             // << second_time / first_time << endl;
     }
-    for (size_t i = 0; i < time_used.size() - 1; ++i) {
-        if (time_used[i] < 0.98) {
-            // cout << i << " " << 16 * pow(2, i) << endl;
-            cache_data->test_cacheline = 16 * pow(2, i);
+    // ratio = chain2_time / chain1_time. Chain 1 is cold (just flushed) and
+    // brings every line it touches into L1. Chain 2's elements live at
+    // offset (buf/2 + 8) within each `buf`-stride window:
+    //   * buf <= cacheline:  chain 2 lands inside the same lines chain 1
+    //                        already pulled in -> chain 2 = all hits ->
+    //                        ratio is small (<< 1).
+    //   * buf >  cacheline:  chain 2 lands in lines chain 1 SKIPPED, so
+    //                        chain 2 also cold-misses -> ratio ~= 1.
+    // The signal is therefore a step UP in ratio at the first buf that
+    // exceeds the cache line. Detect that jump (mirrors the Linux branch).
+    for (size_t i = 1; i < time_used.size(); ++i) {
+        if (time_used[i] / time_used[i - 1] > 2.0) {
+            // cout << i << " " << 16 * pow(2, i - 1) << endl;
+            cache_data->test_cacheline = 16 * pow(2, i - 1);
             break;
         }
     }
@@ -354,7 +367,7 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
         // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
             // << second_time / first_time << endl;
     }
-    for (size_t i = 1; i < time_used.size() - 1; ++i) {
+    for (size_t i = 1; i < time_used.size(); ++i) {
         if (time_used[i] / time_used[i - 1] > 1.3) {
             // cout << i << " " << 16 * pow(2, i) << endl;
             cache_data->test_cacheline = 16 * pow(2, i - 1);
@@ -363,7 +376,10 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
     }
 
 #endif
-    cacheline = max(cache_data->test_cacheline, cache_data->theory_cacheline);
+    int detected = max(cache_data->test_cacheline, cache_data->theory_cacheline);
+    // If both the OS query and the empirical probe failed (returned 0),
+    // fall back to a sane default rather than letting log(0) propagate.
+    cacheline = detected > 0 ? detected : CACHE_LINE;
     free(ptr);
     return;
 }

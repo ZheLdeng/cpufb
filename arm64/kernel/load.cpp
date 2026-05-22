@@ -32,8 +32,12 @@
 #define MULTIWAY_LOOP_TIME 1000000
 #define MULTIWAY_TEST_TIME 100
 #else
-// macOS 上 perf counter 和绑核能力有限，使用较短循环避免整轮 benchmark 过慢
-#define WINDOW_SIZE 8 * 1024 * 1024
+// macOS 上 perf counter 和绑核能力有限，使用较短循环避免整轮 benchmark 过慢。
+// WINDOW_SIZE 必须大于本机 L2（M-series perf cluster 16-32 MB），否则
+// random_access 不会跨过 L2 边界，L2→DRAM 跳变要么不发生、要么落在
+// validation 数组末位被 isMaximum 的 boundary 检查吞掉。64 MB 在所有
+// M1/M2/M3/M4 上都足以越过 L2 进入 DRAM 区。
+#define WINDOW_SIZE 64 * 1024 * 1024
 #define LOOP_TIME 200000
 #define CACHE_PROBE_REPEAT 20
 #define CACHELINE_REPEAT 200

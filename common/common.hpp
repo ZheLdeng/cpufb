@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <ctime>
 #include <cstdlib>
+#include <cstdint>
 #include <unistd.h>
 #include <sys/ioctl.h>
 
@@ -91,15 +92,12 @@ inline void read_data(int cpu_id, int *data, std::string path)
 #endif
 
 #ifdef _SME_
+extern "C" uint64_t load_sme_vector_bytes(void);
+
 static uint64_t rdsvl()
 {
-  uint64_t len;
-  asm volatile ("rdsvl %0, 1"
-                : "=r"(len)
-               );
-  return len;
+  return load_sme_vector_bytes();
 }
 #endif
 
 #endif
-

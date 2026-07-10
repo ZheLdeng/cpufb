@@ -3,6 +3,8 @@
 
 #include <cstdint>
 #include <vector>
+struct tpool;
+typedef struct tpool tpool_t;
 extern std::vector<double> freq;
 extern "C"
 {
@@ -10,6 +12,9 @@ extern "C"
     void load_ldr_kernel(float*, int64_t);
     void load_neon_ld1b_kernel(float*, int, int64_t);
     void load_neon_ld1h_kernel(float*, int, int64_t);
+    void load_neon_ld1h_4x1_post_kernel(float*, int, int64_t);
+    void load_neon_ld1h_4x1_ptr_kernel(float*, int, int64_t);
+    void load_ldrq_4x1_offset_kernel(float*, int, int64_t);
     void load_neon_ld1w_kernel(float*, int, int64_t);
     void load_neon_ld1d_kernel(float*, int, int64_t);
 #ifdef _SVE_
@@ -20,6 +25,7 @@ extern "C"
     void load_sve_ld1d_kernel(float*, int, int64_t);
 #endif
 #ifdef _SME_
+    uint64_t load_sme_vector_bytes(void);
     void sme_ldr_kernel(float*, int ,int);
     void sme_ldr2_kernel(float*, int ,int);
     void sme_ld1wV_kernel(float*, int ,int);
@@ -43,5 +49,5 @@ struct CacheData {
 void get_cachesize(struct CacheData *cache_size, int cpu_id);
 void get_multiway(struct CacheData *cache_size,int cpu_id);
 void get_cacheline(struct CacheData *cache_size, int cpu_id);
-double get_bandwith(uint64_t looptime, double data_size, std::string type, void* bench);
+double get_bandwith(uint64_t looptime, double data_size, std::string type, void* bench, tpool_t* tm);
 #endif

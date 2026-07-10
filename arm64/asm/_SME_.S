@@ -1,5 +1,11 @@
 .align 5
 #include "common_arm64.h"
+
+#uint64_t load_sme_vector_bytes(void);
+    PROLOGUE load_sme_vector_bytes
+    rdsvl x0, #1
+    ret
+
 .macro SME_INIT
     fmov z0.s, p0/m, #0
     fmov z1.s, p0/m, #0
@@ -384,23 +390,23 @@
     mov x24, x0 
     1: 
     add x24, x5, x6, lsl #3
-    LD1w ZA0V.S[W12, #0], P0/Z, [x5]
-    LD1w ZA1V.S[W12, #0], P0/Z, [x5, x7, LSL #2]
-    LD1w ZA2V.S[W12, #0], P0/Z, [x5, x18, LSL #2]
-    LD1w ZA3V.S[W12, #0], P0/Z, [x5, x19, LSL #2]
-    LD1w ZA0V.S[W12, #1], P0/Z, [x5, x20, LSL #2]
-    LD1w ZA1V.S[W12, #1], P0/Z, [x5, x21, LSL #2]
-    LD1w ZA2V.S[W12, #1], P0/Z, [x5, x22, LSL #2]
-    LD1w ZA3V.S[W12, #1], P0/Z, [x5, x23, LSL #2]
+    LD1w {ZA0V.S[W12, #0]}, P0/Z, [x5]
+    LD1w {ZA1V.S[W12, #0]}, P0/Z, [x5, x7, LSL #2]
+    LD1w {ZA2V.S[W12, #0]}, P0/Z, [x5, x18, LSL #2]
+    LD1w {ZA3V.S[W12, #0]}, P0/Z, [x5, x19, LSL #2]
+    LD1w {ZA0V.S[W12, #1]}, P0/Z, [x5, x20, LSL #2]
+    LD1w {ZA1V.S[W12, #1]}, P0/Z, [x5, x21, LSL #2]
+    LD1w {ZA2V.S[W12, #1]}, P0/Z, [x5, x22, LSL #2]
+    LD1w {ZA3V.S[W12, #1]}, P0/Z, [x5, x23, LSL #2]
     add x5, x5, x6, lsl #4
-    LD1w ZA0V.S[W12, #0], P0/Z, [x24]
-    LD1w ZA1V.S[W12, #0], P0/Z, [x24, x7, LSL #2]
-    LD1w ZA2V.S[W12, #0], P0/Z, [x24, x18, LSL #2]
-    LD1w ZA3V.S[W12, #0], P0/Z, [x24, x19, LSL #2]
-    LD1w ZA0V.S[W12, #1], P0/Z, [x24, x20, LSL #2]
-    LD1w ZA1V.S[W12, #1], P0/Z, [x24, x21, LSL #2]
-    LD1w ZA2V.S[W12, #1], P0/Z, [x24, x22, LSL #2]
-    LD1w ZA3V.S[W12, #1], P0/Z, [x24, x23, LSL #2]
+    LD1w {ZA0V.S[W12, #0]}, P0/Z, [x24]
+    LD1w {ZA1V.S[W12, #0]}, P0/Z, [x24, x7, LSL #2]
+    LD1w {ZA2V.S[W12, #0]}, P0/Z, [x24, x18, LSL #2]
+    LD1w {ZA3V.S[W12, #0]}, P0/Z, [x24, x19, LSL #2]
+    LD1w {ZA0V.S[W12, #1]}, P0/Z, [x24, x20, LSL #2]
+    LD1w {ZA1V.S[W12, #1]}, P0/Z, [x24, x21, LSL #2]
+    LD1w {ZA2V.S[W12, #1]}, P0/Z, [x24, x22, LSL #2]
+    LD1w {ZA3V.S[W12, #1]}, P0/Z, [x24, x23, LSL #2]
     
     ldp q0, q1,[x5]
     ldp q2, q3,[x5]
@@ -456,23 +462,23 @@
     mov x24, x0
     1:
     add x24, x5, x6, lsl #3
-    LD1w ZA0H.S[W12, #0], P0/Z, [x5]
-    LD1w ZA1H.S[W12, #0], P0/Z, [x5, x7, LSL #2]
-    LD1w ZA2H.S[W12, #0], P0/Z, [x5, x18, LSL #2]
-    LD1w ZA3H.S[W12, #0], P0/Z, [x5, x19, LSL #2]
-    LD1w ZA0H.S[W12, #1], P0/Z, [x5, x20, LSL #2]
-    LD1w ZA1H.S[W12, #1], P0/Z, [x5, x21, LSL #2]
-    LD1w ZA2H.S[W12, #1], P0/Z, [x5, x22, LSL #2]
-    LD1w ZA3H.S[W12, #1], P0/Z, [x5, x23, LSL #2]
+    LD1w {ZA0H.S[W12, #0]}, P0/Z, [x5]
+    LD1w {ZA1H.S[W12, #0]}, P0/Z, [x5, x7, LSL #2]
+    LD1w {ZA2H.S[W12, #0]}, P0/Z, [x5, x18, LSL #2]
+    LD1w {ZA3H.S[W12, #0]}, P0/Z, [x5, x19, LSL #2]
+    LD1w {ZA0H.S[W12, #1]}, P0/Z, [x5, x20, LSL #2]
+    LD1w {ZA1H.S[W12, #1]}, P0/Z, [x5, x21, LSL #2]
+    LD1w {ZA2H.S[W12, #1]}, P0/Z, [x5, x22, LSL #2]
+    LD1w {ZA3H.S[W12, #1]}, P0/Z, [x5, x23, LSL #2]
     add x5, x5, x6, lsl #4
-    LD1w ZA0H.S[W12, #0], P0/Z, [x24]
-    LD1w ZA1H.S[W12, #0], P0/Z, [x24, x7, LSL #2]
-    LD1w ZA2H.S[W12, #0], P0/Z, [x24, x18, LSL #2]
-    LD1w ZA3H.S[W12, #0], P0/Z, [x24, x19, LSL #2]
-    LD1w ZA0H.S[W12, #1], P0/Z, [x24, x20, LSL #2]
-    LD1w ZA1H.S[W12, #1], P0/Z, [x24, x21, LSL #2]
-    LD1w ZA2H.S[W12, #1], P0/Z, [x24, x22, LSL #2]
-    LD1w ZA3H.S[W12, #1], P0/Z, [x24, x23, LSL #2]
+    LD1w {ZA0H.S[W12, #0]}, P0/Z, [x24]
+    LD1w {ZA1H.S[W12, #0]}, P0/Z, [x24, x7, LSL #2]
+    LD1w {ZA2H.S[W12, #0]}, P0/Z, [x24, x18, LSL #2]
+    LD1w {ZA3H.S[W12, #0]}, P0/Z, [x24, x19, LSL #2]
+    LD1w {ZA0H.S[W12, #1]}, P0/Z, [x24, x20, LSL #2]
+    LD1w {ZA1H.S[W12, #1]}, P0/Z, [x24, x21, LSL #2]
+    LD1w {ZA2H.S[W12, #1]}, P0/Z, [x24, x22, LSL #2]
+    LD1w {ZA3H.S[W12, #1]}, P0/Z, [x24, x23, LSL #2]
     
     subs x3, x3, x6, lsl #2
     bne 1b

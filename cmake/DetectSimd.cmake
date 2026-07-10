@@ -28,7 +28,51 @@ function(cpufb_detect_simd arch out_features)
                 _ASIMD_INT_MAC_ _ASIMD_TBL_ _SVE_ _SVE_I8MM_
                 _SVE_BF16_ _SVE_F32MM_ _SVE_F64MM_ _SVE_FP16_FMLA_
                 _SVE2_ _LDP_ _ISSUE_)
+
+            # SME syntax is still absent from several widely deployed cross
+            # toolchains. Compile each SME family only when this compiler
+            # accepts the architecture level it needs; runtime HWCAP2 checks
+            # remain the authority for whether a compiled kernel may run.
+            include(CheckCCompilerFlag)
+            check_c_compiler_flag("-march=armv9-a+sme" CPUFB_CC_HAS_SME)
+            check_c_compiler_flag("-march=armv9-a+sme2" CPUFB_CC_HAS_SME2)
+            check_c_compiler_flag("-march=armv9-a+sme2+sme-f64f64" CPUFB_CC_HAS_SME_F64F64)
+            check_c_compiler_flag("-march=armv9.2-a+sme2+sme-f16f16" CPUFB_CC_HAS_SME_F16F16)
+            check_c_compiler_flag("-march=armv9.2-a+sme2+sme-i16i32" CPUFB_CC_HAS_SME_I16I32)
+            if(CPUFB_CC_HAS_SME)
+                list(APPEND features _SME_)
+            endif()
+            if(CPUFB_CC_HAS_SME2)
+                list(APPEND features _SME2_)
+            endif()
+            if(CPUFB_CC_HAS_SME_F64F64)
+                list(APPEND features _SMEf64_)
+            endif()
+            if(CPUFB_CC_HAS_SME_F16F16)
+                list(APPEND features _SME_F16F16_)
+            endif()
+            if(CPUFB_CC_HAS_SME_I16I32)
+                list(APPEND features _SME_I16I32_)
+            endif()
         endif()
+
+        # Close feature dependencies for user overrides as well as defaults.
+        # The executable always uses baseline ASIMD for frequency calibration
+        # and the scalar load/multi-issue kernels.
+        list(APPEND features _ASIMD_ _LDP_ _ISSUE_)
+        if(_SVE_I8MM_ IN_LIST features OR _SVE_BF16_ IN_LIST features OR
+           _SVE_F32MM_ IN_LIST features OR _SVE_F64MM_ IN_LIST features OR
+           _SVE_FP16_FMLA_ IN_LIST features OR _SVE2_ IN_LIST features)
+            list(APPEND features _SVE_)
+        endif()
+        if(_SMEf64_ IN_LIST features OR _SME_F16F16_ IN_LIST features OR
+           _SME_I16I32_ IN_LIST features)
+            list(APPEND features _SME2_)
+        endif()
+        if(_SME2_ IN_LIST features)
+            list(APPEND features _SME_)
+        endif()
+        list(REMOVE_DUPLICATES features)
         message(STATUS "cpufb: compiled ARM64 kernels: ${features}")
         message(STATUS "cpufb: runnable ARM64 kernels will be selected from HWCAP at startup")
         set(${out_features} "${features}" PARENT_SCOPE)

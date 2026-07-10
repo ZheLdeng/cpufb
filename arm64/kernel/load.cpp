@@ -9,6 +9,7 @@
 #include <iostream>
 #include<common.hpp>
 #include <load.hpp>
+#include <thread_pool.hpp>
 #include <sstream>
 #ifdef __APPLE__
 #include <dispatch/dispatch.h>
@@ -55,6 +56,43 @@ using namespace std;
 
 double cacheline = 0;
 typedef void (*load_bench)(float*, int, int64_t);
+
+struct load_bench_task {
+    load_bench bench;
+    float* cache_data;
+    int inner_loop;
+    int64_t looptime;
+};
+
+static void load_bench_thread_func(void *params)
+{
+#ifdef __APPLE__
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+#endif
+    load_bench_task *task = reinterpret_cast<load_bench_task*>(params);
+    task->bench(task->cache_data, task->inner_loop, task->looptime);
+}
+
+static double run_load_bench(load_bench bench, float* cache_data,
+    int inner_loop, int64_t looptime, tpool_t* tm)
+{
+    struct timespec start, end;
+    if (tm == nullptr || tm->thread_num == 0) {
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+        bench(cache_data, inner_loop, looptime);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        return get_time(&start, &end);
+    }
+
+    load_bench_task task = {bench, cache_data, inner_loop, looptime};
+    if (!tpool_run_all(tm, load_bench_thread_func, &task, &start, &end)) {
+        std::cerr << "Error: failed to run load benchmark on every worker"
+                  << std::endl;
+        return 0.0;
+    }
+    return get_time(&start, &end);
+}
+
 extern "C" {
     void load_ptr(int looptime, int64_t *ptr);
 }
@@ -67,6 +105,9 @@ static inline int get_load_bytes_per_inner_loop(const string& type)
     }
 #endif
     if (type.find("neon-ld1") != string::npos) {
+        return 256;
+    }
+    if (type.find("ldrq-4x1") != string::npos) {
         return 256;
     }
     if (type.find("ld1w") != string::npos || type.find("ZA") != string::npos) {
@@ -464,10 +505,10 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
     return;
 }
 
-double get_bandwith(uint64_t looptime, double data_size, string type, void* bench)
+double get_bandwith(uint64_t looptime, double data_size, string type, void* bench, tpool_t* tm)
 {
-    struct timespec start, end;
     double time_used, perf;
+    double best_time_used = 0.0;
     int inner_loop;
     data_size /= 2.0;
     if (data_size > 32 * 1024) {
@@ -485,13 +526,25 @@ double get_bandwith(uint64_t looptime, double data_size, string type, void* benc
     }
    
     load_bench bench_ptr = reinterpret_cast<load_bench>(bench);
+    size_t thread_num = (tm != nullptr && tm->thread_num > 0) ? tm->thread_num : 1;
 	// warm up
-    bench_ptr(cache_data, inner_loop, looptime);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    bench_ptr(cache_data, inner_loop, looptime);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    time_used = get_time(&start, &end);
-    perf = (double)looptime * data_size * 1024 / (time_used * freq[0] * 1e9);
+    run_load_bench(bench_ptr, cache_data, inner_loop, looptime, tm);
+#ifdef __APPLE__
+    constexpr int repeat = 5;
+#else
+    constexpr int repeat = 10;
+#endif
+    for (int i = 0; i < repeat; i++) {
+        time_used = run_load_bench(bench_ptr, cache_data, inner_loop, looptime, tm);
+        if (time_used <= 0.0) continue;
+        if (best_time_used == 0.0 || time_used < best_time_used) {
+            best_time_used = time_used;
+        }
+    }
+    perf = best_time_used > 0.0
+        ? (double)looptime * data_size * 1024 * thread_num /
+            (best_time_used * freq[0] * 1e9)
+        : 0.0;
     free(cache_data);
     return perf;
 }

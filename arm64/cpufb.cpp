@@ -46,6 +46,7 @@ typedef struct
     int64_t loop_time;
     int64_t comp_pl;
     void*  bench;
+    const char* required_feature;
 } cpubm_t;
 
 typedef struct
@@ -57,6 +58,12 @@ typedef struct
 } cache_bm_t;
 
 static vector<cpubm_t> bm_list;
+static const char* registration_required_feature = "_ASIMD_";
+
+static void require_feature(const char* feature)
+{
+    registration_required_feature = feature;
+}
 
 static void reg_new_isa(string isa,
     string type,
@@ -72,6 +79,7 @@ static void reg_new_isa(string isa,
     new_one.loop_time = loop_time;
     new_one.comp_pl = comp_pl;
     new_one.bench = (void *)bench;
+    new_one.required_feature = registration_required_feature;
 
     bm_list.push_back(new_one);
 }
@@ -216,7 +224,7 @@ static void cpubm_arm64_one(tpool_t *tm,
     // cout << "test fop end" << endl;
 }
 
-static void cpubm_arm_load(cpubm_t &item, Table &table)
+static void cpubm_arm_load(tpool_t *tm, cpubm_t &item, Table &table)
 {
     double perf = 0;
 
@@ -234,7 +242,7 @@ static void cpubm_arm_load(cpubm_t &item, Table &table)
         cont[4] = to_string(load_pl) + " KB";
     } 
 
-    perf = get_bandwith(item.loop_time, (double)load_pl, item.type, item.bench);
+    perf = get_bandwith(item.loop_time, (double)load_pl, item.type, item.bench, tm);
 
     stringstream ss1;
 
@@ -412,7 +420,8 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
 #endif
 
 #ifdef _SME_
-        cout << "SME : " << rdsvl() * 8 << endl;
+        if (arm64_runtime_features().sme)
+            cout << "SME : " << rdsvl() * 8 << endl;
 #endif
         // set table head
         vector<Table*> tables;
@@ -434,7 +443,7 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
             if (bm_list[i].dim.find("OPS") != string::npos) {
                 cpubm_arm64_one(tm, bm_list[i], *tables[0]);
             } else if (bm_list[i].dim.find("Byte/Cycle") != string::npos) {
-                cpubm_arm_load(bm_list[i], *tables[1]);
+                cpubm_arm_load(tm, bm_list[i], *tables[1]);
             } else if (bm_list[i].dim.find("IPC") != string::npos) {
                 cpubm_arm_multiple_issue(tm, bm_list[i], *tables[4]);
             } else {
@@ -454,6 +463,7 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
 
 static void cpufb_register_isa()
 {
+    require_feature("_ASIMD_");
     bm_list.clear();
 #ifdef __APPLE__
     constexpr int64_t kComputeLoopTime = 0x40000LL;
@@ -468,6 +478,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _I8MM_
+    require_feature("_I8MM_");
     reg_new_isa("i8mm", "mmla(s32,s8,s8)_latency", "OPS",
         kLatencyLoopTime, 1536LL, (void*)asimd_mmla_s32s8s8_latency);
     reg_new_isa("i8mm", "mmla(s32,s8,s8)", "OPS",
@@ -496,6 +507,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _ASIMD_DP_
+    require_feature("_ASIMD_DP_");
     reg_new_isa("asimd_dp", "dp4a.vs(s32,s8,s8)_latency", "OPS",
         kLatencyLoopTime, 768LL, (void*)asimd_dp4a_vs_s32s8s8_latency);
     reg_new_isa("asimd_dp", "dp4a.vs(s32,s8,s8)", "OPS",
@@ -515,6 +527,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _BF16_
+    require_feature("_BF16_");
     reg_new_isa("bf16", "mmla(f32,bf16,bf16)_latency", "FLOPS",
         kLatencyLoopTime, 768LL, (void*)asimd_mmla_fp32bf16bf16_latency);
     reg_new_isa("bf16", "mmla(f32,bf16,bf16)", "FLOPS",
@@ -538,6 +551,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _FHM_
+    require_feature("_FHM_");
     reg_new_isa("FHM", "fmlal.vv(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 192LL, (void*)asimd_fmlal_vv_f32f16f16);
     reg_new_isa("FHM", "fmlal.vv(f32,f16,f16)_latency", "FLOPS",
@@ -553,6 +567,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _ASIMD_HP_
+    require_feature("_ASIMD_HP_");
     reg_new_isa("asimd_hp", "fmla.vs(fp16,fp16,fp16)", "FLOPS",
         kComputeLoopTime, 384LL, (void*)asimd_fmla_vs_fp16fp16fp16);
     reg_new_isa("asimd_hp", "fmla.vv(fp16,fp16,fp16)", "FLOPS",
@@ -560,6 +575,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _ASIMD_
+    require_feature("_ASIMD_");
     reg_new_isa("asimd", "fmla.vs(f32,f32,f32)_latency", "FLOPS",
         kLatencyLoopTime, 192LL, (void*)asimd_fmla2_vs_f32f32f32);
     reg_new_isa("asimd", "fmla.vs(f32,f32,f32)", "FLOPS",
@@ -597,6 +613,7 @@ static void cpufb_register_isa()
         kComputeLoopTime, 96LL, (void*)asimd_fmul_vv_f32f32f32);
 #endif
 #ifdef _SVE_
+    require_feature("_SVE_");
     reg_new_isa("asimd", "sve_fmla.vs(f32,f32,f32)", "FLOPS",
         kComputeLoopTime, 12LL, (void*)sve_fmla_vs_f32f32f32);
     reg_new_isa("asimd", "sve_fmla.vv(f32,f32,f32)_latency", "FLOPS",
@@ -660,6 +677,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _ASIMD_FCMA_
+    require_feature("_ASIMD_FCMA_");
     reg_new_isa("asimd_fcma", "fcmla.vv(f32,f32,f32)#0_latency", "FLOPS",
         kLatencyLoopTime, 192LL, (void*)asimd_fcmla_vv_f32f32f32_0_latency);
     reg_new_isa("asimd_fcma", "fcmla.vv(f32,f32,f32)#0", "FLOPS",
@@ -699,6 +717,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _ASIMD_REDUCE_
+    require_feature("_ASIMD_REDUCE_");
     reg_new_isa("asimd_reduce", "faddp.vvv(f32)_latency", "FLOPS",
         kLatencyLoopTime, 96LL, (void*)asimd_faddp_v_f32_latency);
     reg_new_isa("asimd_reduce", "faddp.vvv(f32)", "FLOPS",
@@ -716,6 +735,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _ASIMD_RECIP_
+    require_feature("_ASIMD_RECIP_");
     reg_new_isa("asimd_recip", "frecpe+frecps(f32)_latency", "FLOPS",
         kLatencyLoopTime, 144LL, (void*)asimd_frecpe_recps_v_f32_latency);
     reg_new_isa("asimd_recip", "frecpe+frecps(f32)", "FLOPS",
@@ -733,6 +753,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _ASIMD_INT_MAC_
+    require_feature("_ASIMD_INT_MAC_");
     reg_new_isa("asimd_int_mac", "mla.vs(s32,s32,s32)_latency", "OPS",
         kLatencyLoopTime, 192LL, (void*)asimd_mla_vs_s32s32s32_latency);
     reg_new_isa("asimd_int_mac", "mla.vs(s32,s32,s32)", "OPS",
@@ -756,6 +777,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _ASIMD_TBL_
+    require_feature("_ASIMD_TBL_");
     // tbl/tbx do 16 lookups per .16b instr, so the OPS number doubles as
     // Byte/Cycle (16 lookup-bytes/instr * IPC). The dispatcher routes any
     // "Byte/Cycle" dim into cpubm_arm_load (different kernel ABI), so we
@@ -771,6 +793,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _SVE_I8MM_
+    require_feature("_SVE_I8MM_");
     reg_new_isa("sve_i8mm", "sve_mmla(s32,s8,s8)_latency", "OPS",
         kLatencyLoopTime, 96LL, (void*)sve_mmla_s32s8s8_latency);
     reg_new_isa("sve_i8mm", "sve_mmla(s32,s8,s8)", "OPS",
@@ -798,6 +821,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _SVE_BF16_
+    require_feature("_SVE_BF16_");
     reg_new_isa("sve_bf16", "sve_bfmmla(f32,bf16,bf16)_latency", "FLOPS",
         kLatencyLoopTime, 48LL, (void*)sve_bfmmla_f32bf16bf16_latency);
     reg_new_isa("sve_bf16", "sve_bfmmla(f32,bf16,bf16)", "FLOPS",
@@ -813,6 +837,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _SVE_F32MM_
+    require_feature("_SVE_F32MM_");
     // 24 inst * 32 FLOPs/inst (at VL=128b) / 16 (svcntb scaling unit) = 48
     reg_new_isa("sve_f32mm", "sve_fmmla(f32,f32,f32)", "FLOPS",
         kComputeLoopTime, 48LL, (void*)sve_fmmla_f32f32f32);
@@ -821,6 +846,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _SVE_F64MM_
+    require_feature("_SVE_F64MM_");
     // 24 inst * 8 FLOPs/inst (at VL=128b) / 16 = 12
     reg_new_isa("sve_f64mm", "sve_fmmla(f64,f64,f64)", "FLOPS",
         kComputeLoopTime, 12LL, (void*)sve_fmmla_f64f64f64);
@@ -829,6 +855,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _SVE_FP16_FMLA_
+    require_feature("_SVE_FP16_FMLA_");
     // 24 inst * 16 FLOPs/inst (at VL=128b, 8 fp16 lanes * 2 ops) / 16 = 24
     reg_new_isa("sve_fp16", "sve_fmla.vv(f16,f16,f16)", "FLOPS",
         kComputeLoopTime, 24LL, (void*)sve_fmla_vv_f16f16f16);
@@ -839,6 +866,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _SVE2_
+    require_feature("_SVE2_");
     // 24 inst * 16 OPs/inst (at VL=128b, 8 i16 lanes * 2 ops) / 16 = 24
     reg_new_isa("sve2", "sve2_sqrdmlah.vv(s16,s16,s16)", "OPS",
         kComputeLoopTime, 24LL, (void*)sve2_sqrdmlah_vv_s16s16s16);
@@ -847,14 +875,18 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _SME_
+    require_feature("_SME_B16F32_");
     reg_new_isa("SME", "sme_bfmopa.vv(f32,bf16,bf16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme_bfmopa_vv_f32bf16bf16);
+    require_feature("_SME_F32F32_");
     reg_new_isa("SME", "sme_fmopa.vv(f32,f32,f32)_latency", "FLOPS",
         kLatencyLoopTime, 48LL, (void*)sme_fmopa2_vv_f32f32f32);
     reg_new_isa("SME", "sme_fmopa.vv(f32,f32,f32)", "FLOPS",
         kComputeLoopTime, 48LL, (void*)sme_fmopa_vv_f32f32f32);
+    require_feature("_SME_F16F32_");
     reg_new_isa("SME", "sme_fmopa.vv(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme_fmopa_vv_f32f16f16);
+    require_feature("_SME_I8I32_");
     reg_new_isa("SME", "sme_smopa.vv(i32,i8,i8)", "FLOPS",
         kComputeLoopTime, 192LL, (void*)sme_smopa_vv_i32i8i8);
     reg_new_isa("SME", "sme_umopa.vv(u32,u8,u8)", "FLOPS",
@@ -863,11 +895,13 @@ static void cpufb_register_isa()
         kComputeLoopTime, 192LL, (void*)sme_usmopa_vv_s32u8s8);
     reg_new_isa("SME", "sme_sumopa.vv(s32,s8,u8)", "FLOPS",
         kComputeLoopTime, 192LL, (void*)sme_sumopa_vv_s32s8u8);
+    require_feature("_SME_F32F32_");
     reg_new_isa("SME_MULTI_ISSUE", "ldr/fmopa", "IPC",
         0x186A0LL, 40LL, (void*)sme_multiple_issue);
 #endif
 
 #ifdef _SME_F16F16_
+    require_feature("_SME_F16F16_");
     // f16 acc: rows=cols=SVL/2, per inst = SVL^2/2 FLOPs.
     // Scaling rule (16 branch): comp_pl * SVL^2 / 4. Register 48 (=24*2).
     reg_new_isa("SME_F16F16", "sme_fmopa.vv(f16,f16,f16)", "FLOPS",
@@ -877,6 +911,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _SME_I16I32_
+    require_feature("_SME_I16I32_");
     // i32 acc, i16 elems: rows=cols=SVL/4, per inst = SVL^2/4 OPs.
     // Scaling rule (32 branch): comp_pl * SVL^2 / 16. Register 96 (=24*4).
     reg_new_isa("SME_I16I32", "sme_smopa.vv(i32,i16,i16)", "OPS",
@@ -890,6 +925,7 @@ static void cpufb_register_isa()
 #endif
 
 #ifdef _SME2_
+    require_feature("_SME2_");
     reg_new_isa("SME2", "sme2_bfmlal.vs(f32,bf16,bf16)", "FLOPS",
         kComputeLoopTime, 24LL, (void*)sme2_bfmlal_vs_f32bf16bf16);
     reg_new_isa("SME2", "sme2_bfmlal4.vs(f32,bf16,bf16)", "FLOPS",
@@ -965,10 +1001,12 @@ static void cpufb_register_isa()
 
 
 #ifdef _SMEf64_
+    require_feature("_SME_F64F64_");
     reg_new_isa("SMEf64", "sme_fmopa2.vv(f64,f64,f64)_latency", "FLOPS",
     kComputeLoopTime, 48LL, (void*)sme_fmopa2_vv_f64f64f64);
     reg_new_isa("SMEf64", "sme_fmopa.vv(f64,f64,f64)", "FLOPS",
         kComputeLoopTime, 48LL, (void*)sme_fmopa_vv_f64f64f64); 
+    require_feature("_SME2_F64F64_");
     reg_new_isa("SMEf64", "sme2_fmla.vs(f64,f64,f64)_latency", "FLOPS",
         kComputeLoopTime, 6LL, (void*)sme2_fmla2_vs_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla.vs(f64,f64,f64)", "FLOPS",
@@ -988,6 +1026,7 @@ static void cpufb_register_isa()
     reg_new_isa("SMEf64", "sme2_fmla4.mvv(f64,f64,f64)", "FLOPS",
         kComputeLoopTime, 24LL, (void*)sme2_fmla4_mvv_f64f64f64);
 #endif
+    require_feature("_LDP_");
     reg_new_isa("L1 Cache", "ldp(f32)", "Byte/Cycle",
         kLoadLoopTime, 32LL, (void*)load_ldp_kernel);
     reg_new_isa("--------", "neon-ld1b(u8)", "Byte/Cycle",
@@ -999,6 +1038,7 @@ static void cpufb_register_isa()
     reg_new_isa("--------", "neon-ld1d(f64)", "Byte/Cycle",
         kLoadLoopTime, 32LL, (void*)load_neon_ld1d_kernel);
 #ifdef _SVE_
+    require_feature("_SVE_");
     reg_new_isa("--------", "sve-ld1b(u8)", "Byte/Cycle",
         kLoadLoopTime, 32LL, (void*)load_sve_ld1b_kernel);
     reg_new_isa("--------", "sve-ld1h(f16)", "Byte/Cycle",
@@ -1009,6 +1049,7 @@ static void cpufb_register_isa()
         kLoadLoopTime, 32LL, (void*)load_sve_ld1d_kernel);
 #endif
 #ifdef _SME_
+    require_feature("_SME_");
     reg_new_isa("--------", "ldrZA(f32)", "Byte/Cycle",
         kLoadLoopTime, 32LL, (void*)sme_ldr_kernel);
     reg_new_isa("--------", "ld1wZAV(f32)", "Byte/Cycle",
@@ -1017,9 +1058,11 @@ static void cpufb_register_isa()
         kLoadLoopTime, 32LL, (void*)sme_ld1wH_kernel);
 #endif
 #ifdef _SME2_
+    require_feature("_SME2_");
     reg_new_isa("--------", "ld1w(f32)", "Byte/Cycle",
         kLoadLoopTime, 32LL, (void*)sme_ld1w_kernel);
 #endif
+    require_feature("_LDP_");
     reg_new_isa("L2 Cache", "ldp(f32)", "Byte/Cycle",
         kLoadLoopTime, 128LL, (void*)load_ldp_kernel);
     reg_new_isa("--------", "neon-ld1b(u8)", "Byte/Cycle",
@@ -1031,6 +1074,7 @@ static void cpufb_register_isa()
     reg_new_isa("--------", "neon-ld1d(f64)", "Byte/Cycle",
         kLoadLoopTime, 128LL, (void*)load_neon_ld1d_kernel);
 #ifdef _SVE_
+    require_feature("_SVE_");
     reg_new_isa("--------", "sve-ld1b(u8)", "Byte/Cycle",
         kLoadLoopTime, 128LL, (void*)load_sve_ld1b_kernel);
     reg_new_isa("--------", "sve-ld1h(f16)", "Byte/Cycle",
@@ -1041,6 +1085,7 @@ static void cpufb_register_isa()
         kLoadLoopTime, 128LL, (void*)load_sve_ld1d_kernel);
 #endif
 #ifdef _SME_
+    require_feature("_SME_");
     reg_new_isa("--------", "ldrZA(f32)", "Byte/Cycle",
         kLoadLoopTime, 32LL, (void*)sme_ldr_kernel);   
     reg_new_isa("--------", "ld1wZAV(f32)", "Byte/Cycle",
@@ -1049,6 +1094,7 @@ static void cpufb_register_isa()
         kLoadLoopTime, 32LL, (void*)sme_ld1wH_kernel);     
 #endif
 #ifdef _SME2_
+    require_feature("_SME2_");
     reg_new_isa("--------", "ld1w(f32)", "Byte/Cycle",
         kLoadLoopTime, 32LL, (void*)sme_ld1w_kernel);
 #endif
@@ -1083,43 +1129,16 @@ static void cpufb_register_isa()
     
     
 #endif
+    require_feature("_ISSUE_");
     reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC",
         kMultiIssueLoopTime, 50LL, (void*)multiple_issue);
 
 #if defined(__linux__) && !defined(__APPLE__)
     const Arm64RuntimeFeatures &features = arm64_runtime_features();
-    auto required_feature = [](const cpubm_t &item) -> const char * {
-        const string &isa = item.isa;
-        const string &type = item.type;
-
-        if (type.find("sme") != string::npos || isa.find("SME") != string::npos)
-            return "_SME_UNSUPPORTED_";
-        if (type.find("sve") != string::npos || isa.find("sve") != string::npos ||
-            isa.find("SVE") != string::npos) {
-            if (isa == "sve_i8mm") return "_SVE_I8MM_";
-            if (isa == "sve_bf16") return "_SVE_BF16_";
-            if (isa == "sve_f32mm") return "_SVE_F32MM_";
-            if (isa == "sve_f64mm") return "_SVE_F64MM_";
-            if (isa == "sve_fp16") return "_SVE_FP16_FMLA_";
-            if (isa == "sve2") return "_SVE2_";
-            return "_SVE_";
-        }
-        if (isa == "i8mm") return "_I8MM_";
-        if (isa == "asimd_dp") return "_ASIMD_DP_";
-        if (isa == "bf16") return "_BF16_";
-        if (isa == "FHM") return "_FHM_";
-        if (isa == "asimd_hp") return "_ASIMD_HP_";
-        if (isa == "asimd_fcma") return "_ASIMD_FCMA_";
-        if (isa == "asimd_reduce") return "_ASIMD_REDUCE_";
-        if (isa == "asimd_recip") return "_ASIMD_RECIP_";
-        if (isa == "asimd_int_mac") return "_ASIMD_INT_MAC_";
-        if (isa == "asimd_tbl") return "_ASIMD_TBL_";
-        if (isa == "MULTI_ISSUE") return "_ISSUE_";
-        return "_ASIMD_";
-    };
-
     bm_list.erase(remove_if(bm_list.begin(), bm_list.end(),
-        [&](const cpubm_t &item) { return !features.supports(required_feature(item)); }),
+        [&](const cpubm_t &item) {
+            return !features.supports(item.required_feature);
+        }),
         bm_list.end());
 
     cout << "Runtime ARM64 ISA:";

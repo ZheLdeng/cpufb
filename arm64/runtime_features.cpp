@@ -47,6 +47,33 @@
 #ifndef HWCAP2_BF16
 #define HWCAP2_BF16 (1UL << 14)
 #endif
+#ifndef HWCAP2_SME
+#define HWCAP2_SME (1UL << 23)
+#endif
+#ifndef HWCAP2_SME_F64F64
+#define HWCAP2_SME_F64F64 (1UL << 25)
+#endif
+#ifndef HWCAP2_SME_I8I32
+#define HWCAP2_SME_I8I32 (1UL << 26)
+#endif
+#ifndef HWCAP2_SME_F16F32
+#define HWCAP2_SME_F16F32 (1UL << 27)
+#endif
+#ifndef HWCAP2_SME_B16F32
+#define HWCAP2_SME_B16F32 (1UL << 28)
+#endif
+#ifndef HWCAP2_SME_F32F32
+#define HWCAP2_SME_F32F32 (1UL << 29)
+#endif
+#ifndef HWCAP2_SME2
+#define HWCAP2_SME2 (1UL << 37)
+#endif
+#ifndef HWCAP2_SME_I16I32
+#define HWCAP2_SME_I16I32 (1UL << 39)
+#endif
+#ifndef HWCAP2_SME_F16F16
+#define HWCAP2_SME_F16F16 (1UL << 42)
+#endif
 
 bool Arm64RuntimeFeatures::supports(const std::string &t) const
 {
@@ -68,6 +95,17 @@ bool Arm64RuntimeFeatures::supports(const std::string &t) const
     if (t == "_SVE_F64MM_") return sve && sve_f64mm;
     if (t == "_SVE_FP16_FMLA_") return sve && fp16;
     if (t == "_SVE2_") return sve && sve2;
+    if (t == "_SME_") return sme;
+    if (t == "_SME_I8I32_") return sme && sme_i8i32;
+    if (t == "_SME_F16F32_") return sme && sme_f16f32;
+    if (t == "_SME_B16F32_") return sme && sme_b16f32;
+    if (t == "_SME_F32F32_") return sme && sme_f32f32;
+    if (t == "_SME2_") return sme && sme2;
+    if (t == "_SME_F64F64_") return sme && sme_f64f64;
+    if (t == "_SME2_F64F64_") return sme && sme2 && sme_f64f64;
+    // These instruction families were added with SME2 and need both flags.
+    if (t == "_SME_I16I32_") return sme && sme2 && sme_i16i32;
+    if (t == "_SME_F16F16_") return sme && sme2 && sme_f16f16;
     return false;
 }
 
@@ -130,6 +168,26 @@ std::vector<std::string> Arm64RuntimeFeatures::runnable_tokens() const
 #ifdef _SVE2_
     CPUFB_ADD_IF_RUNNABLE(_SVE2_);
 #endif
+#ifdef _SME_
+    CPUFB_ADD_IF_RUNNABLE(_SME_);
+    CPUFB_ADD_IF_RUNNABLE(_SME_I8I32_);
+    CPUFB_ADD_IF_RUNNABLE(_SME_F16F32_);
+    CPUFB_ADD_IF_RUNNABLE(_SME_B16F32_);
+    CPUFB_ADD_IF_RUNNABLE(_SME_F32F32_);
+#endif
+#ifdef _SME2_
+    CPUFB_ADD_IF_RUNNABLE(_SME2_);
+#endif
+#ifdef _SMEf64_
+    CPUFB_ADD_IF_RUNNABLE(_SME_F64F64_);
+    CPUFB_ADD_IF_RUNNABLE(_SME2_F64F64_);
+#endif
+#ifdef _SME_I16I32_
+    CPUFB_ADD_IF_RUNNABLE(_SME_I16I32_);
+#endif
+#ifdef _SME_F16F16_
+    CPUFB_ADD_IF_RUNNABLE(_SME_F16F16_);
+#endif
 #ifdef _LDP_
     CPUFB_ADD_IF_RUNNABLE(_LDP_);
 #endif
@@ -159,6 +217,15 @@ const Arm64RuntimeFeatures &arm64_runtime_features()
         f.sve_bf16 = hwcap2 & HWCAP2_SVEBF16;
         f.i8mm = hwcap2 & HWCAP2_I8MM;
         f.bf16 = hwcap2 & HWCAP2_BF16;
+        f.sme = hwcap2 & HWCAP2_SME;
+        f.sme2 = hwcap2 & HWCAP2_SME2;
+        f.sme_i8i32 = hwcap2 & HWCAP2_SME_I8I32;
+        f.sme_f16f32 = hwcap2 & HWCAP2_SME_F16F32;
+        f.sme_b16f32 = hwcap2 & HWCAP2_SME_B16F32;
+        f.sme_f32f32 = hwcap2 & HWCAP2_SME_F32F32;
+        f.sme_f64f64 = hwcap2 & HWCAP2_SME_F64F64;
+        f.sme_i16i32 = hwcap2 & HWCAP2_SME_I16I32;
+        f.sme_f16f16 = hwcap2 & HWCAP2_SME_F16F16;
         return f;
     }();
     return features;

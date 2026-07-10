@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -28,9 +29,20 @@ struct tpool {
     pthread_mutex_t  work_mutex;
     pthread_cond_t   work_cond;
     pthread_cond_t   working_cond;
+    pthread_cond_t   parallel_ready_cond;
+    pthread_cond_t   parallel_start_cond;
+    pthread_cond_t   parallel_done_cond;
     size_t           working_cnt;
     size_t           thread_cnt;
     size_t           thread_num;
+    size_t           startup_ready_cnt;
+    size_t           parallel_ready_cnt;
+    size_t           parallel_done_cnt;
+    uint64_t         parallel_generation;
+    uint64_t         parallel_start_generation;
+    thread_func_t    parallel_func;
+    void            *parallel_arg;
+    pthread_t       *threads;
 #ifdef __APPLE__
     dispatch_group_t group;
     dispatch_queue_t queue;
@@ -51,5 +63,11 @@ void tpool_destroy(tpool_t *tm);
 
 bool tpool_add_work(tpool_t *tm, thread_func_t func, void *arg);
 void tpool_wait(tpool_t *tm);
+
+// Run the same job exactly once on every pinned worker. The timestamps cover
+// only the synchronized execution window: all workers are ready before start
+// is recorded, and end is recorded after the last worker completes.
+bool tpool_run_all(tpool_t *tm, thread_func_t func, void *arg,
+    struct timespec *start, struct timespec *end);
 
 #endif /* __TPOOL_H__ */

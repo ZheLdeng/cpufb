@@ -904,7 +904,10 @@ double get_bandwith(uint64_t looptime, double data_size, string type, void* benc
     bench_ptr(cache_data, inner_loop, looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    perf = (double)looptime * data_size * 1024 / (time_used * freq[0] * 1e9);
+    perf = !freq.empty() && freq[0] > 0
+        ? (double)looptime * data_size * 1024 /
+            (time_used * freq[0] * 1e9)
+        : -1;
     free(cache_data);
     return perf;
 }

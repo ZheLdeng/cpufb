@@ -200,12 +200,14 @@ static void cpubm_arm64_one(tpool_t *tm,
     }
     // Report estimated IPC per core; the old aggregate value scaled with the
     // thread count and was mislabeled as a per-core IPC.
-    IPC = item.loop_time * 24 / time_used / freq[0] / 1e9;
+    bool frequency_available = !freq.empty() && freq[0] > 0;
+    IPC = frequency_available
+        ? item.loop_time * 24 / time_used / freq[0] / 1e9 : 0;
     stringstream ss1, ss2;
 
     ss1 << setprecision(5) << perf << " " << perfUnit << item.dim;
     if (item.type.find("latency") != string::npos) {
-        g_latency = round(1 / IPC);
+        g_latency = IPC > 0 ? round(1 / IPC) : 0;
     } else {
         vector<string> cont;
         cont.resize(table.getCol());
@@ -213,7 +215,7 @@ static void cpubm_arm64_one(tpool_t *tm,
         cont[0] = item.isa;
         cont[1] = item.type;
         cont[2] = ss1.str();
-        cont[3] = to_string(IPC);
+        cont[3] = frequency_available ? to_string(IPC) : "-";
         cont[4] = g_latency != 0 ? to_string(g_latency) : "-";
         g_latency = 0;
         table.addOneItem(cont);
@@ -244,7 +246,10 @@ static void cpubm_arm_load(cpubm_t &item, Table &table)
 
     stringstream ss1;
 
-    ss1 << setprecision(5) << perf << " " << item.dim;
+    if (perf >= 0)
+        ss1 << setprecision(5) << perf << " " << item.dim;
+    else
+        ss1 << "-";
 
     cont[0] = item.isa;
     cont[1] = item.type;
@@ -374,11 +379,17 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
     tpool_wait(tm);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    perf = (double)item.loop_time * (inner_loop * item.comp_pl + 4)/
-        (time_used * freq[0] * 1e9);
+    bool frequency_available = !freq.empty() && freq[0] > 0;
+    perf = frequency_available
+        ? (double)item.loop_time * (inner_loop * item.comp_pl + 4) /
+            (time_used * freq[0] * 1e9)
+        : 0;
     stringstream ss;
 
-    ss << setprecision(5) << perf << " " << item.dim;
+    if (frequency_available)
+        ss << setprecision(5) << perf << " " << item.dim;
+    else
+        ss << "-";
 
     vector<string> cont;
     cont.resize(table.getCol());

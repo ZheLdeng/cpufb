@@ -37,7 +37,7 @@ vector<double> freq;
 
 static void* thread_function_freq(void* arg){
     struct FrequencyData* data = (FrequencyData*)malloc(sizeof(FrequencyData));
-    double CPU_freq;
+    double CPU_freq = 0;
 #ifdef __APPLE__
     int64_t looptime = 20000000;
 #else
@@ -106,9 +106,9 @@ static void* thread_function_freq(void* arg){
 
     
 
-    if(cycles == 0){
+    if(cycles == 0 && read_freq > 0){
         CPU_freq = read_freq * 1e3;
-    }else{
+    }else if(cycles > 0){
         CPU_freq = (double)cycles / time_used;
     }
     
@@ -124,20 +124,23 @@ static void* thread_function_freq(void* arg){
     asimd_fmla_vv_f64f64f64(looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    data->IPC_fp64 = looptime * 24 / (time_used * CPU_freq);
+    data->IPC_fp64 = CPU_freq > 0
+        ? looptime * 24 / (time_used * CPU_freq) : 0;
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     asimd_fmla_vv_f32f32f32(looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    data->IPC_fp32 = looptime * 24 / (time_used * CPU_freq);
+    data->IPC_fp32 = CPU_freq > 0
+        ? looptime * 24 / (time_used * CPU_freq) : 0;
 
     float* cache_data = (float*)malloc(1024);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     load_ldr_kernel(cache_data, looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    data->IPC_load = looptime * 24 / (time_used * CPU_freq);
+    data->IPC_load = CPU_freq > 0
+        ? looptime * 24 / (time_used * CPU_freq) : 0;
 
 #ifdef _SVE_
     data->IPC_fp32_sve = 0;
@@ -147,13 +150,15 @@ static void* thread_function_freq(void* arg){
         sve_fmla_vv_f32f32f32(looptime);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
         time_used = get_time(&start, &end);
-        data->IPC_fp32_sve = looptime * 24 / (time_used * CPU_freq);
+        data->IPC_fp32_sve = CPU_freq > 0
+            ? looptime * 24 / (time_used * CPU_freq) : 0;
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
         sve_fmla_vv_f64f64f64(looptime);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
         time_used = get_time(&start, &end);
-        data->IPC_fp64_sve = looptime * 24 / (time_used * CPU_freq);
+        data->IPC_fp64_sve = CPU_freq > 0
+            ? looptime * 24 / (time_used * CPU_freq) : 0;
     }
 #endif
     pthread_exit((void *)data);
@@ -177,15 +182,26 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
         pthread_join(threads[t], &thread_result);
         result = (struct FrequencyData *)thread_result;
         stringstream ss1, ss2, ss3, ss4, ss5, ss6, ss7;
-        ss1 << std::setprecision(2) << result->theory_freq <<" GHZ" ;
-        ss2 << std::setprecision(2) << result->caculate_freq <<" GHZ" ;
-        ss3 << std::setprecision(2) << result->IPC_fp32 ;
-        ss4 << std::setprecision(2) << result->IPC_fp64 ;
-        ss5<< std::setprecision(2) << result->IPC_load ;
+        if (result->theory_freq > 0)
+            ss1 << std::setprecision(2) << result->theory_freq <<" GHZ";
+        else ss1 << "-";
+        if (result->caculate_freq > 0) {
+            ss2 << std::setprecision(2) << result->caculate_freq <<" GHZ";
+            ss3 << std::setprecision(2) << result->IPC_fp32;
+            ss4 << std::setprecision(2) << result->IPC_fp64;
+            ss5 << std::setprecision(2) << result->IPC_load;
+        } else {
+            ss2 << "-"; ss3 << "-"; ss4 << "-"; ss5 << "-";
+        }
         #ifdef _SVE_
         if (arm64_runtime_features().sve) {
-            ss6 << std::setprecision(2) << result->IPC_fp32_sve;
-            ss7 << std::setprecision(2) << result->IPC_fp64_sve;
+            if (result->caculate_freq > 0) {
+                ss6 << std::setprecision(2) << result->IPC_fp32_sve;
+                ss7 << std::setprecision(2) << result->IPC_fp64_sve;
+            } else {
+                ss6 << "-";
+                ss7 << "-";
+            }
         } else {
             ss6 << "-";
             ss7 << "-";
@@ -212,11 +228,17 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
     }
     result = (struct FrequencyData *)thread_result;
     stringstream ss1, ss2, ss3, ss4, ss5, ss6, ss7;
-    ss1 << std::setprecision(2) << result->theory_freq <<" GHZ" ;
-    ss2 << std::setprecision(2) << result->caculate_freq <<" GHZ" ;
-    ss3 << std::setprecision(2) << result->IPC_fp32 ;
-    ss4 << std::setprecision(2) << result->IPC_fp64 ;
-    ss5<< std::setprecision(2) << result->IPC_load ;
+    if (result->theory_freq > 0)
+        ss1 << std::setprecision(2) << result->theory_freq <<" GHZ";
+    else ss1 << "-";
+    if (result->caculate_freq > 0) {
+        ss2 << std::setprecision(2) << result->caculate_freq <<" GHZ";
+        ss3 << std::setprecision(2) << result->IPC_fp32;
+        ss4 << std::setprecision(2) << result->IPC_fp64;
+        ss5 << std::setprecision(2) << result->IPC_load;
+    } else {
+        ss2 << "-"; ss3 << "-"; ss4 << "-"; ss5 << "-";
+    }
     #ifdef _SVE_
     ss6 << std::setprecision(2) << result->IPC_fp32_sve ;
     ss7 << std::setprecision(2) << result->IPC_fp64_sve ;

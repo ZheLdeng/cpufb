@@ -336,6 +336,38 @@ static vector<CacheLevelEstimate> estimate_cache_levels(
         if (best != nullptr) selected.push_back({*best, expected.first});
     }
 
+    // Some server cores expose an L2 whose effective single-thread capacity is
+    // well below the nominal sysfs size.  Preserve that distinction: if the
+    // nominal-size search missed, choose the strongest curve knee above L1 and
+    // below the range where an LLC transition could reasonably begin.
+    bool has_reported_l2 = cache_data.theory_L2 > 0;
+    bool has_selected_l2 = any_of(selected.begin(), selected.end(),
+        [](const SelectedJump &item) { return item.level == "L2"; });
+    if (has_reported_l2 && !has_selected_l2) {
+        uint64_t lower_bound = static_cast<uint64_t>(
+            max(cache_data.theory_L1 * 2, 128)) * 1024;
+        uint64_t upper_bound = static_cast<uint64_t>(cache_data.theory_L2) *
+            1024 * 4;
+        if (cache_data.theory_LLC > 0)
+            upper_bound = min(upper_bound,
+                static_cast<uint64_t>(cache_data.theory_LLC) * 1024 / 4);
+        const CacheJumpCandidate *best = nullptr;
+        for (const auto &candidate : candidates) {
+            size_t capacity_index = candidate.point_index > 0
+                ? candidate.point_index - 1 : candidate.point_index;
+            uint64_t capacity = points[capacity_index].working_set_bytes;
+            if (capacity < lower_bound || capacity > upper_bound) continue;
+            bool already_used = any_of(selected.begin(), selected.end(),
+                [&](const SelectedJump &item) {
+                    return item.jump.point_index == candidate.point_index;
+                });
+            if (already_used) continue;
+            if (best == nullptr || candidate.ratio > best->ratio)
+                best = &candidate;
+        }
+        if (best != nullptr) selected.push_back({*best, "L2"});
+    }
+
     // A shared LLC reported by sysfs can be much larger than the portion that a
     // single pinned thread can effectively use (notably on VMs and partitioned
     // server caches).  If there is no knee near the advertised LLC size, keep

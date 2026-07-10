@@ -33,10 +33,8 @@ extern "C"
 struct CacheData {
     int theory_L1 = 0;
     int theory_L2 = 0;
-    int theory_LLC = 0;
     int test_L1 = 0;
     int test_L2 = 0;
-    int test_LLC = 0;
     int theory_way = 0;
     int test_way = 0;
     int theory_cacheline = 0;
@@ -58,7 +56,6 @@ struct CacheLevelEstimate {
 struct CacheCurveResult {
     std::vector<CacheLatencyPoint> points;
     std::vector<CacheLevelEstimate> levels;
-    double memory_latency_ns = 0;
 };
 
 void get_reported_cache_info(struct CacheData *cache_size, int cpu_id);

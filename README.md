@@ -141,7 +141,7 @@ notice. New code should use the CMake build above.
 
   --idle_time: the interval time(sec) between any two adjacent benchmarks, default is 0.
 
-  --mode: `cache` measures the dependent-load latency curve and infers L1/L2/LLC
+  --mode: `cache` measures the dependent-load latency curve and infers L1/L2
   capacity and latency; `compute` runs compute/IPC benchmarks; `all` runs both
   groups and the existing cache-bandwidth kernels. The default is `all`.
 

@@ -179,8 +179,6 @@ void get_reported_cache_info(struct CacheData *cache_data, int cpu_id)
             cache_data->theory_way = ways;
         } else if (level == 2 && type != "Instruction") {
             cache_data->theory_L2 = max(cache_data->theory_L2, size_kb);
-        } else if (level >= 3 && type != "Instruction") {
-            cache_data->theory_LLC = max(cache_data->theory_LLC, size_kb);
         }
     }
 #else
@@ -213,7 +211,7 @@ static vector<uint64_t> build_curve_sizes(const CacheData &cache_data,
         if (base > max_bytes / 2) break;
     }
     const int reported_kb[] = {
-        cache_data.theory_L1, cache_data.theory_L2, cache_data.theory_LLC
+        cache_data.theory_L1, cache_data.theory_L2
     };
     for (int size_kb : reported_kb) {
         if (size_kb <= 0) continue;
@@ -306,8 +304,7 @@ static vector<CacheLevelEstimate> estimate_cache_levels(
     vector<SelectedJump> selected;
     const pair<const char*, int> reported[] = {
         {"L1", cache_data.theory_L1},
-        {"L2", cache_data.theory_L2},
-        {"LLC", cache_data.theory_LLC}
+        {"L2", cache_data.theory_L2}
     };
     for (const auto &expected : reported) {
         if (expected.second <= 0) continue;
@@ -337,10 +334,8 @@ static vector<CacheLevelEstimate> estimate_cache_levels(
         if (best != nullptr) selected.push_back({*best, expected.first});
     }
 
-    // Some server cores expose an L2 whose effective single-thread capacity is
-    // well below the nominal sysfs size.  Preserve that distinction: if the
-    // nominal-size search missed, choose the strongest curve knee above L1 and
-    // below the range where an LLC transition could reasonably begin.
+    // If the nominal-size search misses on a noisy system, retain a constrained
+    // curve-only fallback above L1 rather than fabricating the reported value.
     bool has_reported_l2 = cache_data.theory_L2 > 0;
     bool has_selected_l2 = any_of(selected.begin(), selected.end(),
         [](const SelectedJump &item) { return item.level == "L2"; });
@@ -349,9 +344,6 @@ static vector<CacheLevelEstimate> estimate_cache_levels(
             max(cache_data.theory_L1 * 2, 128)) * 1024;
         uint64_t upper_bound = static_cast<uint64_t>(cache_data.theory_L2) *
             1024 * 4;
-        if (cache_data.theory_LLC > 0)
-            upper_bound = min(upper_bound,
-                static_cast<uint64_t>(cache_data.theory_LLC) * 1024 / 4);
         const CacheJumpCandidate *best = nullptr;
         for (const auto &candidate : candidates) {
             size_t capacity_index = candidate.point_index > 0
@@ -369,39 +361,11 @@ static vector<CacheLevelEstimate> estimate_cache_levels(
         if (best != nullptr) selected.push_back({*best, "L2"});
     }
 
-    // A shared LLC reported by sysfs can be much larger than the portion that a
-    // single pinned thread can effectively use (notably on VMs and partitioned
-    // server caches).  If there is no knee near the advertised LLC size, keep
-    // the reported value as theory but derive the measured LLC from the
-    // strongest remaining post-L2 knee in the actual latency curve.
-    bool has_reported_llc = cache_data.theory_LLC > 0;
-    bool has_selected_llc = any_of(selected.begin(), selected.end(),
-        [](const SelectedJump &item) { return item.level == "LLC"; });
-    if (has_reported_llc && !has_selected_llc) {
-        uint64_t lower_bound = static_cast<uint64_t>(
-            max(cache_data.theory_L2, cache_data.theory_L1)) * 1024 * 4;
-        const CacheJumpCandidate *best = nullptr;
-        for (const auto &candidate : candidates) {
-            size_t capacity_index = candidate.point_index > 0
-                ? candidate.point_index - 1 : candidate.point_index;
-            uint64_t capacity = points[capacity_index].working_set_bytes;
-            if (capacity < lower_bound) continue;
-            bool already_used = any_of(selected.begin(), selected.end(),
-                [&](const SelectedJump &item) {
-                    return item.jump.point_index == candidate.point_index;
-                });
-            if (already_used) continue;
-            if (best == nullptr || candidate.ratio > best->ratio)
-                best = &candidate;
-        }
-        if (best != nullptr) selected.push_back({*best, "LLC"});
-    }
-
     if (selected.empty()) {
         sort(candidates.begin(), candidates.end(), [](const auto &a, const auto &b) {
             return a.ratio > b.ratio;
         });
-        static const char *fallback_names[] = {"L1", "L2", "LLC"};
+        static const char *fallback_names[] = {"L1", "L2"};
         for (const auto &candidate : candidates) {
             size_t capacity_index = candidate.point_index > 0
                 ? candidate.point_index - 1 : candidate.point_index;
@@ -415,7 +379,7 @@ static vector<CacheLevelEstimate> estimate_cache_levels(
                 });
             if (separated) {
                 selected.push_back({candidate, fallback_names[selected.size()]});
-                if (selected.size() == 3) break;
+                if (selected.size() == 2) break;
             }
         }
     }
@@ -427,12 +391,31 @@ static vector<CacheLevelEstimate> estimate_cache_levels(
     size_t segment_start = 0;
     for (size_t level = 0; level < selected.size(); ++level) {
         size_t end = selected[level].jump.point_index;
-        vector<double> segment;
-        for (size_t i = segment_start; i <= end; ++i)
-            segment.push_back(points[i].latency_ns);
         size_t capacity_index = end > 0 ? end - 1 : end;
-        result.push_back({selected[level].level, points[capacity_index].working_set_bytes,
-            median_values(segment), selected[level].jump.ratio});
+        vector<double> plateau;
+        size_t plateau_start = capacity_index > 2 ? capacity_index - 2 : 0;
+        plateau_start = max(plateau_start, segment_start);
+        if (selected[level].level == "L2" && capacity_index >= segment_start + 2) {
+            for (size_t start = segment_start; start + 2 <= capacity_index; ++start) {
+                double minimum = points[start].latency_ns;
+                double maximum = minimum;
+                for (size_t i = start + 1; i <= start + 2; ++i) {
+                    minimum = min(minimum, points[i].latency_ns);
+                    maximum = max(maximum, points[i].latency_ns);
+                }
+                if (minimum > 0 && maximum / minimum <= 1.10) {
+                    plateau_start = start;
+                    capacity_index = start + 2;
+                    break;
+                }
+            }
+        }
+        for (size_t i = plateau_start; i <= capacity_index; ++i)
+            plateau.push_back(points[i].latency_ns);
+        size_t measured_capacity_index = end > 0 ? end - 1 : end;
+        result.push_back({selected[level].level,
+            points[measured_capacity_index].working_set_bytes,
+            median_values(plateau), selected[level].jump.ratio});
         segment_start = min(points.size(), end + 1);
     }
     return result;
@@ -493,14 +476,8 @@ CacheCurveResult measure_cache_hierarchy(struct CacheData *cache_data, int cpu_i
             int size_kb = static_cast<int>(level.capacity_bytes / 1024);
             if (level.level == "L1") cache_data->test_L1 = size_kb;
             else if (level.level == "L2") cache_data->test_L2 = size_kb;
-            else if (level.level == "LLC") cache_data->test_LLC = size_kb;
         }
     }
-    vector<double> tail;
-    size_t tail_count = min<size_t>(4, result.points.size());
-    for (size_t i = result.points.size() - tail_count; i < result.points.size(); ++i)
-        tail.push_back(result.points[i].latency_ns);
-    result.memory_latency_ns = median_values(tail);
     return result;
 }
 

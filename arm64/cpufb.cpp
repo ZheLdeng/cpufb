@@ -269,7 +269,9 @@ static void cpubm_arm_cache(std::vector<int> &set_of_threads,Table &table)
 
     int cpu_id = set_of_threads[0];
     get_reported_cache_info(&cache_size, cpu_id);
-    CacheCurveResult curve = measure_cache_hierarchy(&cache_size, cpu_id);
+    get_cacheline(&cache_size, cpu_id);
+    get_multiway(&cache_size, cpu_id);
+    get_cachesize(&cache_size, cpu_id);
 
     auto size_kb = [](int value) {
         return value > 0 ? to_string(value) + " KB" : string("-");
@@ -282,66 +284,15 @@ static void cpubm_arm_cache(std::vector<int> &set_of_threads,Table &table)
     cont[1] = size_kb(cache_size.theory_L2);
     cont[2] = size_kb(cache_size.test_L2);
     table.addOneItem(cont);
-    cont[0] = "LLC cache";
-    cont[1] = size_kb(cache_size.theory_LLC);
-    cont[2] = size_kb(cache_size.test_LLC);
-    table.addOneItem(cont);
     cont[0] = "cacheline size";
     cont[1] = to_string(cache_size.theory_cacheline) + " B";
-    cont[2] = "reported";
+    cont[2] = cache_size.test_cacheline > 0
+        ? to_string(cache_size.test_cacheline) + " B" : "-";
     table.addOneItem(cont);
     cont[0] = "L1 ways of associativity";
     cont[1] = cache_size.theory_way > 0 ? to_string(cache_size.theory_way) : "-";
-    cont[2] = "not inferred";
+    cont[2] = cache_size.test_way > 0 ? to_string(cache_size.test_way) : "-";
     table.addOneItem(cont);
-
-    Table curve_table;
-    curve_table.setColumnNum(2);
-    vector<string> curve_head = {"Working Set", "Dependent-load Latency"};
-    curve_table.addOneItem(curve_head);
-    for (const auto &point : curve.points) {
-        vector<string> row(2);
-        if (point.working_set_bytes >= 1024 * 1024) {
-            ostringstream size;
-            size << fixed << setprecision(2)
-                 << point.working_set_bytes / (1024.0 * 1024.0) << " MB";
-            row[0] = size.str();
-        } else {
-            row[0] = to_string(point.working_set_bytes / 1024) + " KB";
-        }
-        ostringstream latency;
-        latency << fixed << setprecision(3) << point.latency_ns << " ns/load";
-        row[1] = latency.str();
-        curve_table.addOneItem(row);
-    }
-    curve_table.print();
-
-    Table estimate_table;
-    estimate_table.setColumnNum(4);
-    vector<string> estimate_head = {"Level", "Measured Capacity", "Latency", "Jump"};
-    estimate_table.addOneItem(estimate_head);
-    for (const auto &level : curve.levels) {
-        vector<string> row(4);
-        row[0] = level.level;
-        row[1] = level.capacity_bytes >= 1024 * 1024
-            ? to_string(level.capacity_bytes / (1024 * 1024)) + " MB"
-            : to_string(level.capacity_bytes / 1024) + " KB";
-        ostringstream latency, jump;
-        latency << fixed << setprecision(3) << level.latency_ns << " ns/load";
-        jump << fixed << setprecision(2) << level.jump_ratio << "x";
-        row[2] = latency.str();
-        row[3] = jump.str();
-        estimate_table.addOneItem(row);
-    }
-    vector<string> memory_row(4);
-    memory_row[0] = "Memory";
-    memory_row[1] = "-";
-    ostringstream memory_latency;
-    memory_latency << fixed << setprecision(3) << curve.memory_latency_ns << " ns/load";
-    memory_row[2] = memory_latency.str();
-    memory_row[3] = "-";
-    estimate_table.addOneItem(memory_row);
-    estimate_table.print();
 }
 
 

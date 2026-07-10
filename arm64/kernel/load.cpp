@@ -25,6 +25,7 @@
 
 #ifdef __linux__
 #include<sys/syscall.h>
+#include <sys/mman.h>
 #endif
 //cacheline长度
 #define CACHE_LINE 64
@@ -451,15 +452,28 @@ CacheCurveResult measure_cache_hierarchy(struct CacheData *cache_data, int cpu_i
 #endif
 
     uint64_t reported_max_kb = static_cast<uint64_t>(max({
-        cache_data->theory_L1, cache_data->theory_L2, cache_data->theory_LLC, 0
+        cache_data->theory_L1, cache_data->theory_L2, 0
     }));
-    uint64_t max_bytes = max<uint64_t>(64ULL * 1024 * 1024,
-        reported_max_kb * 1024 * 2);
-    max_bytes = min<uint64_t>(max_bytes, 512ULL * 1024 * 1024);
+    uint64_t max_bytes = max<uint64_t>(8ULL * 1024 * 1024,
+        reported_max_kb * 1024 * 4);
+    max_bytes = min<uint64_t>(max_bytes, 64ULL * 1024 * 1024);
     int line_size = max(64, cache_data->theory_cacheline);
     void *allocation = nullptr;
+#ifdef __linux__
+    constexpr size_t huge_page_size = 2ULL * 1024 * 1024;
+    size_t mapping_bytes = static_cast<size_t>(max_bytes) + huge_page_size;
+    void *mapping = mmap(nullptr, mapping_bytes, PROT_READ | PROT_WRITE,
+        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (mapping == MAP_FAILED) return result;
+    uintptr_t aligned = (reinterpret_cast<uintptr_t>(mapping) +
+        huge_page_size - 1) & ~(huge_page_size - 1);
+    allocation = reinterpret_cast<void*>(aligned);
+    madvise(allocation, static_cast<size_t>(max_bytes), MADV_HUGEPAGE);
+    memset(allocation, 0, static_cast<size_t>(max_bytes));
+#else
     if (posix_memalign(&allocation, static_cast<size_t>(line_size), max_bytes) != 0)
         return result;
+#endif
     int64_t *buffer = static_cast<int64_t*>(allocation);
 
     vector<uint64_t> sizes = build_curve_sizes(*cache_data, max_bytes);
@@ -468,7 +482,11 @@ CacheCurveResult measure_cache_hierarchy(struct CacheData *cache_data, int cpu_i
             0x4350554642ULL + i * 0x9e3779b97f4a7c15ULL);
         result.points.push_back({sizes[i], latency});
     }
+#ifdef __linux__
+    munmap(mapping, mapping_bytes);
+#else
     free(allocation);
+#endif
     result.levels = estimate_cache_levels(result.points, *cache_data);
     if (!result.levels.empty()) {
         for (const auto &level : result.levels) {

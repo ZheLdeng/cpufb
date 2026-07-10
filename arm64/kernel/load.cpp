@@ -378,7 +378,7 @@ static vector<CacheLevelEstimate> estimate_cache_levels(
         [](const SelectedJump &item) { return item.level == "LLC"; });
     if (has_reported_llc && !has_selected_llc) {
         uint64_t lower_bound = static_cast<uint64_t>(
-            max(cache_data.theory_L2, cache_data.theory_L1)) * 1024 * 2;
+            max(cache_data.theory_L2, cache_data.theory_L1)) * 1024 * 4;
         const CacheJumpCandidate *best = nullptr;
         for (const auto &candidate : candidates) {
             size_t capacity_index = candidate.point_index > 0

@@ -15,6 +15,26 @@ include_guard(GLOBAL)
 # arch         : "x64" | "arm64" | "riscv64"
 # out_features : variable name to populate, e.g. CPUFB_SIMD_FEATURES
 function(cpufb_detect_simd arch out_features)
+    # Linux/Android AArch64 binaries are intentionally multi-ISA.  This list
+    # says which kernels are compiled into the executable; runtime HWCAP
+    # probing decides which of them may actually be registered and executed.
+    if(arch STREQUAL "arm64" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        if(DEFINED CPUFB_SIMD_FEATURES_OVERRIDE AND NOT CPUFB_SIMD_FEATURES_OVERRIDE STREQUAL "")
+            set(features "${CPUFB_SIMD_FEATURES_OVERRIDE}")
+        else()
+            set(features
+                _ASIMD_ _ASIMD_HP_ _ASIMD_DP_ _BF16_ _I8MM_ _FHM_
+                _ASIMD_FCMA_ _ASIMD_REDUCE_ _ASIMD_RECIP_
+                _ASIMD_INT_MAC_ _ASIMD_TBL_ _SVE_ _SVE_I8MM_
+                _SVE_BF16_ _SVE_F32MM_ _SVE_F64MM_ _SVE_FP16_FMLA_
+                _SVE2_ _LDP_ _ISSUE_)
+        endif()
+        message(STATUS "cpufb: compiled ARM64 kernels: ${features}")
+        message(STATUS "cpufb: runnable ARM64 kernels will be selected from HWCAP at startup")
+        set(${out_features} "${features}" PARENT_SCOPE)
+        return()
+    endif()
+
     # Resolve which source file holds the detector for this arch.
     if(arch STREQUAL "x64")
         set(detector_src "${CMAKE_SOURCE_DIR}/x64/cpuid.c")

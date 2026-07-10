@@ -57,9 +57,16 @@ function(cpufb_simd_asm_flags arch feature out_var)
             set(flag "-march=armv9-a+sve2")
         elseif(feature STREQUAL "_SVE_")
             set(flag "-march=armv8-a+sve")
+        elseif(feature STREQUAL "_ASIMD_HP_")
+            set(flag "-march=armv8.2-a+fp16")
+        elseif(feature STREQUAL "_ISSUE_")
+            # _ISSUE_.S contains both the baseline and SVE-only variants when
+            # the multi-ISA object is built.
+            set(flag "-march=armv8-a+sve")
         else()
-            # ASIMD / ASIMD_HP / ISSUE / LDP / SVE_LD1W ... use native by default
-            set(flag "-march=native")
+            # Mandatory AArch64/ASIMD, LDP and other baseline sources use an
+            # explicit architecture so an x86-hosted cross compiler works.
+            set(flag "-march=armv8-a")
         endif()
     elseif(arch STREQUAL "riscv64")
         # All riscv64 .S files are assembled with the same flag today
@@ -75,7 +82,11 @@ endfunction()
 # in build_arm64.sh - later matches override earlier ones in priority order.
 function(cpufb_compute_march_flag arch features_list out_var)
     set(march "")
-    if(arch STREQUAL "arm64")
+    if(arch STREQUAL "arm64" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        # Optional instructions live only in per-ISA assembly objects.  Keep
+        # C++ translation units at the mandatory architecture baseline.
+        set(march "-march=armv8-a")
+    elseif(arch STREQUAL "arm64")
         # Priority order matches build_arm64.sh's case-statement order: later
         # cases (SME family) override earlier (SVE family) override base SVE.
         foreach(feat IN LISTS features_list)

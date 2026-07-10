@@ -1,0 +1,25 @@
+#pragma once
+
+#include <string>
+#include <vector>
+
+struct Arm64RuntimeFeatures {
+    bool asimd = false;
+    bool fp16 = false;
+    bool dotprod = false;
+    bool fcma = false;
+    bool fhm = false;
+    bool sve = false;
+    bool i8mm = false;
+    bool bf16 = false;
+    bool sve2 = false;
+    bool sve_i8mm = false;
+    bool sve_bf16 = false;
+    bool sve_f32mm = false;
+    bool sve_f64mm = false;
+
+    bool supports(const std::string &compiled_token) const;
+    std::vector<std::string> runnable_tokens() const;
+};
+
+const Arm64RuntimeFeatures &arm64_runtime_features();

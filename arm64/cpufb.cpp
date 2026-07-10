@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <cstdio>
 #include <fstream>
+#include <algorithm>
 
 #include <stdlib.h>
 #include <sys/syscall.h>
@@ -24,12 +25,12 @@
 #include<common.hpp>
 #include <cmath>
 
-#ifdef __APPLE__
-#include<amx.hpp>
+#if defined(__linux__) && !defined(__APPLE__)
+#include "runtime_features.hpp"
 #endif
 
-#ifdef _SVE_
-#include <arm_sve.h>
+#ifdef __APPLE__
+#include<amx.hpp>
 #endif
 
 using namespace std;
@@ -157,7 +158,7 @@ static void cpubm_arm64_one(tpool_t *tm,
 
 #ifdef _SVE_
     if (item.type.find("sve") != string::npos) {
-        item.comp_pl = item.comp_pl * svcntb();
+        item.comp_pl = item.comp_pl * load_sve_vector_bytes();
     }
 #endif
 #ifdef _SME_
@@ -406,7 +407,8 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
         }
         printf("\n");
 #ifdef _SVE_
-        cout << " SVE : " << svcntb() << endl;
+        if (arm64_runtime_features().sve)
+            cout << " SVE : " << load_sve_vector_bytes() << endl;
 #endif
 
 #ifdef _SME_
@@ -452,6 +454,7 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
 
 static void cpufb_register_isa()
 {
+    bm_list.clear();
 #ifdef __APPLE__
     constexpr int64_t kComputeLoopTime = 0x40000LL;
     constexpr int64_t kLatencyLoopTime = 0x4000LL;
@@ -1082,6 +1085,47 @@ static void cpufb_register_isa()
 #endif
     reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC",
         kMultiIssueLoopTime, 50LL, (void*)multiple_issue);
+
+#if defined(__linux__) && !defined(__APPLE__)
+    const Arm64RuntimeFeatures &features = arm64_runtime_features();
+    auto required_feature = [](const cpubm_t &item) -> const char * {
+        const string &isa = item.isa;
+        const string &type = item.type;
+
+        if (type.find("sme") != string::npos || isa.find("SME") != string::npos)
+            return "_SME_UNSUPPORTED_";
+        if (type.find("sve") != string::npos || isa.find("sve") != string::npos ||
+            isa.find("SVE") != string::npos) {
+            if (isa == "sve_i8mm") return "_SVE_I8MM_";
+            if (isa == "sve_bf16") return "_SVE_BF16_";
+            if (isa == "sve_f32mm") return "_SVE_F32MM_";
+            if (isa == "sve_f64mm") return "_SVE_F64MM_";
+            if (isa == "sve_fp16") return "_SVE_FP16_FMLA_";
+            if (isa == "sve2") return "_SVE2_";
+            return "_SVE_";
+        }
+        if (isa == "i8mm") return "_I8MM_";
+        if (isa == "asimd_dp") return "_ASIMD_DP_";
+        if (isa == "bf16") return "_BF16_";
+        if (isa == "FHM") return "_FHM_";
+        if (isa == "asimd_hp") return "_ASIMD_HP_";
+        if (isa == "asimd_fcma") return "_ASIMD_FCMA_";
+        if (isa == "asimd_reduce") return "_ASIMD_REDUCE_";
+        if (isa == "asimd_recip") return "_ASIMD_RECIP_";
+        if (isa == "asimd_int_mac") return "_ASIMD_INT_MAC_";
+        if (isa == "asimd_tbl") return "_ASIMD_TBL_";
+        if (isa == "MULTI_ISSUE") return "_ISSUE_";
+        return "_ASIMD_";
+    };
+
+    bm_list.erase(remove_if(bm_list.begin(), bm_list.end(),
+        [&](const cpubm_t &item) { return !features.supports(required_feature(item)); }),
+        bm_list.end());
+
+    cout << "Runtime ARM64 ISA:";
+    for (const string &token : features.runnable_tokens()) cout << ' ' << token;
+    cout << endl;
+#endif
 }
 
 int main(int argc, char *argv[])

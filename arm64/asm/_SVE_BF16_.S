@@ -8,7 +8,7 @@
 // the SVE FMLA / SVE I8MM kernels).
 //
 // Throughput per instruction at VL=128b (NEON-equivalent):
-//   bfmmla z.s, z.h, z.h        : 2x4x2 outer-product = 16 FLOPs
+//   bfmmla z.s, z.h, z.h        : 2x4x2 = 16 MACs = 32 FLOPs
 //   bfdot  z.s, z.h, z.h        : 4 lanes * 2-element dot * 2 = 8 FLOPs
 //   bfdot  z.s, z.h, z0.h[idx]  : 4 lanes * 2-element dot * 2 = 8 FLOPs
 // These are then scaled by (svcntb()/16) at runtime.
@@ -20,6 +20,12 @@
 .macro SVE_BF16_INIT
     fmov z0.s, p0/m, #0
     fmov z1.s, p0/m, #0
+    fmov z2.s, p0/m, #0
+    fmov z3.s, p0/m, #0
+    fmov z4.s, p0/m, #0
+    fmov z5.s, p0/m, #0
+    fmov z6.s, p0/m, #0
+    fmov z7.s, p0/m, #0
     fmov z8.s, p0/m, #0
     fmov z9.s, p0/m, #0
     fmov z10.s, p0/m, #0
@@ -53,30 +59,30 @@
     SVE_BF16_INIT
 .sve_bfmmla_f32bf16bf16L1:
     bfmmla z8.s,  z0.h, z1.h
-    bfmmla z9.s,  z0.h, z1.h
-    bfmmla z10.s, z0.h, z1.h
-    bfmmla z11.s, z0.h, z1.h
+    bfmmla z9.s,  z2.h, z3.h
+    bfmmla z10.s, z4.h, z5.h
+    bfmmla z11.s, z6.h, z7.h
     bfmmla z12.s, z0.h, z1.h
-    bfmmla z13.s, z0.h, z1.h
-    bfmmla z14.s, z0.h, z1.h
-    bfmmla z15.s, z0.h, z1.h
+    bfmmla z13.s, z2.h, z3.h
+    bfmmla z14.s, z4.h, z5.h
+    bfmmla z15.s, z6.h, z7.h
     bfmmla z16.s, z0.h, z1.h
-    bfmmla z17.s, z0.h, z1.h
-    bfmmla z18.s, z0.h, z1.h
-    bfmmla z19.s, z0.h, z1.h
+    bfmmla z17.s, z2.h, z3.h
+    bfmmla z18.s, z4.h, z5.h
+    bfmmla z19.s, z6.h, z7.h
     subs x0, x0, #1
     bfmmla z20.s, z0.h, z1.h
-    bfmmla z21.s, z0.h, z1.h
-    bfmmla z22.s, z0.h, z1.h
-    bfmmla z23.s, z0.h, z1.h
+    bfmmla z21.s, z2.h, z3.h
+    bfmmla z22.s, z4.h, z5.h
+    bfmmla z23.s, z6.h, z7.h
     bfmmla z24.s, z0.h, z1.h
-    bfmmla z25.s, z0.h, z1.h
-    bfmmla z26.s, z0.h, z1.h
-    bfmmla z27.s, z0.h, z1.h
+    bfmmla z25.s, z2.h, z3.h
+    bfmmla z26.s, z4.h, z5.h
+    bfmmla z27.s, z6.h, z7.h
     bfmmla z28.s, z0.h, z1.h
-    bfmmla z29.s, z0.h, z1.h
-    bfmmla z30.s, z0.h, z1.h
-    bfmmla z31.s, z0.h, z1.h
+    bfmmla z29.s, z2.h, z3.h
+    bfmmla z30.s, z4.h, z5.h
+    bfmmla z31.s, z6.h, z7.h
     bne .sve_bfmmla_f32bf16bf16L1
     restore_caller_vec
     ret

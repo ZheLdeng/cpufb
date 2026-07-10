@@ -97,32 +97,40 @@ static void cpubm_arm64_one(tpool_t *tm,
     double time_used, perf, IPC;
     char perfUnit = 'G';
 
-    int i;
     int num_threads = tm->thread_num;
 
-    // 多次测量取最小值，降低线程池调度开销与单次抖动对结果的影响
 #ifdef __APPLE__
     constexpr int kBenchRepeats = 5;
 #else
-    constexpr int kBenchRepeats = 20;
+    constexpr int kBenchRepeats = 5;
+    constexpr double kTargetSeconds = 0.05;
+    constexpr int64_t kMaxLoopScale = 1024;
 #endif
     double best_time = 1e30;
 #ifndef __APPLE__
-     // warm up
-    
-    for (i = 0; i < tm->thread_num; i++) {
-        tpool_add_work(tm, thread_func, (void*)&item);
+    // Calibrate each instruction to a long enough measurement window. The
+    // old fixed loop count made high-throughput 32-core kernels last only a
+    // few milliseconds, so thread wake-up skew dominated the result.
+    cpubm_t run_item = item;
+    if (!tpool_run_all(tm, thread_func, (void*)&run_item, &start, &end))
+        return;
+    double probe_time = get_time(&start, &end);
+    int64_t loop_scale = 1;
+    if (probe_time > 0 && probe_time < kTargetSeconds) {
+        loop_scale = static_cast<int64_t>(ceil(kTargetSeconds / probe_time));
+        if (loop_scale < 1) loop_scale = 1;
+        if (loop_scale > kMaxLoopScale) loop_scale = kMaxLoopScale;
     }
-    tpool_wait(tm);
+    if (item.loop_time > INT64_MAX / loop_scale)
+        loop_scale = INT64_MAX / item.loop_time;
+    run_item.loop_time = item.loop_time * loop_scale;
 
     for (int rep = 0; rep < kBenchRepeats; ++rep) {
-        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        for (i = 0; i < tm->thread_num; i++) {
-            tpool_add_work(tm, thread_func, (void*)&item);
-        }
-        tpool_wait(tm);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-        double t = get_time(&start, &end);
+        if (!tpool_run_all(tm, thread_func, (void*)&run_item, &start, &end))
+            return;
+        // Normalize to the registered loop count so existing FLOP/OP
+        // accounting remains unchanged.
+        double t = get_time(&start, &end) / loop_scale;
         if (t < best_time) best_time = t;
     }
 #else
@@ -183,7 +191,9 @@ static void cpubm_arm64_one(tpool_t *tm,
     {
         perf /= 1e9;
     }
-    IPC = item.loop_time * 24 * tm->thread_num / time_used / freq[0] / 1e9;
+    // Report estimated IPC per core; the old aggregate value scaled with the
+    // thread count and was mislabeled as a per-core IPC.
+    IPC = item.loop_time * 24 / time_used / freq[0] / 1e9;
     stringstream ss1, ss2;
 
     ss1 << setprecision(5) << perf << " " << perfUnit << item.dim;

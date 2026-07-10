@@ -75,15 +75,46 @@ static void *tpool_worker(void *arg)
     }
 #endif
     tpool_work_t *work;
+    uint64_t observed_parallel_generation = 0;
+
+    pthread_mutex_lock(&(tm->work_mutex));
+    tm->startup_ready_cnt++;
+    pthread_cond_signal(&(tm->parallel_ready_cond));
 
     while (1) {
-        pthread_mutex_lock(&(tm->work_mutex));
-
-        while (tm->work_first == NULL && !tm->stop)
+        while (tm->work_first == NULL &&
+               tm->parallel_generation == observed_parallel_generation &&
+               !tm->stop)
             pthread_cond_wait(&(tm->work_cond), &(tm->work_mutex));
 
         if (tm->stop)
             break;
+
+        if (tm->parallel_generation != observed_parallel_generation) {
+            observed_parallel_generation = tm->parallel_generation;
+            thread_func_t parallel_func = tm->parallel_func;
+            void *parallel_arg = tm->parallel_arg;
+
+            tm->parallel_ready_cnt++;
+            if (tm->parallel_ready_cnt == tm->thread_num)
+                pthread_cond_signal(&(tm->parallel_ready_cond));
+
+            while (tm->parallel_start_generation < observed_parallel_generation &&
+                   !tm->stop)
+                pthread_cond_wait(&(tm->parallel_start_cond), &(tm->work_mutex));
+
+            if (tm->stop)
+                break;
+
+            pthread_mutex_unlock(&(tm->work_mutex));
+            parallel_func(parallel_arg);
+            pthread_mutex_lock(&(tm->work_mutex));
+
+            tm->parallel_done_cnt++;
+            if (tm->parallel_done_cnt == tm->thread_num)
+                pthread_cond_signal(&(tm->parallel_done_cond));
+            continue;
+        }
 
         work = tpool_work_get(tm);
         tm->working_cnt++;
@@ -98,7 +129,6 @@ static void *tpool_worker(void *arg)
         tm->working_cnt--;
         if (!tm->stop && tm->working_cnt == 0 && tm->work_first == NULL)
             pthread_cond_signal(&(tm->working_cond));
-        pthread_mutex_unlock(&(tm->work_mutex));
     }
 
     tm->thread_cnt--;
@@ -110,7 +140,6 @@ static void *tpool_worker(void *arg)
 tpool_t *tpool_create(vector<int> set_of_threads)
 {
     tpool_t   *tm;
-    pthread_t  thread;
     size_t     i, num;
     num = set_of_threads.size();
     if (num == 0)
@@ -132,17 +161,40 @@ tpool_t *tpool_create(vector<int> set_of_threads)
     pthread_mutex_init(&(tm->work_mutex), NULL);
     pthread_cond_init(&(tm->work_cond), NULL);
     pthread_cond_init(&(tm->working_cond), NULL);
+    pthread_cond_init(&(tm->parallel_ready_cond), NULL);
+    pthread_cond_init(&(tm->parallel_start_cond), NULL);
+    pthread_cond_init(&(tm->parallel_done_cond), NULL);
 
     tm->work_first = NULL;
     tm->work_last  = NULL;
+    tm->threads = (pthread_t *)calloc(num, sizeof(*tm->threads));
 
+    pthread_mutex_lock(&(tm->work_mutex));
     for (i=0; i<num; i++) {
         tpool_args *args = (tpool_args *)malloc(sizeof(tpool_args));
         args->tm = tm;
         args->cpuid = set_of_threads[i];
-        pthread_create(&thread, NULL, tpool_worker, (void *)args);
-        pthread_detach(thread);
+        if (pthread_create(&(tm->threads[i]), NULL, tpool_worker, (void *)args) != 0) {
+            free(args);
+            tm->stop = true;
+            pthread_cond_broadcast(&(tm->work_cond));
+            pthread_mutex_unlock(&(tm->work_mutex));
+            for (size_t j = 0; j < i; j++) pthread_join(tm->threads[j], NULL);
+            free(tm->threads);
+            pthread_mutex_destroy(&(tm->work_mutex));
+            pthread_cond_destroy(&(tm->work_cond));
+            pthread_cond_destroy(&(tm->working_cond));
+            pthread_cond_destroy(&(tm->parallel_ready_cond));
+            pthread_cond_destroy(&(tm->parallel_start_cond));
+            pthread_cond_destroy(&(tm->parallel_done_cond));
+            free(tm);
+            return NULL;
+        }
     }
+
+    while (tm->startup_ready_cnt != num)
+        pthread_cond_wait(&(tm->parallel_ready_cond), &(tm->work_mutex));
+    pthread_mutex_unlock(&(tm->work_mutex));
 
     return tm;
 }
@@ -189,6 +241,51 @@ void tpool_wait(tpool_t *tm)
     pthread_mutex_unlock(&(tm->work_mutex));
 }
 
+bool tpool_run_all(tpool_t *tm, thread_func_t func, void *arg,
+    struct timespec *start, struct timespec *end)
+{
+    if (tm == NULL || func == NULL || start == NULL || end == NULL)
+        return false;
+
+    // The parallel generation and the ordinary work queue are deliberately
+    // serialized. This keeps existing load/cache users on the queue path while
+    // compute benchmarks get fixed one-job-per-worker semantics.
+    tpool_wait(tm);
+    pthread_mutex_lock(&(tm->work_mutex));
+
+    if (tm->stop) {
+        pthread_mutex_unlock(&(tm->work_mutex));
+        return false;
+    }
+
+    tm->parallel_func = func;
+    tm->parallel_arg = arg;
+    tm->parallel_ready_cnt = 0;
+    tm->parallel_done_cnt = 0;
+    tm->parallel_generation++;
+    pthread_cond_broadcast(&(tm->work_cond));
+
+    while (tm->parallel_ready_cnt != tm->thread_num && !tm->stop)
+        pthread_cond_wait(&(tm->parallel_ready_cond), &(tm->work_mutex));
+
+    if (tm->stop) {
+        pthread_mutex_unlock(&(tm->work_mutex));
+        return false;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC_RAW, start);
+    tm->parallel_start_generation = tm->parallel_generation;
+    pthread_cond_broadcast(&(tm->parallel_start_cond));
+
+    while (tm->parallel_done_cnt != tm->thread_num && !tm->stop)
+        pthread_cond_wait(&(tm->parallel_done_cond), &(tm->work_mutex));
+    clock_gettime(CLOCK_MONOTONIC_RAW, end);
+
+    bool ok = !tm->stop;
+    pthread_mutex_unlock(&(tm->work_mutex));
+    return ok;
+}
+
 void tpool_destroy(tpool_t *tm)
 {
     tpool_work_t *work;
@@ -207,14 +304,20 @@ void tpool_destroy(tpool_t *tm)
     tm->work_first = NULL;
     tm->stop = true;
     pthread_cond_broadcast(&(tm->work_cond));
+    pthread_cond_broadcast(&(tm->parallel_start_cond));
     pthread_mutex_unlock(&(tm->work_mutex));
 
-    tpool_wait(tm);
+    for (size_t i = 0; i < tm->thread_num; i++)
+        pthread_join(tm->threads[i], NULL);
 
     pthread_mutex_destroy(&(tm->work_mutex));
     pthread_cond_destroy(&(tm->work_cond));
     pthread_cond_destroy(&(tm->working_cond));
+    pthread_cond_destroy(&(tm->parallel_ready_cond));
+    pthread_cond_destroy(&(tm->parallel_start_cond));
+    pthread_cond_destroy(&(tm->parallel_done_cond));
 
+    free(tm->threads);
     free(tm);
 }
 

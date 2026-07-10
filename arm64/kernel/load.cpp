@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <climits>
 #include <cstdlib>
 #include <pthread.h>
 #include <sched.h> // For CPU affinity

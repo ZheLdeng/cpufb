@@ -9,9 +9,8 @@ option(CPUFB_ENABLE_ANDROID_DEPLOY
     OFF)
 
 set(CPUFB_SIMD_FEATURES_OVERRIDE "" CACHE STRING
-    "Semicolon-separated list of SIMD feature tokens (e.g. \"_BF16_;_I8MM_\"). \
-If non-empty, skips runtime detection and uses this list verbatim. Required \
-when cross-compiling unless the default arch set is acceptable.")
+    "Semicolon-separated list of SIMD kernels to compile (e.g. \"_BF16_;_I8MM_\"). \
+On ARM64 Linux/Android the executable still filters this list using runtime HWCAP.")
 
 # ---------------------------------------------------------------------------
 # C++ standard
@@ -123,6 +122,9 @@ set(_kernel_sources
     "${CPUFB_KERNEL_DIR}/frequency.cpp"
     "${CPUFB_KERNEL_DIR}/load.cpp"
 )
+if(CPUFB_ARCH STREQUAL "arm64" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND _kernel_sources "${CPUFB_ARCH_DIR}/runtime_features.cpp")
+endif()
 
 # Apple Silicon has an extra AMX kernel
 set(_amx_target "")

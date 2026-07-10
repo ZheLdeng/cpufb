@@ -16,6 +16,9 @@
 #include "frequency.hpp"
 #include "common.hpp"
 #include "load.hpp"
+#if defined(__linux__) && !defined(__APPLE__)
+#include "../runtime_features.hpp"
+#endif
 
 #ifdef __APPLE__
 #include <sys/sysctl.h>
@@ -137,17 +140,21 @@ static void* thread_function_freq(void* arg){
     data->IPC_load = looptime * 24 / (time_used * CPU_freq);
 
 #ifdef _SVE_
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    sve_fmla_vv_f32f32f32(looptime);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    time_used = get_time(&start, &end);
-    data->IPC_fp32_sve = looptime * 24 / (time_used * CPU_freq);
+    data->IPC_fp32_sve = 0;
+    data->IPC_fp64_sve = 0;
+    if (arm64_runtime_features().sve) {
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+        sve_fmla_vv_f32f32f32(looptime);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        time_used = get_time(&start, &end);
+        data->IPC_fp32_sve = looptime * 24 / (time_used * CPU_freq);
 
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    sve_fmla_vv_f64f64f64(looptime);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    time_used = get_time(&start, &end);
-    data->IPC_fp64_sve = looptime * 24 / (time_used * CPU_freq);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+        sve_fmla_vv_f64f64f64(looptime);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        time_used = get_time(&start, &end);
+        data->IPC_fp64_sve = looptime * 24 / (time_used * CPU_freq);
+    }
 #endif
     pthread_exit((void *)data);
 }
@@ -176,8 +183,13 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
         ss4 << std::setprecision(2) << result->IPC_fp64 ;
         ss5<< std::setprecision(2) << result->IPC_load ;
         #ifdef _SVE_
-        ss6 << std::setprecision(2) << result->IPC_fp32_sve ;
-	    ss7 << std::setprecision(2) << result->IPC_fp64_sve ;
+        if (arm64_runtime_features().sve) {
+            ss6 << std::setprecision(2) << result->IPC_fp32_sve;
+            ss7 << std::setprecision(2) << result->IPC_fp64_sve;
+        } else {
+            ss6 << "-";
+            ss7 << "-";
+        }
         #endif
         freq[t] = result->caculate_freq;
         vector<string> cont;

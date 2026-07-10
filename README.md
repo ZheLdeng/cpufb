@@ -135,11 +135,23 @@ notice. New code should use the CMake build above.
 
 ## How to benchmark
 
-`./cpufb --thread_pool=[xxx] --idle_time=yyy`
+`./cpufb --thread_pool=[xxx] --mode=all --idle_time=yyy`
 
   --thread_pool: [xxx] is the list of cpu thread to benchmarking, from setting affinities. Please reference the result of lstopo command. For example, [0,3,5-8,13-15].
 
   --idle_time: the interval time(sec) between any two adjacent benchmarks, default is 0.
+
+  --mode: `cache` measures the dependent-load latency curve and infers L1/L2/LLC
+  capacity and latency; `compute` runs compute/IPC benchmarks; `all` runs both
+  groups and the existing cache-bandwidth kernels. The default is `all`.
+
+Examples:
+
+```sh
+./cpufb --thread_pool=[0] --mode=cache
+./cpufb --thread_pool=[0] --mode=compute
+./cpufb --thread_pool=[0] --mode=all
+```
 
 
 ## Some x86-64 CPU benchmark results

@@ -38,6 +38,12 @@ extern vector<double> freq;
 static struct CacheData cache_size;
 static int64_t load_pl = 0;
 static int64_t g_latency = 0;
+
+enum class BenchMode {
+    Cache,
+    Compute,
+    All
+};
 typedef struct
 {
     string isa;
@@ -251,28 +257,86 @@ static void cpubm_arm_load(cpubm_t &item, Table &table)
 static void cpubm_arm_cache(std::vector<int> &set_of_threads,Table &table)
 {
     vector<string> cont;
-
-    
     cont.resize(table.getCol());
 #ifdef __APPLE__
     pthread_set_qos_class_self_np( QOS_CLASS_USER_INTERACTIVE, 0 );
 #endif
 
-    get_cacheline(&cache_size, set_of_threads[0]);
-    // cout << "get cacheline" << endl;
-    get_multiway(&cache_size, set_of_threads[0]);
-    // cout << "get multiway" << endl;
-    get_cachesize(&cache_size, set_of_threads[0]);
-    // cout << "get cachesize" << endl;
-    cont[0] = "L1 ways of associativity";
-    cont[1] = to_string(cache_size.theory_way);
-    cont[2] = to_string(cache_size.test_way);
+    int cpu_id = set_of_threads[0];
+    get_reported_cache_info(&cache_size, cpu_id);
+    CacheCurveResult curve = measure_cache_hierarchy(&cache_size, cpu_id);
+
+    auto size_kb = [](int value) {
+        return value > 0 ? to_string(value) + " KB" : string("-");
+    };
+    cont[0] = "L1 data cache";
+    cont[1] = size_kb(cache_size.theory_L1);
+    cont[2] = size_kb(cache_size.test_L1);
+    table.addOneItem(cont);
+    cont[0] = "L2 cache";
+    cont[1] = size_kb(cache_size.theory_L2);
+    cont[2] = size_kb(cache_size.test_L2);
+    table.addOneItem(cont);
+    cont[0] = "LLC cache";
+    cont[1] = size_kb(cache_size.theory_LLC);
+    cont[2] = size_kb(cache_size.test_LLC);
     table.addOneItem(cont);
     cont[0] = "cacheline size";
     cont[1] = to_string(cache_size.theory_cacheline) + " B";
-    cont[2] = to_string(cache_size.test_cacheline) + " B";
+    cont[2] = "reported";
     table.addOneItem(cont);
-    return;
+    cont[0] = "L1 ways of associativity";
+    cont[1] = cache_size.theory_way > 0 ? to_string(cache_size.theory_way) : "-";
+    cont[2] = "not inferred";
+    table.addOneItem(cont);
+
+    Table curve_table;
+    curve_table.setColumnNum(2);
+    vector<string> curve_head = {"Working Set", "Dependent-load Latency"};
+    curve_table.addOneItem(curve_head);
+    for (const auto &point : curve.points) {
+        vector<string> row(2);
+        if (point.working_set_bytes >= 1024 * 1024) {
+            ostringstream size;
+            size << fixed << setprecision(2)
+                 << point.working_set_bytes / (1024.0 * 1024.0) << " MB";
+            row[0] = size.str();
+        } else {
+            row[0] = to_string(point.working_set_bytes / 1024) + " KB";
+        }
+        ostringstream latency;
+        latency << fixed << setprecision(3) << point.latency_ns << " ns/load";
+        row[1] = latency.str();
+        curve_table.addOneItem(row);
+    }
+    curve_table.print();
+
+    Table estimate_table;
+    estimate_table.setColumnNum(4);
+    vector<string> estimate_head = {"Level", "Measured Capacity", "Latency", "Jump"};
+    estimate_table.addOneItem(estimate_head);
+    for (const auto &level : curve.levels) {
+        vector<string> row(4);
+        row[0] = level.level;
+        row[1] = level.capacity_bytes >= 1024 * 1024
+            ? to_string(level.capacity_bytes / (1024 * 1024)) + " MB"
+            : to_string(level.capacity_bytes / 1024) + " KB";
+        ostringstream latency, jump;
+        latency << fixed << setprecision(3) << level.latency_ns << " ns/load";
+        jump << fixed << setprecision(2) << level.jump_ratio << "x";
+        row[2] = latency.str();
+        row[3] = jump.str();
+        estimate_table.addOneItem(row);
+    }
+    vector<string> memory_row(4);
+    memory_row[0] = "Memory";
+    memory_row[1] = "-";
+    ostringstream memory_latency;
+    memory_latency << fixed << setprecision(3) << curve.memory_latency_ns << " ns/load";
+    memory_row[2] = memory_latency.str();
+    memory_row[3] = "-";
+    estimate_table.addOneItem(memory_row);
+    estimate_table.print();
 }
 
 
@@ -391,11 +455,15 @@ static void init_table(vector<Table*> &tables)
     tables[4]->addOneItem(ti);
 }
 static void cpubm_do_bench(vector<int> &set_of_threads,
-    uint32_t idle_time)
+    uint32_t idle_time,
+    uint32_t bench_limit,
+    BenchMode mode)
 {
     int i;
 
-    if (bm_list.size() > 0)
+    bool run_cache = mode == BenchMode::Cache || mode == BenchMode::All;
+    bool run_compute = mode == BenchMode::Compute || mode == BenchMode::All;
+    if (!bm_list.empty() || run_cache)
     {
         int num_threads = set_of_threads.size();
 
@@ -407,44 +475,58 @@ static void cpubm_do_bench(vector<int> &set_of_threads,
         }
         printf("\n");
 #ifdef _SVE_
+        if (run_compute)
         if (arm64_runtime_features().sve)
             cout << " SVE : " << load_sve_vector_bytes() << endl;
 #endif
 
 #ifdef _SME_
+        if (run_compute)
         cout << "SME : " << rdsvl() * 8 << endl;
 #endif
         // set table head
         vector<Table*> tables;
         init_table(tables);
-        // cout << "start benchmark" << endl;
-        get_cpu_freq(set_of_threads, *tables[3]);
-        // exit(0);
-        // cout << "get freq" << endl;
-        cpubm_arm_cache(set_of_threads, *tables[2]);
-        // set thread pool
-        tpool_t *tm;
-        tm = tpool_create(set_of_threads);
+        if (run_cache)
+            cpubm_arm_cache(set_of_threads, *tables[2]);
+        if (run_compute)
+            get_cpu_freq(set_of_threads, *tables[3]);
+
+        tpool_t *tm = nullptr;
+        if (run_compute)
+            tm = tpool_create(set_of_threads);
 
         // traverse task list
-        for (i = 1; i < bm_list.size(); i++)
+        uint32_t benches_run = 0;
+        for (i = 0; run_compute && i < bm_list.size(); i++)
         { 
+            if (bench_limit > 0 && benches_run >= bench_limit) {
+                break;
+            }
             // cout << bm_list[i].type << endl;
             sleep(idle_time);
             if (bm_list[i].dim.find("OPS") != string::npos) {
                 cpubm_arm64_one(tm, bm_list[i], *tables[0]);
             } else if (bm_list[i].dim.find("Byte/Cycle") != string::npos) {
-                cpubm_arm_load(bm_list[i], *tables[1]);
+                if (mode == BenchMode::All)
+                    cpubm_arm_load(bm_list[i], *tables[1]);
+                else
+                    continue;
             } else if (bm_list[i].dim.find("IPC") != string::npos) {
                 cpubm_arm_multiple_issue(tm, bm_list[i], *tables[4]);
             } else {
                 cout << "Wrong dimension !" << endl;
                 break;
             }
+            benches_run++;
         }
-        for (i = 0; i < tables.size(); i++)
-            tables[i]->print();
-        tpool_destroy(tm);
+        if (run_compute) tables[0]->print();
+        if (mode == BenchMode::All) tables[1]->print();
+        if (run_cache) tables[2]->print();
+        if (run_compute) tables[3]->print();
+        if (run_compute) tables[4]->print();
+        if (tm != nullptr) tpool_destroy(tm);
+        for (Table *table : tables) delete table;
     }
     else
     {
@@ -1128,10 +1210,28 @@ static void cpufb_register_isa()
 #endif
 }
 
+static void scale_benchmark_loops(uint32_t loop_scale)
+{
+    if (loop_scale <= 1) {
+        return;
+    }
+
+    for (auto &bm : bm_list) {
+        bm.loop_time = bm.loop_time / loop_scale;
+        if (bm.loop_time < 1) {
+            bm.loop_time = 1;
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
     vector<int> set_of_threads;
     uint32_t idle_time = 0;
+    uint32_t loop_scale = 1;
+    uint32_t bench_limit = 0;
+    BenchMode mode = BenchMode::All;
+    bool valid_mode = true;
 
     bool params_enough = false;
 
@@ -1147,23 +1247,49 @@ int main(int argc, char *argv[])
         {
             idle_time = (uint32_t)atoi(argv[i] + 12);
         }
+        else if (strncmp(argv[i], "--loop_scale=", 13) == 0)
+        {
+            loop_scale = (uint32_t)atoi(argv[i] + 13);
+            if (loop_scale == 0) {
+                loop_scale = 1;
+            }
+        }
+        else if (strncmp(argv[i], "--bench_limit=", 14) == 0)
+        {
+            bench_limit = (uint32_t)atoi(argv[i] + 14);
+        }
+        else if (strncmp(argv[i], "--mode=", 7) == 0)
+        {
+            string requested_mode = argv[i] + 7;
+            if (requested_mode == "cache") mode = BenchMode::Cache;
+            else if (requested_mode == "compute") mode = BenchMode::Compute;
+            else if (requested_mode == "all") mode = BenchMode::All;
+            else valid_mode = false;
+        }
     }
-    if (!params_enough)
+    if (!params_enough || !valid_mode)
     {
-        fprintf(stderr, "Error: You must set --thread_pool parameter.\n");
-        fprintf(stderr, "You may also set --idle_time parameter.\n");
-        fprintf(stderr, "Usage: %s --thread_pool=[xxx] --idle_time=yyy\n", argv[0]);
+        if (!valid_mode)
+            fprintf(stderr, "Error: --mode must be cache, compute or all.\n");
+        if (!params_enough)
+            fprintf(stderr, "Error: You must set --thread_pool parameter.\n");
+        fprintf(stderr, "You may also set --mode, --idle_time, --loop_scale and --bench_limit.\n");
+        fprintf(stderr, "Usage: %s --thread_pool=[xxx] --mode=all --idle_time=yyy --loop_scale=zzz --bench_limit=nnn\n", argv[0]);
         fprintf(stderr, "[xxx] indicates all cores to benchmark.\n");
         fprintf(stderr, "Example: [0,3,5-8,13-15].\n");
         fprintf(stderr, "idle_time is the interval time(s) between every two benchmarks.\n");
         fprintf(stderr, "idle_time parameter can be ignored, the default value is 0s.\n");
+        fprintf(stderr, "loop_scale divides benchmark loop counts for quick smoke runs; default is 1.\n");
+        fprintf(stderr, "bench_limit limits the number of registered benchmarks to run; default is 0 for all.\n");
+        fprintf(stderr, "mode selects cache hierarchy, compute benchmarks, or both; default is all.\n");
         fprintf(stderr, "Notice: there must NOT be any spaces.\n");
-        exit(0);
+        return 1;
     }
 
     cpufb_register_isa();
+    scale_benchmark_loops(loop_scale);
 
-    cpubm_do_bench(set_of_threads, idle_time);
+    cpubm_do_bench(set_of_threads, idle_time, bench_limit, mode);
 
     return 0;
 }

@@ -87,3 +87,9 @@ if [[ -n "$RUN_CORE" ]]; then
             ;;
     esac
 fi
+echo ""
+if ! $ANDROID; then
+    echo "Run the binary:"
+    echo "  ./$BUILD_DIR/cpufb '--thread_pool=[0]'"
+    echo "  ./$BUILD_DIR/cpufb '--thread_pool=[0]' --mode=compute --loop_scale=1048576  # quick smoke run"
+fi

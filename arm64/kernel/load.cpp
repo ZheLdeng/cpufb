@@ -5,6 +5,11 @@
 #include <cmath>
 #include <unistd.h>
 #include <cstring>
+#include <fstream>
+#include <limits>
+#include <numeric>
+#include <random>
+#include <set>
 #include <vector>
 #include <iostream>
 #include<common.hpp>
@@ -76,6 +81,347 @@ static inline int get_load_bytes_per_inner_loop(const string& type)
         return 512;
     }
     return 512;
+}
+
+#ifdef __APPLE__
+static bool read_sysctl_u64(const char *name, uint64_t &value)
+{
+    uint64_t sysctl_value = 0;
+    size_t size = sizeof(sysctl_value);
+    if (sysctlbyname(name, &sysctl_value, &size, NULL, 0) == 0 && sysctl_value > 0) {
+        value = sysctl_value;
+        return true;
+    }
+    return false;
+}
+
+static void read_darwin_cache_info(struct CacheData *cache_data)
+{
+    uint64_t value = 0;
+
+    if (cache_data->theory_cacheline <= 0) {
+        if (read_sysctl_u64("hw.cachelinesize", value) && value <= INT_MAX) {
+            cache_data->theory_cacheline = static_cast<int>(value);
+        } else {
+            cache_data->theory_cacheline = 128;
+        }
+    }
+
+    if (cache_data->theory_L1 <= 0) {
+        if ((read_sysctl_u64("hw.perflevel0.l1dcachesize", value) ||
+             read_sysctl_u64("hw.l1dcachesize", value)) &&
+            value / 1024 <= INT_MAX) {
+            cache_data->theory_L1 = static_cast<int>(value / 1024);
+        } else {
+            cache_data->theory_L1 = 64;
+        }
+    }
+
+    if (cache_data->theory_L2 <= 0) {
+        if ((read_sysctl_u64("hw.perflevel0.l2cachesize", value) ||
+             read_sysctl_u64("hw.l2cachesize", value)) &&
+            value / 1024 <= INT_MAX) {
+            cache_data->theory_L2 = static_cast<int>(value / 1024);
+        } else {
+            cache_data->theory_L2 = 4096;
+        }
+    }
+}
+#endif
+
+static bool read_text_file(const string &path, string &value)
+{
+    ifstream input(path);
+    if (!input) return false;
+    input >> value;
+    return !value.empty();
+}
+
+static int parse_cache_size_kb(const string &text)
+{
+    if (text.empty()) return 0;
+    char *end = nullptr;
+    double value = strtod(text.c_str(), &end);
+    if (end == text.c_str() || value <= 0) return 0;
+    if (*end == 'M' || *end == 'm') value *= 1024.0;
+    else if (*end == 'G' || *end == 'g') value *= 1024.0 * 1024.0;
+    if (value > INT_MAX) return 0;
+    return static_cast<int>(value);
+}
+
+void get_reported_cache_info(struct CacheData *cache_data, int cpu_id)
+{
+    if (cache_data == nullptr) return;
+#ifdef __APPLE__
+    (void)cpu_id;
+    read_darwin_cache_info(cache_data);
+#elif defined(__linux__)
+    for (int index = 0; index < 16; ++index) {
+        string base = "/sys/devices/system/cpu/cpu" + to_string(cpu_id) +
+            "/cache/index" + to_string(index) + "/";
+        string level_text, type, size_text, line_text, ways_text;
+        if (!read_text_file(base + "level", level_text)) continue;
+        read_text_file(base + "type", type);
+        read_text_file(base + "size", size_text);
+        read_text_file(base + "coherency_line_size", line_text);
+        read_text_file(base + "ways_of_associativity", ways_text);
+
+        int level = atoi(level_text.c_str());
+        int size_kb = parse_cache_size_kb(size_text);
+        int line_size = atoi(line_text.c_str());
+        int ways = atoi(ways_text.c_str());
+        if (line_size > 0) cache_data->theory_cacheline = line_size;
+        if (level == 1 && type == "Data") {
+            cache_data->theory_L1 = size_kb;
+            cache_data->theory_way = ways;
+        } else if (level == 2 && type != "Instruction") {
+            cache_data->theory_L2 = max(cache_data->theory_L2, size_kb);
+        } else if (level >= 3 && type != "Instruction") {
+            cache_data->theory_LLC = max(cache_data->theory_LLC, size_kb);
+        }
+    }
+#else
+    (void)cpu_id;
+#endif
+    if (cache_data->theory_cacheline <= 0) cache_data->theory_cacheline = 64;
+    cacheline = cache_data->theory_cacheline;
+}
+
+static double median_values(vector<double> values)
+{
+    if (values.empty()) return 0;
+    size_t middle = values.size() / 2;
+    nth_element(values.begin(), values.begin() + middle, values.end());
+    double result = values[middle];
+    if (values.size() % 2 == 0) {
+        nth_element(values.begin(), values.begin() + middle - 1, values.end());
+        result = (result + values[middle - 1]) / 2.0;
+    }
+    return result;
+}
+
+static vector<uint64_t> build_curve_sizes(const CacheData &cache_data,
+    uint64_t max_bytes)
+{
+    set<uint64_t> sizes;
+    for (uint64_t base = 4 * 1024; base <= max_bytes; base *= 2) {
+        sizes.insert(base);
+        if (base <= max_bytes / 3 * 2) sizes.insert(base + base / 2);
+        if (base > max_bytes / 2) break;
+    }
+    const int reported_kb[] = {
+        cache_data.theory_L1, cache_data.theory_L2, cache_data.theory_LLC
+    };
+    for (int size_kb : reported_kb) {
+        if (size_kb <= 0) continue;
+        uint64_t bytes = static_cast<uint64_t>(size_kb) * 1024;
+        for (int percent : {75, 100, 125}) {
+            uint64_t point = bytes * percent / 100;
+            point = max<uint64_t>(4 * 1024, point);
+            point = (point + 4095) & ~uint64_t(4095);
+            if (point <= max_bytes) sizes.insert(point);
+        }
+    }
+    sizes.insert(max_bytes);
+    return vector<uint64_t>(sizes.begin(), sizes.end());
+}
+
+static double measure_pointer_chase(int64_t *buffer, uint64_t working_set_bytes,
+    int line_size, uint64_t seed)
+{
+    size_t stride = max<size_t>(sizeof(int64_t), static_cast<size_t>(line_size));
+    size_t line_count = max<size_t>(2, working_set_bytes / stride);
+    size_t stride_words = stride / sizeof(int64_t);
+    vector<size_t> order(line_count);
+    iota(order.begin(), order.end(), 0);
+    mt19937_64 random(seed);
+    shuffle(order.begin(), order.end(), random);
+
+    auto word_index = [stride_words](size_t line) { return line * stride_words; };
+    for (size_t i = 0; i < line_count; ++i) {
+        size_t current = order[i];
+        size_t next = order[(i + 1) % line_count];
+        buffer[word_index(current)] = static_cast<int64_t>(word_index(next));
+    }
+
+    int warmup = static_cast<int>(min<size_t>(max<size_t>(10000, line_count),
+        static_cast<size_t>(numeric_limits<int>::max())));
+    load_ptr(warmup, buffer);
+
+    int probe_iterations = static_cast<int>(min<size_t>(
+        max<size_t>(50000, line_count), 2000000));
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    load_ptr(probe_iterations, buffer);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    double probe_ns = get_time(&start, &end) * 1e9 / probe_iterations;
+    if (!(probe_ns > 0)) return 0;
+
+    size_t target_iterations = static_cast<size_t>(5e6 / probe_ns);
+    target_iterations = max<size_t>(50000, target_iterations);
+    target_iterations = max(target_iterations, line_count);
+    target_iterations = min<size_t>(target_iterations,
+        static_cast<size_t>(numeric_limits<int>::max()));
+    int iterations = static_cast<int>(target_iterations);
+    vector<double> samples;
+    samples.reserve(5);
+    for (int sample = 0; sample < 5; ++sample) {
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+        load_ptr(iterations, buffer);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        samples.push_back(get_time(&start, &end) * 1e9 / iterations);
+    }
+    return median_values(samples);
+}
+
+struct CacheJumpCandidate {
+    size_t point_index;
+    double ratio;
+};
+
+static vector<CacheLevelEstimate> estimate_cache_levels(
+    const vector<CacheLatencyPoint> &points, const CacheData &cache_data)
+{
+    vector<CacheJumpCandidate> candidates;
+    if (points.size() < 7) return {};
+    for (size_t i = 2; i + 3 < points.size(); ++i) {
+        vector<double> before, after;
+        for (size_t j = i - 2; j <= i; ++j) before.push_back(points[j].latency_ns);
+        for (size_t j = i + 1; j <= i + 3; ++j) after.push_back(points[j].latency_ns);
+        double before_median = median_values(before);
+        double after_median = median_values(after);
+        if (before_median <= 0) continue;
+        double ratio = after_median / before_median;
+        if (ratio >= 1.12 && after_median - before_median >= 0.25)
+            candidates.push_back({i, ratio});
+    }
+
+    struct SelectedJump {
+        CacheJumpCandidate jump;
+        string level;
+    };
+    vector<SelectedJump> selected;
+    const pair<const char*, int> reported[] = {
+        {"L1", cache_data.theory_L1},
+        {"L2", cache_data.theory_L2},
+        {"LLC", cache_data.theory_LLC}
+    };
+    for (const auto &expected : reported) {
+        if (expected.second <= 0) continue;
+        uint64_t expected_bytes = static_cast<uint64_t>(expected.second) * 1024;
+        const CacheJumpCandidate *best = nullptr;
+        double best_distance = numeric_limits<double>::max();
+        for (const auto &candidate : candidates) {
+            size_t capacity_index = candidate.point_index > 0
+                ? candidate.point_index - 1 : candidate.point_index;
+            uint64_t capacity = points[capacity_index].working_set_bytes;
+            if (capacity < expected_bytes / 2 || capacity > expected_bytes * 2)
+                continue;
+            bool already_used = any_of(selected.begin(), selected.end(),
+                [&](const SelectedJump &item) {
+                    return item.jump.point_index == candidate.point_index;
+                });
+            if (already_used) continue;
+            double distance = abs(log2(static_cast<double>(capacity) /
+                static_cast<double>(expected_bytes)));
+            if (distance < best_distance - 1e-9 ||
+                (abs(distance - best_distance) < 1e-9 &&
+                 (best == nullptr || candidate.ratio > best->ratio))) {
+                best = &candidate;
+                best_distance = distance;
+            }
+        }
+        if (best != nullptr) selected.push_back({*best, expected.first});
+    }
+
+    if (selected.empty()) {
+        sort(candidates.begin(), candidates.end(), [](const auto &a, const auto &b) {
+            return a.ratio > b.ratio;
+        });
+        static const char *fallback_names[] = {"L1", "L2", "LLC"};
+        for (const auto &candidate : candidates) {
+            size_t capacity_index = candidate.point_index > 0
+                ? candidate.point_index - 1 : candidate.point_index;
+            uint64_t capacity = points[capacity_index].working_set_bytes;
+            bool separated = all_of(selected.begin(), selected.end(),
+                [&](const SelectedJump &existing) {
+                    size_t other_index = existing.jump.point_index > 0
+                        ? existing.jump.point_index - 1 : existing.jump.point_index;
+                    uint64_t other = points[other_index].working_set_bytes;
+                    return max(capacity, other) >= min(capacity, other) * 4;
+                });
+            if (separated) {
+                selected.push_back({candidate, fallback_names[selected.size()]});
+                if (selected.size() == 3) break;
+            }
+        }
+    }
+    sort(selected.begin(), selected.end(), [](const auto &a, const auto &b) {
+        return a.jump.point_index < b.jump.point_index;
+    });
+
+    vector<CacheLevelEstimate> result;
+    size_t segment_start = 0;
+    for (size_t level = 0; level < selected.size(); ++level) {
+        size_t end = selected[level].jump.point_index;
+        vector<double> segment;
+        for (size_t i = segment_start; i <= end; ++i)
+            segment.push_back(points[i].latency_ns);
+        size_t capacity_index = end > 0 ? end - 1 : end;
+        result.push_back({selected[level].level, points[capacity_index].working_set_bytes,
+            median_values(segment), selected[level].jump.ratio});
+        segment_start = min(points.size(), end + 1);
+    }
+    return result;
+}
+
+CacheCurveResult measure_cache_hierarchy(struct CacheData *cache_data, int cpu_id)
+{
+    CacheCurveResult result;
+    if (cache_data == nullptr) return result;
+    get_reported_cache_info(cache_data, cpu_id);
+#ifdef __linux__
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(cpu_id, &mask);
+    if (sched_setaffinity(0, sizeof(mask), &mask) != 0)
+        cerr << "Warning: cache curve could not bind to CPU " << cpu_id << endl;
+#endif
+
+    uint64_t reported_max_kb = static_cast<uint64_t>(max({
+        cache_data->theory_L1, cache_data->theory_L2, cache_data->theory_LLC, 0
+    }));
+    uint64_t max_bytes = max<uint64_t>(64ULL * 1024 * 1024,
+        reported_max_kb * 1024 * 2);
+    max_bytes = min<uint64_t>(max_bytes, 512ULL * 1024 * 1024);
+    int line_size = max(64, cache_data->theory_cacheline);
+    void *allocation = nullptr;
+    if (posix_memalign(&allocation, static_cast<size_t>(line_size), max_bytes) != 0)
+        return result;
+    int64_t *buffer = static_cast<int64_t*>(allocation);
+
+    vector<uint64_t> sizes = build_curve_sizes(*cache_data, max_bytes);
+    for (size_t i = 0; i < sizes.size(); ++i) {
+        double latency = measure_pointer_chase(buffer, sizes[i], line_size,
+            0x4350554642ULL + i * 0x9e3779b97f4a7c15ULL);
+        result.points.push_back({sizes[i], latency});
+    }
+    free(allocation);
+    result.levels = estimate_cache_levels(result.points, *cache_data);
+    if (!result.levels.empty()) {
+        for (const auto &level : result.levels) {
+            int size_kb = static_cast<int>(level.capacity_bytes / 1024);
+            if (level.level == "L1") cache_data->test_L1 = size_kb;
+            else if (level.level == "L2") cache_data->test_L2 = size_kb;
+            else if (level.level == "LLC") cache_data->test_LLC = size_kb;
+        }
+    }
+    vector<double> tail;
+    size_t tail_count = min<size_t>(4, result.points.size());
+    for (size_t i = result.points.size() - tail_count; i < result.points.size(); ++i)
+        tail.push_back(result.points[i].latency_ns);
+    result.memory_latency_ns = median_values(tail);
+    return result;
 }
 
 static inline void shuffleVector(std::vector<int64_t>& vec) {
@@ -286,10 +632,11 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
     read_data(cpu_id, &cache_data->theory_cacheline, "/cache/index0/coherency_line_size");
 #endif
 #ifdef __APPLE__ 
-    size_t size = sizeof(int64_t);
-    if (sysctlbyname("hw.cachelinesize", &cache_data->theory_cacheline, &size, NULL, 0) != 0) {
-        perror("sysctlbyname cachelinesize failed");
-    }
+    read_darwin_cache_info(cache_data);
+    cache_data->test_cacheline = cache_data->theory_cacheline;
+    cacheline = cache_data->theory_cacheline;
+    free(ptr);
+    return;
 #endif
     for(int buf = 16 ; buf <= 1024 ; buf *= 2){
         first_time = 0;
@@ -389,16 +736,10 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     read_data(cpu_id, &cache_size->theory_L2, "/cache/index2/size");
 #endif
 #ifdef __APPLE__ 
-    size_t size = sizeof(int);
-    if (sysctlbyname("hw.perflevel0.l1dcachesize", &cache_size->theory_L1, &size, NULL, 0) != 0) {
-        perror("sysctlbyname l1dcachesize failed");
-    }
-    if (sysctlbyname("hw.perflevel0.l2cachesize", &cache_size->theory_L2, &size, NULL, 0) != 0) {
-        perror("sysctlbyname l2cachesize failed");
-    }
-    cache_size->theory_L1 /= 1024;
-    cache_size->theory_L2 /= 1024;
-
+    read_darwin_cache_info(cache_size);
+    cache_size->test_L1 = cache_size->theory_L1;
+    cache_size->test_L2 = cache_size->theory_L2;
+    return;
 #endif
     random_access(time_used);
     get_slope(time_used, slope);
@@ -426,6 +767,11 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
         printf("Warning: performance may be impacted \n");
     }
     read_data(cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
+#endif
+#ifdef __APPLE__
+    read_darwin_cache_info(cache_size);
+    cache_size->test_way = cache_size->theory_way;
+    return;
 #endif
     for (w = 0; w < BUFFER_NUM; w++) {
         uint64_t *index = (uint64_t*)malloc(BUFFER_SIZE * (w + 1));
@@ -473,13 +819,18 @@ double get_bandwith(uint64_t looptime, double data_size, string type, void* benc
     if (data_size > 32 * 1024) {
         data_size = 32 * 1024;
     }
-    float* cache_data = (float*)malloc(data_size * 1024);
+    size_t data_bytes = static_cast<size_t>(data_size * 1024);
+    size_t padding_bytes = 4096;
+    float* cache_data = (float*)malloc(data_bytes + padding_bytes);
+    if (cache_data == NULL) {
+        return 0;
+    }
 
     //Preventing Compiler Optimization
-    for (int i = 0; i < data_size * 1024/sizeof(float); i++) {
+    for (size_t i = 0; i < (data_bytes + padding_bytes) / sizeof(float); i++) {
         cache_data[i] = i;
     }
-    inner_loop = static_cast<int>(data_size * 1024 / get_load_bytes_per_inner_loop(type));
+    inner_loop = static_cast<int>(data_bytes / get_load_bytes_per_inner_loop(type));
     if (inner_loop < 1) {
         inner_loop = 1;
     }

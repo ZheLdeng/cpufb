@@ -8,6 +8,8 @@
 #include <vector>
 #include <iostream>
 #include <immintrin.h>
+#include <algorithm>
+#include <random>
 
 #include "compute.hpp"
 #include "frequency.hpp"
@@ -33,8 +35,9 @@
 #define PTR_BITS 3
 #define MAX_RAND 100000
 
-#define BUFFER_NUM 16
-#define BUFFER_SIZE 4 * 1024 * 1024
+#define MULTIWAY_MIN_LINES 16
+#define MULTIWAY_MAX_LINES 64
+#define MULTIWAY_JUMP_THRESHOLD 0.25
 
 using namespace std;
 
@@ -338,8 +341,8 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
 void get_multiway(struct CacheData *cache_size, int cpu_id)
 {
     struct timespec start, end;
-    double time_used = 0, pre_time_used = 0;
-    int i, j, k, w;
+    double pre_time_used = 0;
+    int detected_way = 0;
     int64_t loop_time = LOOP_TIME, test_time = PROBE_REPEATS;
 
 #ifdef __linux__
@@ -352,43 +355,76 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
         printf("Warning: performance may be impacted \n");
     }
     read_data(cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
+    read_data(cpu_id, &cache_size->theory_L1, "/cache/index0/size");
+    read_data(cpu_id, &cache_size->theory_cacheline,
+        "/cache/index0/coherency_line_size");
 #endif
 
-    for (w = 0; w < BUFFER_NUM; w++) {
-        uint64_t *index = (uint64_t*)malloc(BUFFER_SIZE * (w + 1));
-        uint64_t next = 0;
-        //init
-        for ( j = 0; j < w; j++) {
-            index[(j * BUFFER_SIZE) >> 3 ] = ((j + 1) * BUFFER_SIZE) >> 3;
+    // One way spans every L1 set exactly once, so this stride maps each
+    // address to the same set.  Unlike the old 4 MiB stride, the usual 4 KiB
+    // value walks consecutive pages instead of aliasing one L1 DTLB set.
+    size_t conflict_stride = 4096;
+    if (cache_size->theory_L1 > 0 && cache_size->theory_way > 0) {
+        size_t bytes_per_way = static_cast<size_t>(cache_size->theory_L1) *
+            1024 / cache_size->theory_way;
+        if (bytes_per_way >= static_cast<size_t>(cache_size->theory_cacheline))
+            conflict_stride = bytes_per_way;
+    }
+    int max_lines = MULTIWAY_MIN_LINES;
+    if (cache_size->theory_way > 0)
+        max_lines = min(MULTIWAY_MAX_LINES,
+            max(MULTIWAY_MIN_LINES, cache_size->theory_way + 4));
+
+    for (int line_count = 1; line_count <= max_lines; ++line_count) {
+        uint64_t *index = static_cast<uint64_t*>(
+            malloc(conflict_stride * line_count));
+        if (index == NULL) break;
+
+        vector<int> order(line_count);
+        for (int i = 0; i < line_count; ++i) order[i] = i;
+        // A shuffled dependency ring prevents sequential-page prefetch and
+        // replacement-policy artifacts from creating an early transition.
+        mt19937 generator(0x9e3779b9U + line_count);
+        shuffle(order.begin(), order.end(), generator);
+        const uint64_t stride_words = conflict_stride / sizeof(uint64_t);
+        for (int i = 0; i < line_count; ++i) {
+            index[order[i] * stride_words] =
+                order[(i + 1) % line_count] * stride_words;
         }
-        index[(j * BUFFER_SIZE) >> 3] = 0;
-        //warm up
-        next = 0;
-        for (k = 0; k < loop_time; k++) {
+
+        const uint64_t first = order[0] * stride_words;
+        uint64_t next = first;
+        for (int64_t k = 0; k < loop_time; ++k) {
             next = index[next];
         }
 
-        pre_time_used = time_used;
-        time_used = 0;
-        for (i = 0; i < test_time;i++) {
+        vector<double> samples;
+        samples.reserve(test_time);
+        for (int64_t i = 0; i < test_time; ++i) {
+            next = first;
             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            next = 0;
-            for (k = 0; k<loop_time; k++) {
+            for (int64_t k = 0; k < loop_time; ++k) {
                 next = index[next];
             }
+            __asm__ volatile("" : "+r"(next) : : "memory");
             clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            time_used += get_time(&start, &end);
+            samples.push_back(get_time(&start, &end));
         }
-        time_used /= test_time;
-        // cout<<time_used<<" "<<time_used/pre_time_used<<endl;
-        if (w > 0 && time_used/pre_time_used - 1 > 1e-1) {
+        sort(samples.begin(), samples.end());
+        // Interrupts and scheduler activity only lengthen samples, so the
+        // median is a more robust transition signal than their mean.
+        const double time_used = samples[samples.size() / 2];
+        free(index);
+
+        if (line_count > 1 &&
+            time_used / pre_time_used - 1.0 > MULTIWAY_JUMP_THRESHOLD) {
+            detected_way = line_count - 1;
             break;
         }
-        free(index);
+        pre_time_used = time_used;
+        detected_way = line_count;
     }
-    cache_size->test_way = w;
-    return;
-
+    cache_size->test_way = detected_way;
 }
 
 double get_bandwith(uint64_t looptime, double data_size, string type)

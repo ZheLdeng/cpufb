@@ -73,8 +73,8 @@ typedef struct
     std::string type;
     std::string dim;
     int64_t loop_time;
-    int64_t comp_pl;
-    int64_t inst_pl;
+    int64_t comp_pl; // Mathematical/element operations per outer asm loop.
+    int64_t inst_pl; // Benchmarked instructions per outer asm loop.
     void *params;
     void (*bench)(int64_t, void*);
 } cpubm_t;
@@ -86,7 +86,7 @@ typedef struct
     void (*bench)(float*, int, int64_t);
 } cache_bm_t;
 static vector<cpubm_t> bm_list;
-static int64_t g_latency = 0;
+static double g_latency = 0.0;
 
 typedef struct
 {
@@ -382,11 +382,18 @@ static string format_perf_value(double perf, const string &dim)
     return ss.str();
 }
 
+static string format_latency_cycles(double latency)
+{
+    stringstream ss;
+    ss << fixed << setprecision(2) << latency;
+    return ss.str();
+}
+
 static void cpubm_x64_one(tpool_t *tm, cpubm_t &item, Table &table)
 {
     ComputeResult result = cpubm_run_compute(tm, item);
     if (is_latency_benchmark(item)) {
-        g_latency = result.ipc > 0.0 ? static_cast<int64_t>(round(1.0 / result.ipc)) : 0;
+        g_latency = result.ipc > 0.0 ? 1.0 / result.ipc : 0.0;
         return;
     }
 
@@ -396,8 +403,8 @@ static void cpubm_x64_one(tpool_t *tm, cpubm_t &item, Table &table)
     cont[1] = item.type;
     cont[2] = format_perf_value(result.perf, item.dim);
     cont[3] = to_string(result.ipc);
-    cont[4] = g_latency != 0 ? to_string(g_latency) : "-";
-    g_latency = 0;
+    cont[4] = g_latency > 0.0 ? format_latency_cycles(g_latency) : "-";
+    g_latency = 0.0;
     table.addOneItem(cont);
 }
 
@@ -520,8 +527,8 @@ static void init_table(vector<Table*> &tables)
     ti[0] = "Instruction Set";
     ti[1] = "Core Computation";
     ti[2] = "Peak Performance";
-    ti[3] = "IPC";
-    ti[4] = "Latency";
+    ti[3] = "Instr/TSC Cycle";
+    ti[4] = "Latency(TSC cyc)";
     tables[0]->setColumnNum(ti.size());
     tables[0]->addOneItem(ti);
 
@@ -544,17 +551,17 @@ static void init_table(vector<Table*> &tables)
     ti.resize(6);
     ti[0] = "Core ID";
     ti[1] = "Theory Freq";
-    ti[2] = "Test Freq";
-    ti[3] = "IPC(FSU32)";
-    ti[4] = "IPC(FSU64)";
-    ti[5] = "IPC(LSU ldr)";
+    ti[2] = "TSC Freq";
+    ti[3] = "Instr/TSC(FSU32)";
+    ti[4] = "Instr/TSC(FSU64)";
+    ti[5] = "Instr/TSC(LSU ldr)";
     tables[3]->setColumnNum(ti.size());
     tables[3]->addOneItem(ti);
 
     ti.resize(3);
     ti[0] = "Item";
     ti[1] = "Core Instruction";
-    ti[2] = "IPC";
+    ti[2] = "Instr/TSC Cycle";
     tables[4]->setColumnNum(ti.size());
     tables[4]->addOneItem(ti);
 }
@@ -619,8 +626,8 @@ static bool cpubm_do_instruction_sweep(vector<int> &set_of_threads,
     Table freq_table;
     vector<string> freq_head(6);
     freq_head[0] = "Core ID"; freq_head[1] = "Theory Freq";
-    freq_head[2] = "Test Freq"; freq_head[3] = "IPC(FSU32)";
-    freq_head[4] = "IPC(FSU64)"; freq_head[5] = "IPC(LSU ldr)";
+    freq_head[2] = "TSC Freq"; freq_head[3] = "Instr/TSC(FSU32)";
+    freq_head[4] = "Instr/TSC(FSU64)"; freq_head[5] = "Instr/TSC(LSU ldr)";
     freq_table.setColumnNum(freq_head.size());
     freq_table.addOneItem(freq_head);
     get_cpu_freq(set_of_threads, freq_table);
@@ -629,7 +636,7 @@ static bool cpubm_do_instruction_sweep(vector<int> &set_of_threads,
     vector<string> row(8);
     row[0] = "Cores"; row[1] = "Thread Pool"; row[2] = "Peak Performance";
     row[3] = "Peak/Core"; row[4] = "Speedup"; row[5] = "Efficiency";
-    row[6] = "IPC"; row[7] = "Latency";
+    row[6] = "Instr/TSC Cycle"; row[7] = "Latency(TSC cyc)";
     table.setColumnNum(row.size());
     table.addOneItem(row);
 
@@ -643,7 +650,7 @@ static bool cpubm_do_instruction_sweep(vector<int> &set_of_threads,
             cpubm_t latency_item = bm_list[latency_index];
             ComputeResult latency_result = cpubm_run_compute(tm, latency_item);
             if (latency_result.ipc > 0.0)
-                latency = to_string(static_cast<int64_t>(round(1.0 / latency_result.ipc)));
+                latency = format_latency_cycles(1.0 / latency_result.ipc);
         }
         ComputeResult result = cpubm_run_compute(tm, selected);
         if (cores == 1) baseline = result.perf;

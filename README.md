@@ -175,6 +175,10 @@ includes AVX2 integer add/multiply, AVX-512 IFMA, AVX-512 VBMI byte permute,
 and AVX-512 VPOPCNTDQ tests when supported. Latency variants are paired with
 their throughput rows and are omitted from `--list-instructions`.
 
+See [X86_BENCHMARK_ACCOUNTING.md](X86_BENCHMARK_ACCOUNTING.md) for the audited
+operation counts and the exact meaning of TSC-based instruction rate and
+latency metrics. Remaining follow-up work is tracked in [TODO.md](TODO.md).
+
 
 ## Some x86-64 CPU benchmark results
 ---

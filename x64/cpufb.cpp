@@ -6,6 +6,7 @@
 #include<frequency.hpp>
 #include<common.hpp>
 #include<multiple_issue.hpp>
+#include "runtime_features.h"
 
 #include <unistd.h>
 #include <cstdint>
@@ -22,8 +23,12 @@
 #include <cmath>
 #include <utility>
 
-#if defined(_AMX_INT8_) || defined(_AMX_BF16_)
+#if (defined(_AMX_INT8_) || defined(_AMX_BF16_)) && defined(__linux__)
+#include <asm/prctl.h>
 #include <sys/syscall.h>
+#endif
+
+#if defined(_AMX_INT8_) || defined(_AMX_BF16_)
 #define _AMX_TILE_
 #endif
 
@@ -64,6 +69,22 @@ void init_tile_cfg()
         __tilecfg.colsb[i] = 0;
         __tilecfg.rows[i] = 0;
     }
+}
+
+static bool request_tile_data_permission()
+{
+#ifdef __linux__
+#ifndef ARCH_REQ_XCOMP_PERM
+#define ARCH_REQ_XCOMP_PERM 0x1023
+#endif
+#ifndef XFEATURE_XTILEDATA
+#define XFEATURE_XTILEDATA 18
+#endif
+    return syscall(SYS_arch_prctl, ARCH_REQ_XCOMP_PERM,
+        XFEATURE_XTILEDATA) == 0;
+#else
+    return false;
+#endif
 }
 #endif
 
@@ -734,13 +755,17 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
 
 static void cpufb_register_isa()
 {
+    const struct cpufb_x86_runtime_features runtime_features =
+        cpufb_x86_detect_runtime_features();
     bm_list.clear();
 #ifdef _AMX_TILE_
-    init_tile_cfg();
-    syscall(SYS_arch_prctl, 0x1023, 18);
+    const bool amx_enabled = runtime_features.amx_tile &&
+        request_tile_data_permission();
+    if (amx_enabled) init_tile_cfg();
 #endif
 
 #ifdef _AVX2_
+    if (runtime_features.avx2) {
     reg_new_isa("AVX2", "ADD(s32,s32)_latency", "OPS",
         0x4000000LL, 128LL, NULL, avx2_add_s32_latency);
     reg_new_isa("AVX2", "ADD(s32,s32)", "OPS",
@@ -749,30 +774,38 @@ static void cpufb_register_isa()
         0x4000000LL, 128LL, NULL, avx2_mul_s32_latency);
     reg_new_isa("AVX2", "MUL(s32,s32)", "OPS",
         0x4000000LL, 128LL, NULL, avx2_mul_s32);
+    }
 #endif
 
 #ifdef _AVX512_IFMA_
+    if (runtime_features.avx512_ifma) {
     reg_new_isa("AVX512_IFMA", "MADD52(u64,u52,u52)_latency", "OPS",
         0x4000000LL, 256LL, NULL, avx512_ifma_madd52_u64_latency);
     reg_new_isa("AVX512_IFMA", "MADD52(u64,u52,u52)", "OPS",
         0x4000000LL, 256LL, NULL, avx512_ifma_madd52_u64);
+    }
 #endif
 
 #ifdef _AVX512_VBMI_
+    if (runtime_features.avx512_vbmi) {
     reg_new_isa("AVX512_VBMI", "PERMB(u8)_latency", "OPS",
         0x4000000LL, 1024LL, NULL, avx512_vbmi_permb_u8_latency);
     reg_new_isa("AVX512_VBMI", "PERMB(u8)", "OPS",
         0x4000000LL, 1024LL, NULL, avx512_vbmi_permb_u8);
+    }
 #endif
 
 #ifdef _AVX512_VPOPCNTDQ_
+    if (runtime_features.avx512_vpopcntdq) {
     reg_new_isa("AVX512_VPOPCNTDQ", "POPCNT(s32)_latency", "OPS",
         0x4000000LL, 256LL, NULL, avx512_vpopcnt_s32_latency);
     reg_new_isa("AVX512_VPOPCNTDQ", "POPCNT(s32)", "OPS",
         0x4000000LL, 256LL, NULL, avx512_vpopcnt_s32);
+    }
 #endif
 
 #ifdef _AMX_INT8_
+    if (amx_enabled && runtime_features.amx_int8) {
     reg_new_isa("AMX_INT8", "MM(s32,s8,s8)_latency", "OPS",
         0x2500000LL, 131072LL, &__tilecfg, amx_int8_mm_s32s8s8_latency, 4);
     reg_new_isa("AMX_INT8", "MM(s32,s8,s8)", "OPS",
@@ -783,16 +816,20 @@ static void cpufb_register_isa()
         0x2500000LL, 131072LL, &__tilecfg, amx_int8_mm_s32u8s8, 4);
     reg_new_isa("AMX_INT8", "MM(s32,u8,u8)", "OPS",
         0x2500000LL, 131072LL, &__tilecfg, amx_int8_mm_s32u8u8, 4);
+    }
 #endif
 
 #ifdef _AMX_BF16_
+    if (amx_enabled && runtime_features.amx_bf16) {
     reg_new_isa("AMX_BF16", "MM(f32,bf16,bf16)_latency", "FLOPS",
         0x2500000LL, 65536LL, &__tilecfg, amx_bf16_mm_f32bf16bf16_latency, 4);
     reg_new_isa("AMX_BF16", "MM(f32,bf16,bf16)", "FLOPS",
         0x2500000LL, 65536LL, &__tilecfg, amx_bf16_mm_f32bf16bf16, 4);
+    }
 #endif
 
 #ifdef _AVX512_VNNI_
+    if (runtime_features.avx512_vnni) {
     reg_new_isa("AVX512_VNNI", "DP4A(s32,u8,s8)_latency", "OPS",
         0x4000000LL, 2048LL, NULL, avx512_vnni_dp4a_s32u8s8_latency);
     reg_new_isa("AVX512_VNNI", "DP4A(s32,u8,s8)", "OPS",
@@ -801,9 +838,11 @@ static void cpufb_register_isa()
         0x4000000LL, 1024LL, NULL, avx512_vnni_dp2a_s32s16s16_latency);
     reg_new_isa("AVX512_VNNI", "DP2A(s32,s16,s16)", "OPS",
         0x20000000LL, 1024LL, NULL, avx512_vnni_dp2a_s32s16s16);
+    }
 #endif
 
 #ifdef _AVX_VNNI_
+    if (runtime_features.avx_vnni) {
     reg_new_isa("AVX_VNNI", "DP4A(s32,u8,s8)_latency", "OPS",
         0x4000000LL, 1024LL, NULL, avx_vnni_dp4a_s32u8s8_latency);
     reg_new_isa("AVX_VNNI", "DP4A(s32,u8,s8)", "OPS",
@@ -812,32 +851,40 @@ static void cpufb_register_isa()
         0x4000000LL, 512LL, NULL, avx_vnni_dp2a_s32s16s16_latency);
     reg_new_isa("AVX_VNNI", "DP2A(s32,s16,s16)", "OPS",
         0x20000000LL, 512LL, NULL, avx_vnni_dp2a_s32s16s16);
+    }
 #endif
 
 #ifdef _AVX_VNNI_INT8_
+    if (runtime_features.avx_vnni_int8) {
     reg_new_isa("AVX_VNNI_INT8", "DP4A(s32,s8,s8)", "OPS",
         0x20000000LL, 1024LL, NULL, avx_vnni_int8_dp4a_s32s8s8);
     reg_new_isa("AVX_VNNI_INT8", "DP4A(s32,s8,u8)", "OPS",
         0x20000000LL, 1024LL, NULL, avx_vnni_int8_dp4a_s32s8u8);
     reg_new_isa("AVX_VNNI_INT8", "DP4A(s32,u8,u8)", "OPS",
         0x20000000LL, 1024LL, NULL, avx_vnni_int8_dp4a_s32u8u8);
+    }
 #endif
 
 #ifdef _AVX512_BF16_
+    if (runtime_features.avx512_bf16) {
     reg_new_isa("AVX512_BF16", "DP2A(f32,bf16,bf16)_latency", "FLOPS",
         0x4000000LL, 1024LL, NULL, avx512_bf16_dp2a_f32bf16bf16_latency);
     reg_new_isa("AVX512_BF16", "DP2A(f32,bf16,bf16)", "FLOPS",
         0x20000000LL, 1024LL, NULL, avx512_bf16_dp2a_f32bf16bf16);
+    }
 #endif
 
 #ifdef _AVX512_FP16_
+    if (runtime_features.avx512_fp16) {
     reg_new_isa("AVX512_FP16", "FMA(f16,f16,f16)_latency", "FLOPS",
         0x4000000LL, 1024LL, NULL, avx512_fp16_fma_f16f16f16_latency);
     reg_new_isa("AVX512_FP16", "FMA(f16,f16,f16)", "FLOPS",
         0x20000000LL, 1024LL, NULL, avx512_fp16_fma_f16f16f16);
+    }
 #endif
 
 #ifdef _AVX512F_
+    if (runtime_features.avx512f) {
     reg_new_isa("AVX512F", "FMA(f32,f32,f32)_latency", "FLOPS",
         0x4000000LL, 512LL, NULL, avx512f_fma_f32f32f32_latency);
     reg_new_isa("AVX512F", "FMA(f32,f32,f32)", "FLOPS",
@@ -846,9 +893,11 @@ static void cpufb_register_isa()
         0x4000000LL, 256LL, NULL, avx512f_fma_f64f64f64_latency);
     reg_new_isa("AVX512F", "FMA(f64,f64,f64)", "FLOPS",
         0x20000000LL, 256LL, NULL, avx512f_fma_f64f64f64);
+    }
 #endif
 
 #ifdef _FMA_
+    if (runtime_features.fma) {
     reg_new_isa("FMA", "FMA(f32,f32,f32)_latency", "FLOPS",
         0x4000000LL, 256LL, NULL, fma_f32f32f32_latency);
     reg_new_isa("FMA", "FMA(f32,f32,f32)", "FLOPS",
@@ -857,9 +906,11 @@ static void cpufb_register_isa()
         0x4000000LL, 128LL, NULL, fma_f64f64f64_latency);
     reg_new_isa("FMA", "FMA(f64,f64,f64)", "FLOPS",
         0x20000000LL, 128LL, NULL, fma_f64f64f64);
+    }
 #endif
 
 #ifdef _AVX_
+    if (runtime_features.avx) {
     reg_new_isa("AVX", "ADD(f32,f32)_latency", "FLOPS", 0x4000000LL, 128LL, NULL, avx_add_f32_latency);
     reg_new_isa("AVX", "ADD(f32,f32)", "FLOPS", 0x4000000LL, 128LL, NULL, avx_add_f32);
     reg_new_isa("AVX", "MUL(f32,f32)_latency", "FLOPS", 0x4000000LL, 128LL, NULL, avx_mul_f32_latency);
@@ -872,55 +923,76 @@ static void cpufb_register_isa()
         0x20000000LL, 128LL, NULL, avx_add_mul_f32f32_f32);
     reg_new_isa("AVX", "ADD(MUL(f64,f64),f64)", "FLOPS",
         0x20000000LL, 64LL, NULL, avx_add_mul_f64f64_f64);
+    }
 #endif
 
 #ifdef _SSE_
+    if (runtime_features.sse) {
     reg_new_isa("SSE", "ADD(f32,f32)_latency", "FLOPS", 0x4000000LL, 64LL, NULL, sse_add_f32_latency);
     reg_new_isa("SSE", "ADD(f32,f32)", "FLOPS", 0x4000000LL, 64LL, NULL, sse_add_f32);
     reg_new_isa("SSE", "MUL(f32,f32)_latency", "FLOPS", 0x4000000LL, 64LL, NULL, sse_mul_f32_latency);
     reg_new_isa("SSE", "MUL(f32,f32)", "FLOPS", 0x4000000LL, 64LL, NULL, sse_mul_f32);
     reg_new_isa("SSE", "ADD(MUL(f32,f32),f32)", "FLOPS",
         0x20000000LL, 64LL, NULL, sse_add_mul_f32f32_f32);
+    }
 #endif
 
 #ifdef _SSE2_
+    if (runtime_features.sse2) {
     reg_new_isa("SSE2", "ADD(f64,f64)_latency", "FLOPS", 0x4000000LL, 32LL, NULL, sse2_add_f64_latency);
     reg_new_isa("SSE2", "ADD(f64,f64)", "FLOPS", 0x4000000LL, 32LL, NULL, sse2_add_f64);
     reg_new_isa("SSE2", "MUL(f64,f64)_latency", "FLOPS", 0x4000000LL, 32LL, NULL, sse2_mul_f64_latency);
     reg_new_isa("SSE2", "MUL(f64,f64)", "FLOPS", 0x4000000LL, 32LL, NULL, sse2_mul_f64);
     reg_new_isa("SSE2", "ADD(MUL(f64,f64),f64)", "FLOPS",
         0x20000000LL, 32LL, NULL, sse2_add_mul_f64f64_f64);
+    }
 #endif
 
+    if (runtime_features.avx) {
     reg_new_isa("L1 Cache", "vmovups.ymm(f32)", "Byte/TSC Cycle",
         0x186A00LL, 32LL, NULL, NULL);
-    reg_new_isa("--------", "movss.scalar(f32)", "Byte/TSC Cycle",
+    }
+    reg_new_isa(runtime_features.avx ? "--------" : "L1 Cache",
+        "movss.scalar(f32)", "Byte/TSC Cycle",
         0x186A00LL, 32LL, NULL, NULL);
     reg_new_isa("--------", "movups.xmm(f32)", "Byte/TSC Cycle",
         0x186A00LL, 32LL, NULL, NULL);
 #ifdef _AVX512F_
+    if (runtime_features.avx512f) {
     reg_new_isa("--------", "vmovups.zmm(f32)", "Byte/TSC Cycle",
         0x186A00LL, 32LL, NULL, NULL);
+    }
 #endif
+    if (runtime_features.avx) {
     reg_new_isa("L2 Cache", "vmovups.ymm(f32)", "Byte/TSC Cycle",
         0x186A00LL, 128LL, NULL, NULL);
-    reg_new_isa("--------", "movss.scalar(f32)", "Byte/TSC Cycle",
+    }
+    reg_new_isa(runtime_features.avx ? "--------" : "L2 Cache",
+        "movss.scalar(f32)", "Byte/TSC Cycle",
         0x186A00LL, 128LL, NULL, NULL);
     reg_new_isa("--------", "movups.xmm(f32)", "Byte/TSC Cycle",
         0x186A00LL, 128LL, NULL, NULL);
 #ifdef _AVX512F_
+    if (runtime_features.avx512f) {
     reg_new_isa("--------", "vmovups.zmm(f32)", "Byte/TSC Cycle",
         0x186A00LL, 128LL, NULL, NULL);
+    }
 #endif
+    if (runtime_features.sse) {
     reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC",
         0x40000LL, 34LL, NULL, NULL);
+    }
 #ifdef _FMA_
+    if (runtime_features.fma) {
     reg_new_isa("MULTI_ISSUE_AVX", "vmovups/vfmadd.ymm", "IPC",
         0x40000LL, 34LL, NULL, NULL);
+    }
 #endif
 #ifdef _AVX512F_
+    if (runtime_features.avx512f && runtime_features.fma) {
     reg_new_isa("MULTI_ISSUE_AVX512", "vmovups/vfmadd.zmm", "IPC",
         0x40000LL, 34LL, NULL, NULL);
+    }
 #endif
 }
 

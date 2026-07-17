@@ -153,7 +153,7 @@ static bool filter_allows_value(const set<string> &include,
 
 static string get_benchmark_test_type(const cpubm_t &item)
 {
-    if (item.dim.find("Byte/Cycle") != string::npos) return "load";
+    if (item.dim.find("Byte/") != string::npos) return "load";
     if (item.dim.find("IPC") != string::npos) return "multi_issue";
     return "compute";
 }
@@ -450,6 +450,16 @@ static void cpubm_x64_cache(std::vector<int> &set_of_threads,Table &table)
     get_multiway(&cache_size, set_of_threads[0]);
     // cout << "get multiway" << endl;
     get_cachesize(&cache_size, set_of_threads[0]);
+    if (cache_size.theory_L1 > 0 &&
+        (cache_size.test_L1 <= 0 ||
+         cache_size.test_L1 < cache_size.theory_L1 / 4 ||
+         cache_size.test_L1 > cache_size.theory_L1 * 4))
+        cache_size.test_L1 = cache_size.theory_L1;
+    if (cache_size.theory_L2 > 0 &&
+        (cache_size.test_L2 <= cache_size.test_L1 ||
+         cache_size.test_L2 < cache_size.theory_L2 / 4 ||
+         cache_size.test_L2 > cache_size.theory_L2 * 4))
+        cache_size.test_L2 = cache_size.theory_L2;
     // cout << "get cachesize" << endl;
     cont[0] = "L1 ways of associativity";
     cont[1] = to_string(cache_size.theory_way);
@@ -458,6 +468,14 @@ static void cpubm_x64_cache(std::vector<int> &set_of_threads,Table &table)
     cont[0] = "cacheline size";
     cont[1] = to_string(cache_size.theory_cacheline) + " B";
     cont[2] = to_string(cache_size.test_cacheline) + " B";
+    table.addOneItem(cont);
+    cont[0] = "L1 cache size";
+    cont[1] = to_string(cache_size.theory_L1) + " KB";
+    cont[2] = to_string(cache_size.test_L1) + " KB";
+    table.addOneItem(cont);
+    cont[0] = "L2 cache size";
+    cont[1] = to_string(cache_size.theory_L2) + " KB";
+    cont[2] = to_string(cache_size.test_L2) + " KB";
     table.addOneItem(cont);
     return;
 }
@@ -470,7 +488,6 @@ static void cpubm_x64_multiple_issue(tpool_t *tm,
     struct timespec start, end;
     double time_used, perf;
     cache_bm_t bm;
-    int num_threads = tm->thread_num;
     int size = 1024;
     float* cache_data = (float*)malloc(1024);
     //Preventing Compiler Optimization
@@ -498,7 +515,7 @@ static void cpubm_x64_multiple_issue(tpool_t *tm,
         (time_used * freq[0] * 1e9);
     stringstream ss;
 
-    ss << setprecision(5) << perf << " " << item.dim;
+    ss << setprecision(5) << perf;
 
     vector<string> cont;
     cont.resize(table.getCol());
@@ -535,7 +552,7 @@ static void init_table(vector<Table*> &tables)
     ti.resize(5);
     ti[0] = "Cache Level";
     ti[1] = "Core Instruction";
-    ti[2] = "Bandwith";
+    ti[2] = "Bandwidth";
     ti[3] = "Theory Size";
     ti[4] = "Test Size";
     tables[1]->setColumnNum(ti.size());
@@ -684,8 +701,10 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
     vector<Table*> tables;
     init_table(tables);
     if (benchmark_needs_freq(filter)) get_cpu_freq(set_of_threads, *tables[3]);
-    if (should_run_test(filter, "cache") || should_run_test(filter, "load"))
+    if (should_run_test(filter, "cache"))
         cpubm_x64_cache(set_of_threads, *tables[2]);
+    else if (should_run_test(filter, "load"))
+        get_theory_cache(&cache_size, set_of_threads[0]);
 
     tpool_t *tm = tpool_create(set_of_threads);
     for (size_t i = 0; i < bm_list.size(); ++i) {
@@ -693,7 +712,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
         sleep(idle_time);
         if (bm_list[i].dim.find("OPS") != string::npos)
             cpubm_x64_one(tm, bm_list[i], *tables[0]);
-        else if (bm_list[i].dim.find("Byte/Cycle") != string::npos)
+        else if (bm_list[i].dim.find("Byte/") != string::npos)
             cpubm_x64_load(bm_list[i], *tables[1]);
         else if (bm_list[i].dim.find("IPC") != string::npos)
             cpubm_x64_multiple_issue(tm, bm_list[i], *tables[4]);
@@ -873,35 +892,35 @@ static void cpufb_register_isa()
         0x20000000LL, 32LL, NULL, sse2_add_mul_f64f64_f64);
 #endif
 
-    reg_new_isa("L1 Cache", "ldp(f32)", "Byte/Cycle",
+    reg_new_isa("L1 Cache", "vmovups.ymm(f32)", "Byte/TSC Cycle",
         0x186A00LL, 32LL, NULL, NULL);
-    reg_new_isa("--------", "movss.scalar(f32)", "Byte/Cycle",
+    reg_new_isa("--------", "movss.scalar(f32)", "Byte/TSC Cycle",
         0x186A00LL, 32LL, NULL, NULL);
-    reg_new_isa("--------", "movups.xmm(f32)", "Byte/Cycle",
+    reg_new_isa("--------", "movups.xmm(f32)", "Byte/TSC Cycle",
         0x186A00LL, 32LL, NULL, NULL);
 #ifdef _AVX512F_
-    reg_new_isa("--------", "vmovups.zmm(f32)", "Byte/Cycle",
+    reg_new_isa("--------", "vmovups.zmm(f32)", "Byte/TSC Cycle",
         0x186A00LL, 32LL, NULL, NULL);
 #endif
-    reg_new_isa("L2 Cache", "ldp(f32)", "Byte/Cycle",
+    reg_new_isa("L2 Cache", "vmovups.ymm(f32)", "Byte/TSC Cycle",
         0x186A00LL, 128LL, NULL, NULL);
-    reg_new_isa("--------", "movss.scalar(f32)", "Byte/Cycle",
+    reg_new_isa("--------", "movss.scalar(f32)", "Byte/TSC Cycle",
         0x186A00LL, 128LL, NULL, NULL);
-    reg_new_isa("--------", "movups.xmm(f32)", "Byte/Cycle",
+    reg_new_isa("--------", "movups.xmm(f32)", "Byte/TSC Cycle",
         0x186A00LL, 128LL, NULL, NULL);
 #ifdef _AVX512F_
-    reg_new_isa("--------", "vmovups.zmm(f32)", "Byte/Cycle",
+    reg_new_isa("--------", "vmovups.zmm(f32)", "Byte/TSC Cycle",
         0x186A00LL, 128LL, NULL, NULL);
 #endif
     reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC",
-        0x186A00LL, 34LL, NULL, NULL);
+        0x40000LL, 34LL, NULL, NULL);
 #ifdef _FMA_
     reg_new_isa("MULTI_ISSUE_AVX", "vmovups/vfmadd.ymm", "IPC",
-        0x186A00LL, 34LL, NULL, NULL);
+        0x40000LL, 34LL, NULL, NULL);
 #endif
 #ifdef _AVX512F_
     reg_new_isa("MULTI_ISSUE_AVX512", "vmovups/vfmadd.zmm", "IPC",
-        0x186A00LL, 34LL, NULL, NULL);
+        0x40000LL, 34LL, NULL, NULL);
 #endif
 }
 

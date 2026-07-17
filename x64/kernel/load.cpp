@@ -25,7 +25,8 @@
 #define WINDOW_NUM 2048
 //WINDOW 大小 4MB
 #define WINDOW_SIZE 16 * 1024 * 1024
-#define LOOP_TIME 1000000
+#define LOOP_TIME 200000
+#define PROBE_REPEATS 7
 
 #define STRIDE 8
 
@@ -133,7 +134,7 @@ static inline double inloop(int group, int win_size)
     int total_num = (win_size) >> 6; //每64byte 1个数
     vector<int64_t> ptr_index(total_num) ;
 
-    for (i = 0; i < 100; i++) {
+    for (i = 0; i < PROBE_REPEATS; i++) {
         int64_t index = 0;
         // cout << "main loop start " << i << endl;
         for (int64_t m = 0; m < total_num; ++m) {
@@ -156,7 +157,7 @@ static inline double inloop(int group, int win_size)
     }
     free(ptr);
     // printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
-    return sum_time_used / 100;
+    return sum_time_used / PROBE_REPEATS;
 }
 
 static void get_slope(vector<double>& time_used, vector<double>& slope)
@@ -254,7 +255,7 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
         ptr[(j * buf) >> 3] = (uintptr_t)&ptr[0];
         ptr[((j * buf) >> 3) + n] = (uintptr_t)&ptr[n];
 
-        for(i = 0; i < 1000 ; i++){
+        for(i = 0; i < 100 ; i++){
             for(k = 0; k < datasize >> 3; k++){
                 flush_cache_line(&ptr[k]);
             }
@@ -286,6 +287,23 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
     }
     free(ptr);
     return;
+}
+
+void get_theory_cache(struct CacheData *cache_size, int cpu_id)
+{
+#ifdef __linux__
+    read_data(cpu_id, &cache_size->theory_L1, "/cache/index0/size");
+    read_data(cpu_id, &cache_size->theory_L2, "/cache/index2/size");
+    read_data(cpu_id, &cache_size->theory_way,
+        "/cache/index0/ways_of_associativity");
+    read_data(cpu_id, &cache_size->theory_cacheline,
+        "/cache/index0/coherency_line_size");
+#endif
+    if (cache_size->test_L1 <= 0) cache_size->test_L1 = cache_size->theory_L1;
+    if (cache_size->test_L2 <= 0) cache_size->test_L2 = cache_size->theory_L2;
+    if (cache_size->test_way <= 0) cache_size->test_way = cache_size->theory_way;
+    if (cache_size->test_cacheline <= 0)
+        cache_size->test_cacheline = cache_size->theory_cacheline;
 }
 
 void get_cachesize(struct CacheData *cache_size, int cpu_id)
@@ -322,7 +340,7 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
     struct timespec start, end;
     double time_used = 0, pre_time_used = 0;
     int i, j, k, w;
-    int64_t loop_time = LOOP_TIME, test_time = 100;
+    int64_t loop_time = LOOP_TIME, test_time = PROBE_REPEATS;
 
 #ifdef __linux__
     pid_t pid = syscall(SYS_gettid);
@@ -382,7 +400,13 @@ double get_bandwith(uint64_t looptime, double data_size, string type)
     if (data_size > 2 * 1024) {
         data_size = 2 * 1024;
     }
-    float* cache_data = (float*)malloc(data_size * 1024);
+    if (data_size <= 0.0) return 0.0;
+
+    uint64_t bytes_per_loop = static_cast<uint64_t>(data_size * 1024);
+    const uint64_t target_bytes = 32ULL * 1024 * 1024 * 1024;
+    uint64_t effective_looptime = std::max<uint64_t>(1,
+        std::min<uint64_t>(looptime, target_bytes / bytes_per_loop));
+    float* cache_data = (float*)malloc(bytes_per_loop);
 
     //Preventing Compiler Optimization
     for (int i = 0; i < data_size * 1024/sizeof(float); i++) {
@@ -394,12 +418,13 @@ double get_bandwith(uint64_t looptime, double data_size, string type)
     else if (type.find("xmm") != string::npos) kernel = load_movups_xmm_kernel;
     else if (type.find("zmm") != string::npos) kernel = load_vmovups_zmm_kernel;
 
-    kernel(cache_data, inner_loop, looptime);
+    kernel(cache_data, inner_loop, effective_looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    kernel(cache_data, inner_loop, looptime);
+    kernel(cache_data, inner_loop, effective_looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    perf = (double)looptime * data_size * 1024 / (time_used * freq[0] * 1e9);
+    perf = static_cast<double>(effective_looptime) * bytes_per_loop /
+        (time_used * freq[0] * 1e9);
 
     free(cache_data);
     return perf;

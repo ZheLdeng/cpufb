@@ -338,3 +338,278 @@
     bne .asimd.bfmlalt.fp32bf16bf16.lat.L1
     restore_caller_vec
     ret
+###############################
+# By-element (lane) variants. Vm is encoded as 64-bit (.4h view), so the
+# index range is 0..3 -- this is what vbfmlalbq_lane_f32 / vbfmlaltq_lane_f32
+# emit. Idx 0 picks the lowest bf16 lane.
+###############################
+    PROLOGUE asimd_bfmlalb_lane_fp32bf16bf16
+    preserve_caller_vec
+    INIT
+.asimd.bfmlalb.lane.fp32bf16bf16.L1:
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v9.4s, v0.8h, v1.h[0]
+    bfmlalb v10.4s, v0.8h, v1.h[0]
+    bfmlalb v11.4s, v0.8h, v1.h[0]
+    bfmlalb v12.4s, v0.8h, v1.h[0]
+    bfmlalb v13.4s, v0.8h, v1.h[0]
+    bfmlalb v14.4s, v0.8h, v1.h[0]
+    bfmlalb v15.4s, v0.8h, v1.h[0]
+    bfmlalb v16.4s, v0.8h, v1.h[0]
+    bfmlalb v17.4s, v0.8h, v1.h[0]
+    bfmlalb v18.4s, v0.8h, v1.h[0]
+    bfmlalb v19.4s, v0.8h, v1.h[0]
+    subs x0, x0, #1
+    bfmlalb v20.4s, v0.8h, v1.h[0]
+    bfmlalb v21.4s, v0.8h, v1.h[0]
+    bfmlalb v22.4s, v0.8h, v1.h[0]
+    bfmlalb v23.4s, v0.8h, v1.h[0]
+    bfmlalb v24.4s, v0.8h, v1.h[0]
+    bfmlalb v25.4s, v0.8h, v1.h[0]
+    bfmlalb v26.4s, v0.8h, v1.h[0]
+    bfmlalb v27.4s, v0.8h, v1.h[0]
+    bfmlalb v28.4s, v0.8h, v1.h[0]
+    bfmlalb v29.4s, v0.8h, v1.h[0]
+    bfmlalb v30.4s, v0.8h, v1.h[0]
+    bfmlalb v31.4s, v0.8h, v1.h[0]
+    bne .asimd.bfmlalb.lane.fp32bf16bf16.L1
+    restore_caller_vec
+    ret
+###############################
+    PROLOGUE asimd_bfmlalt_lane_fp32bf16bf16
+    preserve_caller_vec
+    INIT
+.asimd.bfmlalt.lane.fp32bf16bf16.L1:
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v9.4s, v0.8h, v1.h[0]
+    bfmlalt v10.4s, v0.8h, v1.h[0]
+    bfmlalt v11.4s, v0.8h, v1.h[0]
+    bfmlalt v12.4s, v0.8h, v1.h[0]
+    bfmlalt v13.4s, v0.8h, v1.h[0]
+    bfmlalt v14.4s, v0.8h, v1.h[0]
+    bfmlalt v15.4s, v0.8h, v1.h[0]
+    bfmlalt v16.4s, v0.8h, v1.h[0]
+    bfmlalt v17.4s, v0.8h, v1.h[0]
+    bfmlalt v18.4s, v0.8h, v1.h[0]
+    bfmlalt v19.4s, v0.8h, v1.h[0]
+    subs x0, x0, #1
+    bfmlalt v20.4s, v0.8h, v1.h[0]
+    bfmlalt v21.4s, v0.8h, v1.h[0]
+    bfmlalt v22.4s, v0.8h, v1.h[0]
+    bfmlalt v23.4s, v0.8h, v1.h[0]
+    bfmlalt v24.4s, v0.8h, v1.h[0]
+    bfmlalt v25.4s, v0.8h, v1.h[0]
+    bfmlalt v26.4s, v0.8h, v1.h[0]
+    bfmlalt v27.4s, v0.8h, v1.h[0]
+    bfmlalt v28.4s, v0.8h, v1.h[0]
+    bfmlalt v29.4s, v0.8h, v1.h[0]
+    bfmlalt v30.4s, v0.8h, v1.h[0]
+    bfmlalt v31.4s, v0.8h, v1.h[0]
+    bne .asimd.bfmlalt.lane.fp32bf16bf16.L1
+    restore_caller_vec
+    ret
+###############################
+# laneq variants: index range 0..7 over the full 128-bit Vm (vbfmlalbq_laneq_f32
+# / vbfmlaltq_laneq_f32). We pick idx 7 -- the highest lane -- so any
+# microarchitectural difference between low/high half of Vm is visible against
+# the lane[0] benchmarks above.
+###############################
+    PROLOGUE asimd_bfmlalb_laneq_fp32bf16bf16
+    preserve_caller_vec
+    INIT
+.asimd.bfmlalb.laneq.fp32bf16bf16.L1:
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v9.4s, v0.8h, v1.h[7]
+    bfmlalb v10.4s, v0.8h, v1.h[7]
+    bfmlalb v11.4s, v0.8h, v1.h[7]
+    bfmlalb v12.4s, v0.8h, v1.h[7]
+    bfmlalb v13.4s, v0.8h, v1.h[7]
+    bfmlalb v14.4s, v0.8h, v1.h[7]
+    bfmlalb v15.4s, v0.8h, v1.h[7]
+    bfmlalb v16.4s, v0.8h, v1.h[7]
+    bfmlalb v17.4s, v0.8h, v1.h[7]
+    bfmlalb v18.4s, v0.8h, v1.h[7]
+    bfmlalb v19.4s, v0.8h, v1.h[7]
+    subs x0, x0, #1
+    bfmlalb v20.4s, v0.8h, v1.h[7]
+    bfmlalb v21.4s, v0.8h, v1.h[7]
+    bfmlalb v22.4s, v0.8h, v1.h[7]
+    bfmlalb v23.4s, v0.8h, v1.h[7]
+    bfmlalb v24.4s, v0.8h, v1.h[7]
+    bfmlalb v25.4s, v0.8h, v1.h[7]
+    bfmlalb v26.4s, v0.8h, v1.h[7]
+    bfmlalb v27.4s, v0.8h, v1.h[7]
+    bfmlalb v28.4s, v0.8h, v1.h[7]
+    bfmlalb v29.4s, v0.8h, v1.h[7]
+    bfmlalb v30.4s, v0.8h, v1.h[7]
+    bfmlalb v31.4s, v0.8h, v1.h[7]
+    bne .asimd.bfmlalb.laneq.fp32bf16bf16.L1
+    restore_caller_vec
+    ret
+###############################
+    PROLOGUE asimd_bfmlalt_laneq_fp32bf16bf16
+    preserve_caller_vec
+    INIT
+.asimd.bfmlalt.laneq.fp32bf16bf16.L1:
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v9.4s, v0.8h, v1.h[7]
+    bfmlalt v10.4s, v0.8h, v1.h[7]
+    bfmlalt v11.4s, v0.8h, v1.h[7]
+    bfmlalt v12.4s, v0.8h, v1.h[7]
+    bfmlalt v13.4s, v0.8h, v1.h[7]
+    bfmlalt v14.4s, v0.8h, v1.h[7]
+    bfmlalt v15.4s, v0.8h, v1.h[7]
+    bfmlalt v16.4s, v0.8h, v1.h[7]
+    bfmlalt v17.4s, v0.8h, v1.h[7]
+    bfmlalt v18.4s, v0.8h, v1.h[7]
+    bfmlalt v19.4s, v0.8h, v1.h[7]
+    subs x0, x0, #1
+    bfmlalt v20.4s, v0.8h, v1.h[7]
+    bfmlalt v21.4s, v0.8h, v1.h[7]
+    bfmlalt v22.4s, v0.8h, v1.h[7]
+    bfmlalt v23.4s, v0.8h, v1.h[7]
+    bfmlalt v24.4s, v0.8h, v1.h[7]
+    bfmlalt v25.4s, v0.8h, v1.h[7]
+    bfmlalt v26.4s, v0.8h, v1.h[7]
+    bfmlalt v27.4s, v0.8h, v1.h[7]
+    bfmlalt v28.4s, v0.8h, v1.h[7]
+    bfmlalt v29.4s, v0.8h, v1.h[7]
+    bfmlalt v30.4s, v0.8h, v1.h[7]
+    bfmlalt v31.4s, v0.8h, v1.h[7]
+    bne .asimd.bfmlalt.laneq.fp32bf16bf16.L1
+    restore_caller_vec
+    ret
+###############################
+# Latency variants for lane / laneq forms: 24-deep RAW chain on v8 (Pattern A).
+###############################
+    PROLOGUE asimd_bfmlalb_lane_fp32bf16bf16_latency
+    preserve_caller_vec
+    INIT
+.asimd.bfmlalb.lane.fp32bf16bf16.lat.L1:
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    subs x0, x0, #1
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bfmlalb v8.4s, v0.8h, v1.h[0]
+    bne .asimd.bfmlalb.lane.fp32bf16bf16.lat.L1
+    restore_caller_vec
+    ret
+###############################
+    PROLOGUE asimd_bfmlalt_lane_fp32bf16bf16_latency
+    preserve_caller_vec
+    INIT
+.asimd.bfmlalt.lane.fp32bf16bf16.lat.L1:
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    subs x0, x0, #1
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bfmlalt v8.4s, v0.8h, v1.h[0]
+    bne .asimd.bfmlalt.lane.fp32bf16bf16.lat.L1
+    restore_caller_vec
+    ret
+###############################
+    PROLOGUE asimd_bfmlalb_laneq_fp32bf16bf16_latency
+    preserve_caller_vec
+    INIT
+.asimd.bfmlalb.laneq.fp32bf16bf16.lat.L1:
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    subs x0, x0, #1
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bfmlalb v8.4s, v0.8h, v1.h[7]
+    bne .asimd.bfmlalb.laneq.fp32bf16bf16.lat.L1
+    restore_caller_vec
+    ret
+###############################
+    PROLOGUE asimd_bfmlalt_laneq_fp32bf16bf16_latency
+    preserve_caller_vec
+    INIT
+.asimd.bfmlalt.laneq.fp32bf16bf16.lat.L1:
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    subs x0, x0, #1
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bfmlalt v8.4s, v0.8h, v1.h[7]
+    bne .asimd.bfmlalt.laneq.fp32bf16bf16.lat.L1
+    restore_caller_vec
+    ret

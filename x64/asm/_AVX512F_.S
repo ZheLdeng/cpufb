@@ -1,5 +1,7 @@
 .globl avx512f_fma_f32f32f32
 .globl avx512f_fma_f64f64f64
+.globl avx512f_fma_f32f32f32_latency
+.globl avx512f_fma_f64f64f64_latency
 
 avx512f_fma_f32f32f32:
     vpxorq %zmm0, %zmm0, %zmm0
@@ -77,3 +79,24 @@ avx512f_fma_f64f64f64:
     jne .avx512f.fma.f64f64f64.L1
     ret
 
+avx512f_fma_f32f32f32_latency:
+    vpxorq %zmm0, %zmm0, %zmm0
+.Lavx512f_f32_latency:
+    .rept 16
+        vfmadd231ps %zmm0, %zmm0, %zmm0
+    .endr
+    dec %rdi
+    jne .Lavx512f_f32_latency
+    vzeroupper
+    ret
+
+avx512f_fma_f64f64f64_latency:
+    vpxorq %zmm0, %zmm0, %zmm0
+.Lavx512f_f64_latency:
+    .rept 16
+        vfmadd231pd %zmm0, %zmm0, %zmm0
+    .endr
+    dec %rdi
+    jne .Lavx512f_f64_latency
+    vzeroupper
+    ret

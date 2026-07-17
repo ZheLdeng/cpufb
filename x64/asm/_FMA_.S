@@ -1,5 +1,7 @@
 .globl fma_f32f32f32
 .globl fma_f64f64f64
+.globl fma_f32f32f32_latency
+.globl fma_f64f64f64_latency
 
 fma_f32f32f32:
     vxorps %ymm0, %ymm0, %ymm0
@@ -77,3 +79,24 @@ fma_f64f64f64:
     jne .fma.f64f64f64.L1
     ret
 
+fma_f32f32f32_latency:
+    vxorps %ymm0, %ymm0, %ymm0
+.Lfma_f32_latency:
+    .rept 16
+        vfmadd231ps %ymm0, %ymm0, %ymm0
+    .endr
+    dec %rdi
+    jne .Lfma_f32_latency
+    vzeroupper
+    ret
+
+fma_f64f64f64_latency:
+    vxorpd %ymm0, %ymm0, %ymm0
+.Lfma_f64_latency:
+    .rept 16
+        vfmadd231pd %ymm0, %ymm0, %ymm0
+    .endr
+    dec %rdi
+    jne .Lfma_f64_latency
+    vzeroupper
+    ret

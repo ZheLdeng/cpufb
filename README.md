@@ -141,6 +141,40 @@ notice. New code should use the CMake build above.
 
   --idle_time: the interval time(sec) between any two adjacent benchmarks, default is 0.
 
+  --include-test / --exclude-test: comma-separated arm64 or x86-64 benchmark types. Supported types are compute, load, cache, freq, multi_issue.
+
+  --include-isa / --exclude-isa: comma-separated compute ISA names. Examples include asimd, bf16, sve and SME2 on arm64, or avx2, fma, avx512_ifma and amx_bf16 on x86-64.
+
+  --list-categories: list available test categories and compute ISA categories, without requiring --thread_pool.
+
+  --list-instructions: list available compute instruction names for sweep mode, without requiring --thread_pool.
+
+  --sweep-instruction / --scale-instruction: run one compute instruction across the current thread pool prefixes, from 1 core through all bound cores. The value matches the `Core Computation` name; quote it in the shell when it contains parentheses or commas.
+
+  --save / --output: save displayed benchmark data to a compact file. `.csv` paths default to CSV; other paths default to tab-delimited txt.
+
+  --save-format / --output-format: override save format with `csv` or `txt`.
+
+Examples:
+
+```sh
+./cpufb --list-categories
+./cpufb --list-instructions
+./cpufb --thread_pool='[0]' --include-test=compute --exclude-isa=sve,SME2
+./cpufb --thread_pool='[0]' --exclude-test=load,cache,freq
+./cpufb --thread_pool='[0-7]' --sweep-instruction='sve_fmla.vv(f32,f32,f32)'
+./cpufb --thread_pool='[0-7]' --sweep-instruction='fmla.vv(f32,f32,f32)' --save=scale.csv
+./cpufb --thread_pool='[0]' --include-test=compute --save=compute.txt --save-format=txt
+./cpufb --thread_pool='[0]' --include-test=compute --include-isa=avx2,avx512_ifma
+./cpufb --thread_pool='[0-1]' --sweep-instruction='MADD52(u64,u52,u52)' --save=ifma-scale.csv
+```
+
+The x86-64 path detects and builds only ISA kernels exposed by CPUID. In
+addition to the existing SSE, AVX, FMA, VNNI, AVX-512 and AMX tests, it
+includes AVX2 integer add/multiply, AVX-512 IFMA, AVX-512 VBMI byte permute,
+and AVX-512 VPOPCNTDQ tests when supported. Latency variants are paired with
+their throughput rows and are omitted from `--list-instructions`.
+
 
 ## Some x86-64 CPU benchmark results
 ---

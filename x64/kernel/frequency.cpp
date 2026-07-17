@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <fstream>
 #include <sstream>
+#include <x86intrin.h>
 #include <stdlib.h>
 // #include <stdio.h>
 
@@ -73,20 +74,6 @@ static void* thread_function_freq(void* arg){
         printf("Warning: performance may be impacted \n");
     }
 
-    // PerfEventCycle pec;
-    PerfEventCycle test_pec = PerfEventCycle(0);
-
-    test_pec.start();
-    volatile int counter = 0;
-    for (int i = 0; i < 10000; ++i) {
-        counter += 1;
-    }
-    test_pec.stop();
-    long long test_cycle = test_pec.get_cycle();
-
-    PerfEventCycle pec = (test_cycle == 0) ? PerfEventCycle(1) : PerfEventCycle(0);
-
-
     //get CPU frequency
     data->theory_freq = 0;
     int read_freq = 0;
@@ -95,12 +82,14 @@ static void* thread_function_freq(void* arg){
     //warm up
     sse2_add_mul_f64f64_f64(looptime, NULL);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    pec.start();
+    _mm_lfence();
+    uint64_t start_tsc = __rdtsc();
     sse2_add_mul_f64f64_f64(looptime, NULL);
-    pec.stop();
+    _mm_lfence();
+    uint64_t end_tsc = __rdtsc();
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    CPU_freq = (double)pec.get_cycle() / time_used;
+    CPU_freq = static_cast<double>(end_tsc - start_tsc) / time_used;
     data->caculate_freq = CPU_freq * 1e-9;
 #endif
 

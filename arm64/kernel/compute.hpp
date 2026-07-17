@@ -48,12 +48,20 @@ extern "C"
     void asimd_dp2a_vv_fp32bf16bf16(int64_t);
     void asimd_bfmlalb_fp32bf16bf16(int64_t);
     void asimd_bfmlalt_fp32bf16bf16(int64_t);
+    void asimd_bfmlalb_lane_fp32bf16bf16(int64_t);
+    void asimd_bfmlalt_lane_fp32bf16bf16(int64_t);
+    void asimd_bfmlalb_laneq_fp32bf16bf16(int64_t);
+    void asimd_bfmlalt_laneq_fp32bf16bf16(int64_t);
     // Latency variants.
     void asimd_mmla_fp32bf16bf16_latency(int64_t);
     void asimd_dp2a_vs_fp32bf16bf16_latency(int64_t);
     void asimd_dp2a_vv_fp32bf16bf16_latency(int64_t);
     void asimd_bfmlalb_fp32bf16bf16_latency(int64_t);
     void asimd_bfmlalt_fp32bf16bf16_latency(int64_t);
+    void asimd_bfmlalb_lane_fp32bf16bf16_latency(int64_t);
+    void asimd_bfmlalt_lane_fp32bf16bf16_latency(int64_t);
+    void asimd_bfmlalb_laneq_fp32bf16bf16_latency(int64_t);
+    void asimd_bfmlalt_laneq_fp32bf16bf16_latency(int64_t);
 #endif
 
 #ifdef _FHM_

@@ -389,26 +389,15 @@ double get_bandwith(uint64_t looptime, double data_size, string type)
         cache_data[i] = i;
     }
     int inner_loop = data_size * 1024 / sizeof(float) / (4 * 32);
-#ifdef _SVE_LD1W_
-	// warm up
-    if (type.find("ld1w")!= string::npos) {
-        load_ld1w_kernel(cache_data, data_size * 1024 / sizeof(float), looptime);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        load_ld1w_kernel(cache_data, data_size * 1024 / sizeof(float), looptime);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    } else {
-        load_vmovups_kernel(cache_data, inner_loop, looptime);
+    void (*kernel)(float*, int, int64_t) = load_vmovups_kernel;
+    if (type.find("movss") != string::npos) kernel = load_movss_stream_kernel;
+    else if (type.find("xmm") != string::npos) kernel = load_movups_xmm_kernel;
+    else if (type.find("zmm") != string::npos) kernel = load_vmovups_zmm_kernel;
 
-        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        load_vmovups_kernel(cache_data, inner_loop, looptime);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    }
-#else
-    load_vmovups_kernel(cache_data, inner_loop, looptime);
+    kernel(cache_data, inner_loop, looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    load_vmovups_kernel(cache_data, inner_loop, looptime);
+    kernel(cache_data, inner_loop, looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-#endif
     time_used = get_time(&start, &end);
     perf = (double)looptime * data_size * 1024 / (time_used * freq[0] * 1e9);
 

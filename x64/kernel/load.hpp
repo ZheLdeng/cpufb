@@ -8,6 +8,9 @@ extern "C"
 {
     void load_movups_kernel(float*, int64_t);
     void load_vmovups_kernel(float*, int, int64_t);
+    void load_movss_stream_kernel(float*, int, int64_t);
+    void load_movups_xmm_kernel(float*, int, int64_t);
+    void load_vmovups_zmm_kernel(float*, int, int64_t);
 }
 struct CacheData {
     int theory_L1 = 0;

@@ -1,4 +1,8 @@
 .globl sse2_add_mul_f64f64_f64
+.globl sse2_add_f64
+.globl sse2_add_f64_latency
+.globl sse2_mul_f64
+.globl sse2_mul_f64_latency
 
 sse2_add_mul_f64f64_f64:
     xorpd %xmm0, %xmm0
@@ -38,3 +42,43 @@ sse2_add_mul_f64f64_f64:
     jne .sse2.add.mul.f64f64.f64.L1
     ret
 
+sse2_add_f64:
+    .irp r,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+        xorpd %xmm\r,%xmm\r
+    .endr
+.Lsse2_add:
+    .irp r,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+        addpd %xmm\r,%xmm\r
+    .endr
+    dec %rdi
+    jne .Lsse2_add
+    ret
+sse2_add_f64_latency:
+    xorpd %xmm0,%xmm0
+.Lsse2_add_lat:
+    .rept 16
+        addpd %xmm0,%xmm0
+    .endr
+    dec %rdi
+    jne .Lsse2_add_lat
+    ret
+sse2_mul_f64:
+    .irp r,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+        xorpd %xmm\r,%xmm\r
+    .endr
+.Lsse2_mul:
+    .irp r,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+        mulpd %xmm\r,%xmm\r
+    .endr
+    dec %rdi
+    jne .Lsse2_mul
+    ret
+sse2_mul_f64_latency:
+    xorpd %xmm0,%xmm0
+.Lsse2_mul_lat:
+    .rept 16
+        mulpd %xmm0,%xmm0
+    .endr
+    dec %rdi
+    jne .Lsse2_mul_lat
+    ret

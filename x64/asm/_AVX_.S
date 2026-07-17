@@ -1,5 +1,13 @@
 .globl avx_add_mul_f32f32_f32
 .globl avx_add_mul_f64f64_f64
+.globl avx_add_f32
+.globl avx_add_f32_latency
+.globl avx_mul_f32
+.globl avx_mul_f32_latency
+.globl avx_add_f64
+.globl avx_add_f64_latency
+.globl avx_mul_f64
+.globl avx_mul_f64_latency
 
 avx_add_mul_f32f32_f32:
     vxorps %ymm0, %ymm0, %ymm0
@@ -77,3 +85,81 @@ avx_add_mul_f64f64_f64:
     jne .avx.add.mul.f64f64.f64.L1
     ret
 
+.macro AVX16 op
+    .irp r,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+        \op %ymm\r, %ymm\r, %ymm\r
+    .endr
+.endm
+
+avx_add_f32:
+    vzeroall
+.Lavx_add_f32:
+    AVX16 vaddps
+    dec %rdi
+    jne .Lavx_add_f32
+    vzeroupper
+    ret
+avx_add_f32_latency:
+    vxorps %ymm0,%ymm0,%ymm0
+.Lavx_add_f32_lat:
+    .rept 16
+        vaddps %ymm0,%ymm0,%ymm0
+    .endr
+    dec %rdi
+    jne .Lavx_add_f32_lat
+    vzeroupper
+    ret
+avx_mul_f32:
+    vzeroall
+.Lavx_mul_f32:
+    AVX16 vmulps
+    dec %rdi
+    jne .Lavx_mul_f32
+    vzeroupper
+    ret
+avx_mul_f32_latency:
+    vxorps %ymm0,%ymm0,%ymm0
+.Lavx_mul_f32_lat:
+    .rept 16
+        vmulps %ymm0,%ymm0,%ymm0
+    .endr
+    dec %rdi
+    jne .Lavx_mul_f32_lat
+    vzeroupper
+    ret
+avx_add_f64:
+    vzeroall
+.Lavx_add_f64:
+    AVX16 vaddpd
+    dec %rdi
+    jne .Lavx_add_f64
+    vzeroupper
+    ret
+avx_add_f64_latency:
+    vxorpd %ymm0,%ymm0,%ymm0
+.Lavx_add_f64_lat:
+    .rept 16
+        vaddpd %ymm0,%ymm0,%ymm0
+    .endr
+    dec %rdi
+    jne .Lavx_add_f64_lat
+    vzeroupper
+    ret
+avx_mul_f64:
+    vzeroall
+.Lavx_mul_f64:
+    AVX16 vmulpd
+    dec %rdi
+    jne .Lavx_mul_f64
+    vzeroupper
+    ret
+avx_mul_f64_latency:
+    vxorpd %ymm0,%ymm0,%ymm0
+.Lavx_mul_f64_lat:
+    .rept 16
+        vmulpd %ymm0,%ymm0,%ymm0
+    .endr
+    dec %rdi
+    jne .Lavx_mul_f64_lat
+    vzeroupper
+    ret

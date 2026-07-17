@@ -42,6 +42,22 @@ int main()
     {
         printf("_AVX_VNNI_\n");
     }
+    if (BIT_TEST(cpuid_0x7_0x0.ebx, 5))
+    {
+        printf("_AVX2_\n");
+    }
+    if (BIT_TEST(cpuid_0x7_0x0.ebx, 21))
+    {
+        printf("_AVX512_IFMA_\n");
+    }
+    if (BIT_TEST(cpuid_0x7_0x0.ecx, 1))
+    {
+        printf("_AVX512_VBMI_\n");
+    }
+    if (BIT_TEST(cpuid_0x7_0x0.ecx, 14))
+    {
+        printf("_AVX512_VPOPCNTDQ_\n");
+    }
     if (BIT_TEST(cpuid_0x7_0x1.edx, 4))
     {
         printf("_AVX_VNNI_INT8_\n");
@@ -82,4 +98,3 @@ int main()
     printf("_ISSUE_\n");
     return 0;
 }
-

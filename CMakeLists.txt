@@ -228,3 +228,37 @@ include(GNUInstallDirs)
 install(TARGETS cpufb RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 
 include(AndroidDeploy)
+
+# ---------------------------------------------------------------------------
+# CLI regression tests
+# ---------------------------------------------------------------------------
+include(CTest)
+if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND
+        (CPUFB_ARCH STREQUAL "x64" OR CPUFB_ARCH STREQUAL "arm64"))
+    find_program(CPUFB_BASH_EXECUTABLE bash)
+    if(CPUFB_BASH_EXECUTABLE)
+        set(_cli_test_script "${CMAKE_SOURCE_DIR}/tests/test_cli.sh")
+        set(_cli_test_names
+            list
+            invalid_filters
+            instruction_matching
+            filters_txt
+            csv_output
+            sweep_output
+        )
+        foreach(test_name IN LISTS _cli_test_names)
+            add_test(
+                NAME "cpufb_cli_${test_name}"
+                COMMAND "${CPUFB_BASH_EXECUTABLE}" "${_cli_test_script}"
+                    "${test_name}" "$<TARGET_FILE:cpufb>" "${CPUFB_ARCH}"
+            )
+            set_tests_properties("cpufb_cli_${test_name}" PROPERTIES
+                LABELS "cli"
+                RUN_SERIAL TRUE
+                TIMEOUT 240
+            )
+        endforeach()
+    else()
+        message(WARNING "cpufb: bash not found; CLI regression tests disabled")
+    endif()
+endif()

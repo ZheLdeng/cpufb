@@ -179,6 +179,23 @@ See [X86_BENCHMARK_ACCOUNTING.md](X86_BENCHMARK_ACCOUNTING.md) for the audited
 operation counts and the exact meaning of TSC-based instruction rate and
 latency metrics. Remaining follow-up work is tracked in [TODO.md](TODO.md).
 
+## Automated CLI regression tests
+
+Native x86-64 and ARM64 builds register CTest coverage for category/ISA
+filters, invalid filters, exact/ambiguous instruction matching, TXT/CSV
+serialization, and single-core instruction-sweep output. The tests validate
+CLI behavior and file structure; they intentionally do not compare volatile
+performance values.
+
+```sh
+cmake --preset native-release
+cmake --build --preset native-release
+ctest --test-dir build/native-release --output-on-failure
+```
+
+Set `CPUFB_TEST_CORE` when the default first allowed CPU is not the desired
+test core.
+
 
 ## Some x86-64 CPU benchmark results
 ---

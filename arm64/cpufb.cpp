@@ -272,6 +272,49 @@ static void print_benchmark_instructions()
     table.print();
 }
 
+static bool validate_benchmark_filter(const BenchmarkFilter &filter)
+{
+    const char *test_names[] = {
+        "compute", "load", "cache", "freq", "multi_issue"
+    };
+    set<string> valid_tests(test_names, test_names + 5);
+    set<string> valid_isas;
+
+    for (const cpubm_t &item : bm_list) {
+        if (get_benchmark_test_type(item) == "compute") {
+            valid_isas.insert(normalize_filter_value(item.isa));
+        }
+    }
+
+    const set<string> *test_sets[] = {
+        &filter.include_test, &filter.exclude_test
+    };
+    for (int i = 0; i < 2; i++) {
+        for (const string &value : *test_sets[i]) {
+            if (valid_tests.find(value) == valid_tests.end()) {
+                cerr << "Error: unknown test category '" << value << "'."
+                     << endl;
+                return false;
+            }
+        }
+    }
+
+    const set<string> *isa_sets[] = {
+        &filter.include_isa, &filter.exclude_isa
+    };
+    for (int i = 0; i < 2; i++) {
+        for (const string &value : *isa_sets[i]) {
+            if (valid_isas.find(value) == valid_isas.end()) {
+                cerr << "Error: unavailable ISA category '" << value << "'."
+                     << endl;
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
 static bool save_table_sections(const SaveOptions &save_options,
     const vector<pair<string, const Table*> > &sections)
 {
@@ -1881,6 +1924,8 @@ int main(int argc, char *argv[])
     }
 
     cpufb_register_isa();
+
+    if (!validate_benchmark_filter(filter)) return 1;
 
     if (!sweep_instruction.empty()) {
         return cpubm_do_instruction_sweep(set_of_threads,

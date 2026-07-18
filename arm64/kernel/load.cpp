@@ -7,6 +7,7 @@
 #include <cstring>
 #include <vector>
 #include <iostream>
+#include <cacheline_probe.hpp>
 #include<common.hpp>
 #include <load.hpp>
 #include <thread_pool.hpp>
@@ -29,7 +30,6 @@
 #define WINDOW_SIZE 4 * 1024 * 1024
 #define LOOP_TIME 1000000
 #define CACHE_PROBE_REPEAT 100
-#define CACHELINE_REPEAT 1000
 #define MULTIWAY_LOOP_TIME 1000000
 #define MULTIWAY_TEST_TIME 100
 #else
@@ -41,7 +41,6 @@
 #define WINDOW_SIZE 64 * 1024 * 1024
 #define LOOP_TIME 200000
 #define CACHE_PROBE_REPEAT 20
-#define CACHELINE_REPEAT 200
 #define MULTIWAY_LOOP_TIME 200000
 #define MULTIWAY_TEST_TIME 20
 #endif
@@ -54,7 +53,7 @@
 
 using namespace std;
 
-double cacheline = 0;
+double cacheline = CACHE_LINE;
 typedef void (*load_bench)(float*, int, int64_t);
 
 struct load_bench_task {
@@ -130,14 +129,22 @@ static inline void shuffleVector(std::vector<int64_t>& vec) {
     }
 }
 
-static inline void flush_cache_line(void *address) {
+static void flush_cache_line(void *address) {
     asm volatile (
-        "dmb ish\n\t"
-        "dc civac, %0\n\t"      //clean cacheline
-        "dmb ish\n\t"
-        "isb\n\t"
+        "dc civac, %0\n\t"      // clean and invalidate cache line
         :
         : "r" (address)
+        : "memory"
+    );
+}
+
+static void finish_cache_line_flush()
+{
+    asm volatile (
+        "dsb ish\n\t"
+        "isb\n\t"
+        :
+        :
         : "memory"
     );
 }
@@ -308,13 +315,6 @@ static inline void random_access(vector<double>& time_used) {
 
 void get_cacheline(struct CacheData *cache_data, int cpu_id)
 {
-    struct timespec start, end;
-    int i, j, k;
-    vector<double> slope;
-    int datasize = 64 * 1024;
-    vector<double> time_used;
-    uintptr_t *ptr = (uintptr_t*)malloc(datasize);
-    double first_time, second_time;
 #ifdef __linux__
     pid_t pid = syscall(SYS_gettid);
     cpu_set_t mask;
@@ -327,90 +327,23 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
     read_data(cpu_id, &cache_data->theory_cacheline, "/cache/index0/coherency_line_size");
 #endif
 #ifdef __APPLE__ 
-    size_t size = sizeof(int64_t);
+    size_t size = sizeof(cache_data->theory_cacheline);
     if (sysctlbyname("hw.cachelinesize", &cache_data->theory_cacheline, &size, NULL, 0) != 0) {
         perror("sysctlbyname cachelinesize failed");
     }
 #endif
-    for(int buf = 16 ; buf <= 1024 ; buf *= 2){
-        first_time = 0;
-        second_time = 0;
-        int w = datasize / buf;
-        int n = (buf >> 3)/2 + 1 ;
-        for(j = 0 ; j < datasize >> 3 ; j++){
-            ptr[j] = 0;
-        }
-        uintptr_t* next;
-        for( j = 0 ; j < w-1 ; j++){
-            ptr[(j * buf) >> 3 ]=(uintptr_t)&ptr[((j + 1) * buf) >> 3];
-            ptr[((j * buf) >> 3) + n]=(uintptr_t)&ptr[(((j + 1) * buf) >> 3) + n];
-        }
-        ptr[(j * buf) >> 3] = (uintptr_t)&ptr[0];
-        ptr[((j * buf) >> 3) + n] = (uintptr_t)&ptr[n];
+    const int fallback_cacheline =
 #ifdef __APPLE__
-        for(i = 0; i < CACHELINE_REPEAT ; i++){
-            for(k = 0; k < datasize >> 3; k++){
-                flush_cache_line(&ptr[k]);
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            next = (uintptr_t*)&ptr[0];
-            for(k=0 ; k < w ; k++){
-                next = (uintptr_t*)*next;
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            first_time +=  (get_time(&start, &end) / w);
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            next = (uintptr_t*)&ptr[n];
-            for(k=0 ; k < w ; k++){
-                next = (uintptr_t*)*next;
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            second_time += (get_time(&start, &end) / w);
-        }
-        time_used.push_back(second_time / first_time);
-        // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
-            // << second_time / first_time << endl;
-    }
-    for (size_t i = 0; i < time_used.size() - 1; ++i) {
-        if (time_used[i] < 0.98) {
-            // cout << i << " " << 16 * pow(2, i) << endl;
-            cache_data->test_cacheline = 16 * pow(2, i);
-            break;
-        }
-    }
+        128;
 #else
-        for(i = 0; i < CACHELINE_REPEAT ; i++){
-            for(k = 0; k < datasize >> 3; k++){
-                flush_cache_line(&ptr[k]);
-            }
-            next = (uintptr_t*)&ptr[0];
-            for(k=0 ; k < w ; k++){
-                next = (uintptr_t*)*next;
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            next = (uintptr_t*)&ptr[n];
-            for(k=0 ; k < w ; k++){
-                next = (uintptr_t*)*next;
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            second_time += (get_time(&start, &end) / w);
-        }
-        time_used.push_back(second_time);
-        // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
-            // << second_time / first_time << endl;
-    }
-    for (size_t i = 1; i < time_used.size() - 1; ++i) {
-        if (time_used[i] / time_used[i - 1] > 1.3) {
-            // cout << i << " " << 16 * pow(2, i) << endl;
-            cache_data->test_cacheline = 16 * pow(2, i - 1);
-            break;
-        }
-    }
-
+        CACHE_LINE;
 #endif
-    cacheline = max(cache_data->test_cacheline, cache_data->theory_cacheline);
-    free(ptr);
-    return;
+    cache_data->test_cacheline = probe_cacheline_size(
+        cache_data->theory_cacheline, fallback_cacheline, flush_cache_line,
+        finish_cache_line_flush);
+    cacheline = cache_data->test_cacheline > 0
+        ? cache_data->test_cacheline
+        : CACHE_LINE;
 }
 
 void get_cachesize(struct CacheData *cache_size, int cpu_id)

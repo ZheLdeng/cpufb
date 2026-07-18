@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <random>
 
+#include "cacheline_probe.hpp"
 #include "compute.hpp"
 #include "frequency.hpp"
 #include "common.hpp"
@@ -76,8 +77,13 @@ static inline void shuffleGroups(std::vector<int64_t>& vec, int sub) {
     }
 }
 
-static inline void flush_cache_line(void* addr) {
+static void flush_cache_line(void* addr) {
     _mm_clflush(addr);  // 使用 CLFLUSH
+}
+
+static void finish_cache_line_flush()
+{
+    _mm_mfence();
 }
 
 static inline void init(int64_t *ptr, vector<int64_t> ptr_index, int64_t group)
@@ -223,13 +229,6 @@ static inline void random_access(vector<double>& time_used) {
 
 void get_cacheline(struct CacheData *cache_size, int cpu_id)
 {
-    struct timespec start, end;
-    int i, j, k;
-    vector<double> slope;
-    int datasize = 64 * 1024;
-    vector<double> time_used;
-    uintptr_t *ptr = (uintptr_t*)malloc(datasize);
-    double first_time, second_time;
 #ifdef __linux__
     pid_t pid = syscall(SYS_gettid);
     cpu_set_t mask;
@@ -241,55 +240,9 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
     }
     read_data(cpu_id, &cache_size->theory_cacheline, "/cache/index0/coherency_line_size");
 #endif
-    for(int buf = 16 ; buf <= 1024 ; buf *= 2){
-
-        first_time = 0;
-        second_time = 0;
-        int w = datasize / buf;
-        int n = (buf >> 3)/2 + 1 ;
-        for(j = 0 ; j < datasize >> 3 ; j++){
-            ptr[j] = 0;
-        }
-        uintptr_t* next;
-        for( j = 0 ; j < w-1 ; j++){
-            ptr[(j * buf) >> 3 ]=(uintptr_t)&ptr[((j + 1) * buf) >> 3];
-            ptr[((j * buf) >> 3) + n]=(uintptr_t)&ptr[(((j + 1) * buf) >> 3) + n];
-        }
-        ptr[(j * buf) >> 3] = (uintptr_t)&ptr[0];
-        ptr[((j * buf) >> 3) + n] = (uintptr_t)&ptr[n];
-
-        for(i = 0; i < 100 ; i++){
-            for(k = 0; k < datasize >> 3; k++){
-                flush_cache_line(&ptr[k]);
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            next = (uintptr_t*)&ptr[0];
-            for(k=0 ; k < w ; k++){
-                next = (uintptr_t*)*next;
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            first_time +=  (get_time(&start, &end) / w);
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            next = (uintptr_t*)&ptr[n];
-            for(k=0 ; k < w ; k++){
-                next = (uintptr_t*)*next;
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            second_time += (get_time(&start, &end)/w);
-        }
-        time_used.push_back(second_time / first_time);
-        // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
-        //     << second_time / first_time << endl;
-    }
-    for (size_t i = 0; i < time_used.size() - 1; ++i) {
-    if (time_used[i] < time_used[i + 1]) {
-            // cout << i << " " << 16 * pow(2, i) << endl;
-        cache_size->test_cacheline = 16 * pow(2, i);
-        break;
-        }
-    }
-    free(ptr);
-    return;
+    cache_size->test_cacheline = probe_cacheline_size(
+        cache_size->theory_cacheline, CACHE_LINE, flush_cache_line,
+        finish_cache_line_flush);
 }
 
 void get_theory_cache(struct CacheData *cache_size, int cpu_id)

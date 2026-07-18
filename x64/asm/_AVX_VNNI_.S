@@ -83,7 +83,7 @@ avx_vnni_dp4a_s32u8s8_latency:
     vpxor %ymm0, %ymm0, %ymm0
 .Lavx_vnni_dp4a_latency:
     .rept 16
-        vpdpbusd %ymm0, %ymm0, %ymm0
+        {vex} vpdpbusd %ymm0, %ymm0, %ymm0
     .endr
     dec %rdi
     jne .Lavx_vnni_dp4a_latency
@@ -94,7 +94,7 @@ avx_vnni_dp2a_s32s16s16_latency:
     vpxor %ymm0, %ymm0, %ymm0
 .Lavx_vnni_dp2a_latency:
     .rept 16
-        vpdpwssd %ymm0, %ymm0, %ymm0
+        {vex} vpdpwssd %ymm0, %ymm0, %ymm0
     .endr
     dec %rdi
     jne .Lavx_vnni_dp2a_latency

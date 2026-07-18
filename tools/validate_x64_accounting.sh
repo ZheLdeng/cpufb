@@ -16,6 +16,7 @@ for tool in nm objdump; do
 done
 
 symbol_table="$(nm -n --defined-only "${binary}")"
+sized_symbol_table="$(nm -n -S --defined-only "${binary}")"
 checked=0
 skipped=0
 
@@ -23,7 +24,8 @@ check_count() {
     local symbol="$1"
     local mnemonic="$2"
     local expected="$3"
-    local bounds start stop count
+    local bounds start stop size count symbol_line
+    local -a symbol_fields
 
     if ! grep -Eq "[[:space:]]T[[:space:]]${symbol}$" <<<"${symbol_table}"; then
         echo "SKIP ${symbol} (not built for this host)"
@@ -31,12 +33,27 @@ check_count() {
         return
     fi
 
-    bounds="$(awk -v target="${symbol}" '
-        $2 == "T" && $3 == target { start = $1; found = 1; next }
-        found && $2 == "T" { print start, $1; exit }
-        END { if (found && start != "") print start }
-    ' <<<"${symbol_table}" | head -n 1)"
-    read -r start stop <<<"${bounds}"
+    symbol_line="$(awk -v target="${symbol}" '$NF == target { print; exit }' \
+        <<<"${sized_symbol_table}")"
+    read -ra symbol_fields <<<"${symbol_line}"
+    start="${symbol_fields[0]}"
+    size=""
+    if [[ ${#symbol_fields[@]} -eq 4 ]]; then
+        size="${symbol_fields[1]}"
+    fi
+
+    if [[ -n "${size}" && "${size}" != "0000000000000000" ]]; then
+        stop="$(printf '%x' "$((16#${start} + 16#${size}))")"
+    else
+        # Most legacy assembly symbols have no ELF size. Preserve their local
+        # hot-loop labels by stopping at the next global text symbol.
+        bounds="$(awk -v target="${symbol}" '
+            $2 == "T" && $3 == target { start = $1; found = 1; next }
+            found && $2 == "T" { print start, $1; exit }
+            END { if (found && start != "") print start }
+        ' <<<"${symbol_table}" | head -n 1)"
+        read -r start stop <<<"${bounds}"
+    fi
 
     if [[ -n "${stop:-}" ]]; then
         count="$(objdump -d --no-show-raw-insn \
@@ -57,6 +74,9 @@ check_count() {
     checked=$((checked + 1))
 }
 
+check_count cpufb_x64_frequency_fsu32 addps 16
+check_count cpufb_x64_frequency_fsu64 addpd 16
+check_count cpufb_x64_frequency_load movups 16
 check_count sse_add_f32 addps 16
 check_count sse_add_f32_latency addps 16
 check_count sse2_add_f64 addpd 16

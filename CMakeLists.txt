@@ -98,9 +98,21 @@ foreach(feat IN LISTS CPUFB_SIMD_FEATURES)
     endif()
 endforeach()
 
-# arm64 has an extra access.S that is always built (not feature-gated)
+# arm64 has an extra access.S that is always built (not feature-gated).
 if(CPUFB_ARCH STREQUAL "arm64" AND EXISTS "${CPUFB_ASM_DIR}/access.S")
     list(APPEND _simd_sources "${CPUFB_ASM_DIR}/access.S")
+endif()
+
+# x64 load and baseline multi-issue benchmarks are infrastructure rather than
+# optional compute ISA rows.  Keep them available even when a user supplies a
+# reduced CPUFB_SIMD_FEATURES_OVERRIDE; native CPUID detection also lists these
+# files, so remove any duplicate paths afterwards.
+if(CPUFB_ARCH STREQUAL "x64")
+    list(APPEND _simd_sources
+        "${CPUFB_ASM_DIR}/_LDP_.S"
+        "${CPUFB_ASM_DIR}/_ISSUE_.S"
+    )
+    list(REMOVE_DUPLICATES _simd_sources)
 endif()
 
 if(_simd_sources)
@@ -123,6 +135,11 @@ set(_kernel_sources
     "${CPUFB_KERNEL_DIR}/frequency.cpp"
     "${CPUFB_KERNEL_DIR}/load.cpp"
 )
+if(CPUFB_ARCH STREQUAL "x64")
+    # The frequency probe is an x86-64 SSE/SSE2 baseline and must not depend
+    # on whichever optional compute kernels were selected by CPUID/override.
+    list(APPEND _kernel_sources "${CPUFB_ASM_DIR}/frequency.S")
+endif()
 if(CPUFB_ARCH STREQUAL "arm64" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(APPEND _kernel_sources "${CPUFB_ARCH_DIR}/runtime_features.cpp")
 endif()

@@ -22,6 +22,19 @@ Throughput kernels use independent accumulator/register chains. Latency kernels
 use one dependency chain while retaining the listed instruction count per loop.
 Loop-control instructions are not included in `inst_pl` or `comp_pl`.
 
+## Frequency-table baseline
+
+The three instruction-rate columns in the x86 frequency table use dedicated,
+always-built x86-64 baseline kernels. `FSU32` runs 16 independent packed FP32
+`addps` instructions per loop, `FSU64` runs 16 independent packed FP64 `addpd`
+instructions, and `LSU ldr` runs 16 independent 128-bit `movups` loads. Their
+rates are instructions per invariant-TSC cycle, not mathematical operations or
+core-clock IPC.
+
+These kernels intentionally use legacy SSE/SSE2 only. Their meaning and
+availability therefore do not change when optional FMA, AVX, AVX-512, or AMX
+kernels are added to or removed from the build.
+
 ## Audited compute counts
 
 | ISA / operation | Instructions per loop | Elements per instruction | Operations per element | `comp_pl` |
@@ -67,3 +80,13 @@ kernels that were not built for the current host. For every registered compute
 row, the hot loop must contain exactly `inst_pl` benchmark instructions.
 Throughput variants must use independent destinations; the matching `_latency`
 symbol must repeatedly write the same destination.
+
+To regression-test the always-built frequency kernels against reduced x86 SIMD
+overrides, run this on an x86-64 host:
+
+```sh
+tools/test_x64_frequency_overrides.sh
+```
+
+It configures, builds, disassembles, and runs the frequency category with
+`_SSE2_`, `_AVX2_`, and `_AVX_VNNI_` overrides that deliberately omit FMA.

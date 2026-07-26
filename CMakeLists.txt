@@ -67,6 +67,7 @@ find_package(Threads REQUIRED)
 # ---------------------------------------------------------------------------
 add_library(cpufb_common OBJECT
     "${CPUFB_COMMON_DIR}/cacheline_probe.cpp"
+    "${CPUFB_COMMON_DIR}/cli.cpp"
     "${CPUFB_COMMON_DIR}/table.cpp"
     "${CPUFB_COMMON_DIR}/thread_pool.cpp"
 )

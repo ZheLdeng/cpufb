@@ -3,12 +3,14 @@
 #include "thread_pool.hpp"
 
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 
 using namespace std;
@@ -53,6 +55,32 @@ bool parse_save_format(const char *value, SaveFormat &format)
         return true;
     }
     return false;
+}
+
+bool parse_positive_integer(const char *value,
+    const char *option,
+    uint64_t &parsed)
+{
+    if (value == NULL || *value == '\0') {
+        cerr << "Error: " << option << " must be a positive integer." << endl;
+        return false;
+    }
+    for (const char *cursor = value; *cursor != '\0'; ++cursor) {
+        if (!isdigit(static_cast<unsigned char>(*cursor))) {
+            cerr << "Error: " << option << " must be a positive integer."
+                 << endl;
+            return false;
+        }
+    }
+    char *end = NULL;
+    errno = 0;
+    unsigned long long result = strtoull(value, &end, 10);
+    if (errno != 0 || end == value || *end != '\0' || result == 0) {
+        cerr << "Error: " << option << " must be a positive integer." << endl;
+        return false;
+    }
+    parsed = static_cast<uint64_t>(result);
+    return true;
 }
 
 bool ends_with_case_insensitive(const string &value, const string &suffix)
@@ -137,6 +165,11 @@ CliOptions::CliOptions() :
     idle_time(0),
     list_categories(false),
     list_instructions(false),
+    memory_bandwidth(false),
+    memory_size_mib(1024),
+    memory_repetitions(5),
+    memory_size_set(false),
+    memory_repetitions_set(false),
     thread_pool_set(false)
 {
 }
@@ -165,6 +198,28 @@ bool parse_cli_options(int argc, char *argv[], CliOptions &options)
             options.sweep_instruction = argv[i] + 20;
         } else if (strncmp(argv[i], "--scale-instruction=", 20) == 0) {
             options.sweep_instruction = argv[i] + 20;
+        } else if (strcmp(argv[i], "--memory-bandwidth") == 0) {
+            options.memory_bandwidth = true;
+        } else if (strncmp(argv[i], "--memory-size-mib=", 18) == 0) {
+            uint64_t parsed = 0;
+            if (!parse_positive_integer(argv[i] + 18,
+                    "--memory-size-mib",
+                    parsed))
+                return false;
+            options.memory_size_mib = parsed;
+            options.memory_size_set = true;
+        } else if (strncmp(argv[i], "--memory-repetitions=", 21) == 0) {
+            uint64_t parsed = 0;
+            if (!parse_positive_integer(argv[i] + 21,
+                    "--memory-repetitions",
+                    parsed))
+                return false;
+            if (parsed > numeric_limits<uint32_t>::max()) {
+                cerr << "Error: --memory-repetitions is too large." << endl;
+                return false;
+            }
+            options.memory_repetitions = static_cast<uint32_t>(parsed);
+            options.memory_repetitions_set = true;
         } else if (strncmp(argv[i], "--save=", 7) == 0) {
             options.save.enabled = true;
             options.save.path = argv[i] + 7;
@@ -186,6 +241,44 @@ bool parse_cli_options(int argc, char *argv[], CliOptions &options)
             }
             options.save.format_set = true;
         }
+    }
+    return true;
+}
+
+bool validate_memory_bandwidth_options(const CliOptions &options,
+    bool architecture_supported)
+{
+    if (!options.memory_bandwidth) {
+        if (options.memory_size_set || options.memory_repetitions_set) {
+            cerr << "Error: --memory-size-mib and --memory-repetitions "
+                 << "require --memory-bandwidth." << endl;
+            return false;
+        }
+        return true;
+    }
+
+    if (!architecture_supported) {
+        cerr << "Error: --memory-bandwidth is currently supported only on "
+             << "ARM64." << endl;
+        return false;
+    }
+    if (options.thread_pool.size() != 1) {
+        cerr << "Error: --memory-bandwidth requires exactly one CPU in "
+             << "--thread_pool." << endl;
+        return false;
+    }
+    if (!options.sweep_instruction.empty()) {
+        cerr << "Error: --memory-bandwidth cannot be combined with "
+             << "--sweep-instruction." << endl;
+        return false;
+    }
+    if (!options.filter.include_isa.empty() ||
+        !options.filter.exclude_isa.empty() ||
+        !options.filter.include_test.empty() ||
+        !options.filter.exclude_test.empty()) {
+        cerr << "Error: --memory-bandwidth cannot be combined with ISA or "
+             << "test filters." << endl;
+        return false;
     }
     return true;
 }

@@ -301,6 +301,44 @@ case "${test_case}" in
         fi
         ;;
 
+    memory_bandwidth)
+        if [[ "${arch}" != "arm64" ]]; then
+            fail "memory bandwidth regression is ARM64-only"
+        fi
+        expect_failure "requires exactly one CPU" \
+            "${binary}" "--thread_pool=[${test_core},${test_core}]" \
+            --memory-bandwidth --memory-size-mib=4 --memory-repetitions=1
+        expect_failure "--memory-size-mib must be a positive integer" \
+            "${binary}" "${thread_arg}" --memory-bandwidth --memory-size-mib=-1
+        expect_failure "require --memory-bandwidth" \
+            "${binary}" "${thread_arg}" --memory-size-mib=4
+        memory_output="${test_tmp}/memory.csv"
+        command_output="$(run_success "${binary}" "${thread_arg}" \
+            --memory-bandwidth --memory-size-mib=4 --memory-repetitions=1 \
+            --save="${memory_output}")"
+        require_contains "${command_output}" "Single-core memory bandwidth"
+        require_contains "${command_output}" "Median GB/s"
+        require_contains "${command_output}" "Load IPC"
+        require_contains "${command_output}" "Saved csv output:"
+        awk -F',' -v expected_core="${test_core}" '
+            NR == 1 {
+                columns = NF
+                if ($1 != "section" || $2 != "Core ID" ||
+                    $5 != "Median GB/s" || $7 != "Load IPC") exit 2
+                next
+            }
+            {
+                rows++
+                if (NF != columns || $1 != "memory_bandwidth" ||
+                    $2 != expected_core || $3 != "4 MiB" ||
+                    $5 + 0 <= 0) exit 3
+            }
+            END {
+                if (rows != 1) exit 4
+            }
+        ' "${memory_output}" || fail "memory bandwidth CSV output has an invalid structure"
+        ;;
+
     *)
         fail "unknown test case"
         ;;

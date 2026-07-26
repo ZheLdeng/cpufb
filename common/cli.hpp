@@ -57,6 +57,11 @@ struct CliOptions
     bool list_categories;
     bool list_instructions;
     std::string sweep_instruction;
+    bool memory_bandwidth;
+    std::uint64_t memory_size_mib;
+    std::uint32_t memory_repetitions;
+    bool memory_size_set;
+    bool memory_repetitions_set;
     SaveOptions save;
     bool thread_pool_set;
 
@@ -65,6 +70,8 @@ struct CliOptions
 
 bool parse_cli_options(int argc, char *argv[], CliOptions &options);
 bool finalize_save_options(SaveOptions &options);
+bool validate_memory_bandwidth_options(const CliOptions &options,
+    bool architecture_supported);
 
 std::string trim_arg_value(const std::string &value);
 std::string normalize_filter_value(std::string value);

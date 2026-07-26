@@ -763,6 +763,7 @@ int main(int argc, char *argv[])
         return 1;
     }
     if (!finalize_save_options(options.save)) return 1;
+    if (!validate_memory_bandwidth_options(options, false)) return 1;
 
     cpufb_register_isa();
     BenchmarkCatalog catalog = build_benchmark_catalog();

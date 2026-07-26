@@ -23,6 +23,7 @@
 #include "thread_pool.hpp"
 #include "cli.hpp"
 #include<load.hpp>
+#include<memory_bandwidth.hpp>
 #include<compute.hpp>
 #include<frequency.hpp>
 #include<multiple_issue.hpp>
@@ -1379,6 +1380,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "You may also set --idle_time parameter.\n");
         fprintf(stderr, "Usage: %s --thread_pool=[xxx] --idle_time=yyy [--include-isa=list] [--exclude-isa=list] [--include-test=list] [--exclude-test=list]\n", argv[0]);
         fprintf(stderr, "       %s --thread_pool=[xxx] --sweep-instruction='Core Computation'\n", argv[0]);
+        fprintf(stderr, "       %s --thread_pool=[core] --memory-bandwidth [--memory-size-mib=1024] [--memory-repetitions=5]\n", argv[0]);
         fprintf(stderr, "       %s --list-categories | --list-instructions\n", argv[0]);
         fprintf(stderr, "       add --save=path [--save-format=txt|csv] to write compact output.\n");
         fprintf(stderr, "[xxx] indicates all cores to benchmark.\n");
@@ -1399,6 +1401,9 @@ int main(int argc, char *argv[])
         return 1;
     }
     if (!finalize_save_options(options.save)) return 1;
+    if (!validate_memory_bandwidth_options(options, true)) return 1;
+    if (options.memory_bandwidth)
+        return run_arm64_memory_bandwidth(options) ? 0 : 1;
 
     cpufb_register_isa();
     BenchmarkCatalog catalog = build_benchmark_catalog();

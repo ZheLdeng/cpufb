@@ -136,6 +136,10 @@ set(_kernel_sources
     "${CPUFB_KERNEL_DIR}/frequency.cpp"
     "${CPUFB_KERNEL_DIR}/load.cpp"
 )
+if(CPUFB_ARCH STREQUAL "arm64")
+    list(APPEND _kernel_sources
+        "${CPUFB_KERNEL_DIR}/memory_bandwidth.cpp")
+endif()
 if(CPUFB_ARCH STREQUAL "x64")
     # The frequency probe is an x86-64 SSE/SSE2 baseline and must not depend
     # on whichever optional compute kernels were selected by CPUID/override.
@@ -247,6 +251,9 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND
             csv_output
             sweep_output
         )
+        if(CPUFB_ARCH STREQUAL "arm64")
+            list(APPEND _cli_test_names memory_bandwidth)
+        endif()
         foreach(test_name IN LISTS _cli_test_names)
             add_test(
                 NAME "cpufb_cli_${test_name}"

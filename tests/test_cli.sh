@@ -302,9 +302,6 @@ case "${test_case}" in
         ;;
 
     memory_bandwidth)
-        if [[ "${arch}" != "arm64" ]]; then
-            fail "memory bandwidth regression is ARM64-only"
-        fi
         expect_failure "requires exactly one CPU" \
             "${binary}" "--thread_pool=[${test_core},${test_core}]" \
             --memory-bandwidth --memory-size-mib=4 --memory-repetitions=1

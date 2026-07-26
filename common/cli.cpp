@@ -258,8 +258,8 @@ bool validate_memory_bandwidth_options(const CliOptions &options,
     }
 
     if (!architecture_supported) {
-        cerr << "Error: --memory-bandwidth is currently supported only on "
-             << "ARM64." << endl;
+        cerr << "Error: --memory-bandwidth is not supported on this "
+             << "architecture." << endl;
         return false;
     }
     if (options.thread_pool.size() != 1) {

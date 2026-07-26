@@ -136,7 +136,7 @@ set(_kernel_sources
     "${CPUFB_KERNEL_DIR}/frequency.cpp"
     "${CPUFB_KERNEL_DIR}/load.cpp"
 )
-if(CPUFB_ARCH STREQUAL "arm64")
+if(CPUFB_ARCH STREQUAL "arm64" OR CPUFB_ARCH STREQUAL "x64")
     list(APPEND _kernel_sources
         "${CPUFB_KERNEL_DIR}/memory_bandwidth.cpp")
 endif()
@@ -251,9 +251,7 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND
             csv_output
             sweep_output
         )
-        if(CPUFB_ARCH STREQUAL "arm64")
-            list(APPEND _cli_test_names memory_bandwidth)
-        endif()
+        list(APPEND _cli_test_names memory_bandwidth)
         foreach(test_name IN LISTS _cli_test_names)
             add_test(
                 NAME "cpufb_cli_${test_name}"

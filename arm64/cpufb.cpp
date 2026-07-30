@@ -43,7 +43,6 @@ using namespace cpufb_cli;
 extern vector<double> freq;
 static struct CacheData cache_size;
 static int64_t load_pl = 0;
-static int64_t g_latency = 0;
 typedef struct
 {
     string isa;
@@ -72,6 +71,7 @@ static BenchmarkCatalog build_benchmark_catalog()
     catalog.reserve(bm_list.size());
     for (const cpubm_t &item : bm_list)
         catalog.push_back(BenchmarkInfo(item.isa, item.type, item.dim));
+    pair_benchmark_latencies(catalog);
     return catalog;
 }
 
@@ -243,27 +243,26 @@ static ComputeResult cpubm_run_compute(tpool_t *tm, cpubm_t &item)
     return result;
 }
 
-static void cpubm_arm64_one(tpool_t *tm,
-    cpubm_t &item, Table &table)
+static int64_t cpubm_arm64_latency(tpool_t *tm, cpubm_t &item)
 {
-    // cout << "test fop begin" << endl;
     ComputeResult result = cpubm_run_compute(tm, item);
-    string perf = format_perf_value(result.perf, item.dim);
+    return result.ipc > 0.0 ?
+        static_cast<int64_t>(round(1.0 / result.ipc)) : 0;
+}
 
-    if (item.type.find("latency") != string::npos) {
-        g_latency = round(1 / result.ipc);
-    } else {
-        vector<string> cont;
-        cont.resize(table.getCol());
-        // cout << "table size = " << table.getCol() << endl;
-        cont[0] = item.isa;
-        cont[1] = item.type;
-        cont[2] = perf;
-        cont[3] = to_string(result.ipc);
-        cont[4] = g_latency != 0 ? to_string(g_latency) : "-";
-        g_latency = 0;
-        table.addOneItem(cont);
-    }
+static void cpubm_arm64_one(tpool_t *tm,
+    cpubm_t &item,
+    int64_t latency,
+    Table &table)
+{
+    ComputeResult result = cpubm_run_compute(tm, item);
+    vector<string> cont(table.getCol());
+    cont[0] = item.isa;
+    cont[1] = item.type;
+    cont[2] = format_perf_value(result.perf, item.dim);
+    cont[3] = to_string(result.ipc);
+    cont[4] = latency > 0 ? to_string(latency) : "-";
+    table.addOneItem(cont);
 
     // cout << "test fop end" << endl;
 }
@@ -524,11 +523,8 @@ static bool measure_instruction_sweep(const vector<int> &active_threads,
 
     if (latency_index >= 0) {
         cpubm_t latency_item = bm_list[latency_index];
-        ComputeResult latency_result = cpubm_run_compute(tm, latency_item);
-        if (latency_result.ipc > 0) {
-            sample.latency = to_string(static_cast<int64_t>(
-                round(1 / latency_result.ipc)));
-        }
+        int64_t latency = cpubm_arm64_latency(tm, latency_item);
+        if (latency > 0) sample.latency = to_string(latency);
     }
 
     cpubm_t selected_item = bm_list[benchmark_index];
@@ -547,7 +543,6 @@ static bool cpubm_do_instruction_sweep(vector<int> &set_of_threads,
     SweepConfig config;
     config.print_banner = true;
     config.include_metadata = true;
-    config.allow_latency_isa_fallback = true;
     return run_instruction_sweep(set_of_threads,
         idle_time,
         instruction,
@@ -606,20 +601,31 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);
+        BenchmarkCatalog catalog = build_benchmark_catalog();
 
         // traverse task list
-        for (i = 1; i < bm_list.size(); i++)
+        for (i = 0; i < static_cast<int>(bm_list.size()); i++)
         { 
             // cout << bm_list[i].type << endl;
+            if (catalog[i].is_latency) continue;
             if (!should_run_benchmark(filter, bm_list[i].isa, bm_list[i].dim))
                 continue;
 
-            sleep(idle_time);
             if (bm_list[i].dim.find("OPS") != string::npos) {
-                cpubm_arm64_one(tm, bm_list[i], *tables[0]);
+                int64_t latency = 0;
+                if (catalog[i].pair_index >= 0) {
+                    sleep(idle_time);
+                    latency = cpubm_arm64_latency(
+                        tm,
+                        bm_list[catalog[i].pair_index]);
+                }
+                sleep(idle_time);
+                cpubm_arm64_one(tm, bm_list[i], latency, *tables[0]);
             } else if (bm_list[i].dim.find("Byte/Cycle") != string::npos) {
+                sleep(idle_time);
                 cpubm_arm_load(tm, bm_list[i], *tables[1]);
             } else if (bm_list[i].dim.find("IPC") != string::npos) {
+                sleep(idle_time);
                 cpubm_arm_multiple_issue(tm, bm_list[i], *tables[4]);
             } else {
                 cout << "Wrong dimension !" << endl;

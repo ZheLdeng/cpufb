@@ -17,6 +17,8 @@ struct BenchmarkInfo
     std::string isa;
     std::string instruction;
     std::string metric;
+    bool is_latency;
+    int pair_index;
 
     BenchmarkInfo(const std::string &isa_value,
         const std::string &instruction_value,
@@ -24,6 +26,8 @@ struct BenchmarkInfo
 };
 
 typedef std::vector<BenchmarkInfo> BenchmarkCatalog;
+
+void pair_benchmark_latencies(BenchmarkCatalog &catalog);
 
 struct BenchmarkFilter
 {
@@ -118,7 +122,6 @@ struct SweepConfig
     std::string latency_column;
     bool print_banner;
     bool include_metadata;
-    bool allow_latency_isa_fallback;
 
     SweepConfig();
 };

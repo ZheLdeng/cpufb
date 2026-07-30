@@ -122,24 +122,13 @@ vector<int> find_compute_instruction_matches(const string &instruction,
 }
 
 int find_latency_pair_index(const BenchmarkCatalog &catalog,
-    int benchmark_index,
-    bool allow_isa_fallback)
+    int benchmark_index)
 {
     const BenchmarkInfo &selected = catalog[benchmark_index];
-    string latency_instruction = selected.instruction + "_latency";
-    string selected_isa = normalize_filter_value(selected.isa);
-
-    for (int i = 0; i < static_cast<int>(catalog.size()); ++i) {
-        const BenchmarkInfo &candidate = catalog[i];
-        if (candidate.instruction == latency_instruction &&
-            normalize_filter_value(candidate.isa) == selected_isa)
-            return i;
-    }
-    if (allow_isa_fallback) {
-        for (int i = 0; i < static_cast<int>(catalog.size()); ++i) {
-            if (catalog[i].instruction == latency_instruction) return i;
-        }
-    }
+    if (selected.pair_index >= 0 &&
+        selected.pair_index < static_cast<int>(catalog.size()) &&
+        catalog[selected.pair_index].is_latency)
+        return selected.pair_index;
     return -1;
 }
 
@@ -150,8 +139,50 @@ BenchmarkInfo::BenchmarkInfo(const string &isa_value,
     const string &metric_value) :
     isa(isa_value),
     instruction(instruction_value),
-    metric(metric_value)
+    metric(metric_value),
+    is_latency(ends_with_case_insensitive(instruction_value, "_latency")),
+    pair_index(-1)
 {
+}
+
+void pair_benchmark_latencies(BenchmarkCatalog &catalog)
+{
+    for (BenchmarkInfo &item : catalog) item.pair_index = -1;
+
+    for (int benchmark_index = 0;
+         benchmark_index < static_cast<int>(catalog.size());
+         ++benchmark_index) {
+        BenchmarkInfo &benchmark = catalog[benchmark_index];
+        if (benchmark.is_latency ||
+            get_benchmark_test_type(benchmark.metric) != "compute")
+            continue;
+
+        string latency_instruction = benchmark.instruction + "_latency";
+        string benchmark_isa = normalize_filter_value(benchmark.isa);
+        int latency_index = -1;
+
+        for (int candidate_index = 0;
+             candidate_index < static_cast<int>(catalog.size());
+             ++candidate_index) {
+            const BenchmarkInfo &candidate = catalog[candidate_index];
+            if (!candidate.is_latency ||
+                get_benchmark_test_type(candidate.metric) != "compute" ||
+                candidate.instruction != latency_instruction ||
+                normalize_filter_value(candidate.isa) != benchmark_isa)
+                continue;
+
+            if (latency_index >= 0) {
+                latency_index = -1;
+                break;
+            }
+            latency_index = candidate_index;
+        }
+
+        if (latency_index >= 0 && catalog[latency_index].pair_index < 0) {
+            benchmark.pair_index = latency_index;
+            catalog[latency_index].pair_index = benchmark_index;
+        }
+    }
 }
 
 SaveOptions::SaveOptions() :
@@ -361,7 +392,7 @@ bool is_latency_benchmark(const string &instruction)
 bool is_compute_instruction_candidate(const BenchmarkInfo &item)
 {
     return get_benchmark_test_type(item.metric) == "compute" &&
-        !is_latency_benchmark(item.instruction);
+        !item.is_latency;
 }
 
 void print_benchmark_categories(const BenchmarkCatalog &catalog)
@@ -530,8 +561,7 @@ SweepConfig::SweepConfig() :
     ipc_column("IPC"),
     latency_column("Latency"),
     print_banner(false),
-    include_metadata(false),
-    allow_latency_isa_fallback(false)
+    include_metadata(false)
 {
 }
 
@@ -571,9 +601,7 @@ bool run_instruction_sweep(const vector<int> &threads,
     }
 
     int benchmark_index = matches[0];
-    int latency_index = find_latency_pair_index(catalog,
-        benchmark_index,
-        config.allow_latency_isa_fallback);
+    int latency_index = find_latency_pair_index(catalog, benchmark_index);
     const BenchmarkInfo &selected = catalog[benchmark_index];
 
     if (config.print_banner) {

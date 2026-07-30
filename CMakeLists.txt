@@ -238,6 +238,21 @@ include(AndroidDeploy)
 # CLI regression tests
 # ---------------------------------------------------------------------------
 include(CTest)
+if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
+    add_executable(cpufb_latency_pairing_test
+        "${CMAKE_SOURCE_DIR}/tests/test_latency_pairing.cpp"
+    )
+    target_link_libraries(cpufb_latency_pairing_test PRIVATE cpufb_common)
+    add_test(
+        NAME cpufb_latency_pairing
+        COMMAND cpufb_latency_pairing_test
+    )
+    set_tests_properties(cpufb_latency_pairing PROPERTIES
+        LABELS "unit"
+        TIMEOUT 30
+    )
+endif()
+
 if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND
         (CPUFB_ARCH STREQUAL "x64" OR CPUFB_ARCH STREQUAL "arm64"))
     find_program(CPUFB_BASH_EXECUTABLE bash)

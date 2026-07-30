@@ -1,3 +1,4 @@
+#include "cli.hpp"
 #include "table.hpp"
 #include "thread_pool.hpp"
 
@@ -15,7 +16,7 @@
 #include<compute.hpp>
 #include <cmath>
 using namespace std;
-static int64_t g_latency = 0;
+using namespace cpufb_cli;
 static struct CacheData cache_size;
 
 typedef struct
@@ -28,6 +29,16 @@ typedef struct
     void (*bench)(int64_t);
 } cpubm_t;
 static vector<cpubm_t> bm_list;
+
+static BenchmarkCatalog build_benchmark_catalog()
+{
+    BenchmarkCatalog catalog;
+    catalog.reserve(bm_list.size());
+    for (const cpubm_t &item : bm_list)
+        catalog.push_back(BenchmarkInfo(item.isa, item.type, item.dim));
+    pair_benchmark_latencies(catalog);
+    return catalog;
+}
 
 static double get_time(struct timespec *start,
     struct timespec *end)
@@ -60,14 +71,15 @@ static void thread_func(void *params)
     bm->bench(bm->loop_time);
 }
 
-static void cpubm_riscv64_one(tpool_t *tm,
-    cpubm_t &item,
-    Table &table)
+struct ComputeResult
+{
+    double perf;
+    double ipc;
+};
+
+static ComputeResult cpubm_run_compute(tpool_t *tm, cpubm_t &item)
 {
     struct timespec start, end;
-    double time_used, perf, IPC;
-    char perfUnit = 'G';
-
     int i;
     int num_threads = tm->thread_num;
 
@@ -86,35 +98,48 @@ static void cpubm_riscv64_one(tpool_t *tm,
     tpool_wait(tm);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 
-    time_used = get_time(&start, &end);
-    perf = item.loop_time * item.comp_pl * num_threads /
-        time_used;
-    if (perf > 1e12)
-    {
-        perfUnit = 'T';
+    double time_used = get_time(&start, &end);
+    ComputeResult result;
+    result.perf = item.loop_time * item.comp_pl * num_threads / time_used;
+    result.ipc = item.loop_time * 24 * tm->thread_num /
+        time_used / freq[0] / 1e9;
+    return result;
+}
+
+static string format_perf_value(double perf, const string &dim)
+{
+    char perf_unit = 'G';
+    if (perf > 1e12) {
+        perf_unit = 'T';
         perf /= 1e12;
-    }
-    else
-    {
+    } else {
         perf /= 1e9;
     }
-    IPC = item.loop_time * 24 * tm->thread_num / time_used / freq[0] / 1e9;
-    stringstream ss1, ss2;
-    ss1 << setprecision(5) << perf << " " << perfUnit << item.dim;
-    if (item.type.find("latency") != string::npos) {
-        g_latency = round(1 / IPC);
-    } else {
-        vector<string> cont;
-        cont.resize(table.getCol());
-        // cout << "table size = " << table.getCol() << endl;
-        cont[0] = item.isa;
-        cont[1] = item.type;
-        cont[2] = ss1.str();
-        cont[3] = to_string(IPC);
-        cont[4] = g_latency != 0 ? to_string(g_latency) : "-";
-        g_latency = 0;
-        table.addOneItem(cont);
-    }
+    stringstream stream;
+    stream << setprecision(5) << perf << " " << perf_unit << dim;
+    return stream.str();
+}
+
+static int64_t cpubm_riscv64_latency(tpool_t *tm, cpubm_t &item)
+{
+    ComputeResult result = cpubm_run_compute(tm, item);
+    return result.ipc > 0.0 ?
+        static_cast<int64_t>(round(1.0 / result.ipc)) : 0;
+}
+
+static void cpubm_riscv64_one(tpool_t *tm,
+    cpubm_t &item,
+    int64_t latency,
+    Table &table)
+{
+    ComputeResult result = cpubm_run_compute(tm, item);
+    vector<string> cont(table.getCol());
+    cont[0] = item.isa;
+    cont[1] = item.type;
+    cont[2] = format_perf_value(result.perf, item.dim);
+    cont[3] = to_string(result.ipc);
+    cont[4] = latency > 0 ? to_string(latency) : "-";
+    table.addOneItem(cont);
 
 }
 
@@ -228,6 +253,7 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);
+        BenchmarkCatalog catalog = build_benchmark_catalog();
 
         get_cpu_freq(set_of_threads, *tables[3]);
 
@@ -235,11 +261,20 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
 
         // traverse task list
         
-        for (i = 1; i < bm_list.size(); i++)
+        for (i = 0; i < static_cast<int>(bm_list.size()); i++)
         {
-            sleep(idle_time);
+            if (catalog[i].is_latency) continue;
             if (bm_list[i].dim.find("OPS") != string::npos) {
-                cpubm_riscv64_one(tm, bm_list[i], *tables[0]);
+                int64_t latency = 0;
+                if (catalog[i].pair_index >= 0) {
+                    sleep(idle_time);
+                    latency = cpubm_riscv64_latency(
+                        tm,
+                        bm_list[catalog[i].pair_index]);
+                }
+                sleep(idle_time);
+                cpubm_riscv64_one(
+                    tm, bm_list[i], latency, *tables[0]);
             } else {
                 cout << "Wrong dimension !" << endl;
                 break;
@@ -342,4 +377,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-

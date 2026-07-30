@@ -110,7 +110,6 @@ typedef struct
     void (*bench)(float*, int, int64_t);
 } cache_bm_t;
 static vector<cpubm_t> bm_list;
-static double g_latency = 0.0;
 
 static BenchmarkCatalog build_benchmark_catalog()
 {
@@ -118,6 +117,7 @@ static BenchmarkCatalog build_benchmark_catalog()
     catalog.reserve(bm_list.size());
     for (const cpubm_t &item : bm_list)
         catalog.push_back(BenchmarkInfo(item.isa, item.type, item.dim));
+    pair_benchmark_latencies(catalog);
     return catalog;
 }
 
@@ -198,22 +198,25 @@ static string format_latency_cycles(double latency)
     return ss.str();
 }
 
-static void cpubm_x64_one(tpool_t *tm, cpubm_t &item, Table &table)
+static double cpubm_x64_latency(tpool_t *tm, cpubm_t &item)
 {
     ComputeResult result = cpubm_run_compute(tm, item);
-    if (is_latency_benchmark(item.type)) {
-        g_latency = result.ipc > 0.0 ? 1.0 / result.ipc : 0.0;
-        return;
-    }
+    return result.ipc > 0.0 ? 1.0 / result.ipc : 0.0;
+}
 
+static void cpubm_x64_one(tpool_t *tm,
+    cpubm_t &item,
+    double latency,
+    Table &table)
+{
+    ComputeResult result = cpubm_run_compute(tm, item);
     vector<string> cont;
     cont.resize(table.getCol());
     cont[0] = item.isa;
     cont[1] = item.type;
     cont[2] = format_perf_value(result.perf, item.dim);
     cont[3] = to_string(result.ipc);
-    cont[4] = g_latency > 0.0 ? format_latency_cycles(g_latency) : "-";
-    g_latency = 0.0;
+    cont[4] = latency > 0.0 ? format_latency_cycles(latency) : "-";
     table.addOneItem(cont);
 }
 
@@ -425,9 +428,9 @@ static bool measure_instruction_sweep(const vector<int> &active_threads,
 
     if (latency_index >= 0) {
         cpubm_t latency_item = bm_list[latency_index];
-        ComputeResult latency_result = cpubm_run_compute(tm, latency_item);
-        if (latency_result.ipc > 0.0)
-            sample.latency = format_latency_cycles(1.0 / latency_result.ipc);
+        double latency = cpubm_x64_latency(tm, latency_item);
+        if (latency > 0.0)
+            sample.latency = format_latency_cycles(latency);
     }
     cpubm_t selected = bm_list[benchmark_index];
     ComputeResult result = cpubm_run_compute(tm, selected);
@@ -471,16 +474,28 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
         get_theory_cache(&cache_size, set_of_threads[0]);
 
     tpool_t *tm = tpool_create(set_of_threads);
+    BenchmarkCatalog catalog = build_benchmark_catalog();
     for (size_t i = 0; i < bm_list.size(); ++i) {
+        if (catalog[i].is_latency) continue;
         if (!should_run_benchmark(filter, bm_list[i].isa, bm_list[i].dim))
             continue;
-        sleep(idle_time);
-        if (bm_list[i].dim.find("OPS") != string::npos)
-            cpubm_x64_one(tm, bm_list[i], *tables[0]);
-        else if (bm_list[i].dim.find("Byte/") != string::npos)
+        if (bm_list[i].dim.find("OPS") != string::npos) {
+            double latency = 0.0;
+            if (catalog[i].pair_index >= 0) {
+                sleep(idle_time);
+                latency = cpubm_x64_latency(
+                    tm,
+                    bm_list[catalog[i].pair_index]);
+            }
+            sleep(idle_time);
+            cpubm_x64_one(tm, bm_list[i], latency, *tables[0]);
+        } else if (bm_list[i].dim.find("Byte/") != string::npos) {
+            sleep(idle_time);
             cpubm_x64_load(bm_list[i], *tables[1]);
-        else if (bm_list[i].dim.find("IPC") != string::npos)
+        } else if (bm_list[i].dim.find("IPC") != string::npos) {
+            sleep(idle_time);
             cpubm_x64_multiple_issue(tm, bm_list[i], *tables[4]);
+        }
     }
 
     bool ok = print_and_save_benchmark_tables(filter, save_options, tables);

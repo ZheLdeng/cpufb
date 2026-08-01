@@ -5,6 +5,7 @@
 #include <cmath>
 #include <unistd.h>
 #include <cstring>
+#include <limits>
 #include <vector>
 #include <iostream>
 #include <cacheline_probe.hpp>
@@ -327,9 +328,13 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
     read_data(cpu_id, &cache_data->theory_cacheline, "/cache/index0/coherency_line_size");
 #endif
 #ifdef __APPLE__ 
-    size_t size = sizeof(cache_data->theory_cacheline);
-    if (sysctlbyname("hw.cachelinesize", &cache_data->theory_cacheline, &size, NULL, 0) != 0) {
+    uint64_t cacheline_bytes = 0;
+    size_t size = sizeof(cacheline_bytes);
+    if (sysctlbyname("hw.cachelinesize", &cacheline_bytes, &size, NULL, 0) != 0) {
         perror("sysctlbyname cachelinesize failed");
+    } else if (cacheline_bytes <=
+            static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+        cache_data->theory_cacheline = static_cast<int>(cacheline_bytes);
     }
 #endif
     const int fallback_cacheline =
@@ -363,15 +368,23 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     read_data(cpu_id, &cache_size->theory_L2, "/cache/index2/size");
 #endif
 #ifdef __APPLE__ 
-    size_t size = sizeof(int);
-    if (sysctlbyname("hw.perflevel0.l1dcachesize", &cache_size->theory_L1, &size, NULL, 0) != 0) {
+    uint64_t l1_bytes = 0;
+    size_t size = sizeof(l1_bytes);
+    if (sysctlbyname("hw.perflevel0.l1dcachesize", &l1_bytes, &size, NULL, 0) != 0) {
         perror("sysctlbyname l1dcachesize failed");
+    } else if (l1_bytes / 1024 <=
+            static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+        cache_size->theory_L1 = static_cast<int>(l1_bytes / 1024);
     }
-    if (sysctlbyname("hw.perflevel0.l2cachesize", &cache_size->theory_L2, &size, NULL, 0) != 0) {
+
+    uint64_t l2_bytes = 0;
+    size = sizeof(l2_bytes);
+    if (sysctlbyname("hw.perflevel0.l2cachesize", &l2_bytes, &size, NULL, 0) != 0) {
         perror("sysctlbyname l2cachesize failed");
+    } else if (l2_bytes / 1024 <=
+            static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+        cache_size->theory_L2 = static_cast<int>(l2_bytes / 1024);
     }
-    cache_size->theory_L1 /= 1024;
-    cache_size->theory_L2 /= 1024;
 
 #endif
     random_access(time_used);

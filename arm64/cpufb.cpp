@@ -495,12 +495,20 @@ static bool prepare_instruction_sweep(const vector<int> &threads,
     void *)
 {
 #ifdef _SVE_
+#ifdef __APPLE__
+    cout << " SVE : " << load_sve_vector_bytes() << endl;
+#else
     if (arm64_runtime_features().sve)
         cout << " SVE : " << load_sve_vector_bytes() << endl;
 #endif
+#endif
 #ifdef _SME_
+#ifdef __APPLE__
+    cout << "SME : " << rdsvl() * 8 << endl;
+#else
     if (arm64_runtime_features().sme)
         cout << "SME : " << rdsvl() * 8 << endl;
+#endif
 #endif
 
     Table freq_table;
@@ -573,13 +581,21 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
         }
         printf("\n");
 #ifdef _SVE_
+#ifdef __APPLE__
+        cout << " SVE : " << load_sve_vector_bytes() << endl;
+#else
         if (arm64_runtime_features().sve)
             cout << " SVE : " << load_sve_vector_bytes() << endl;
 #endif
+#endif
 
 #ifdef _SME_
+#ifdef __APPLE__
+        cout << "SME : " << rdsvl() * 8 << endl;
+#else
         if (arm64_runtime_features().sme)
             cout << "SME : " << rdsvl() * 8 << endl;
+#endif
 #endif
         // set table head
         vector<Table*> tables;
@@ -1347,8 +1363,22 @@ static void cpufb_register_isa()
     require_feature("_SVE_");
     reg_new_isa("SVE_MULTI_ISSUE", "ld1w/fmla", "IPC",
         kMultiIssueLoopTime, 34LL, (void*)sve_multiple_issue);
+    reg_new_isa("SVE_ADD_MULTI_ISSUE", "ld1w/fmla+add(5:1)", "IPC",
+        kMultiIssueLoopTime, 26LL, (void*)sve_scalar_add_5_1);
+    reg_new_isa("SVE_ADD_MULTI_ISSUE", "ld1w/fmla+add(5:2)", "IPC",
+        kMultiIssueLoopTime, 30LL, (void*)sve_scalar_add_5_2);
+    reg_new_isa("SVE_ADD_MULTI_ISSUE", "ld1w/fmla+add(5:3)", "IPC",
+        kMultiIssueLoopTime, 34LL, (void*)sve_scalar_add_5_3);
+    reg_new_isa("SVE_ADD_MULTI_ISSUE", "ld1w/fmla+add(5:4)", "IPC",
+        kMultiIssueLoopTime, 38LL, (void*)sve_scalar_add_5_4);
+    reg_new_isa("SVE_ADD_MULTI_ISSUE", "ld1w/fmla+add(5:5)", "IPC",
+        kMultiIssueLoopTime, 42LL, (void*)sve_scalar_add_5_5);
+    reg_new_isa("SVE_ADD_MULTI_ISSUE", "ld1w/fmla+add(5:6)", "IPC",
+        kMultiIssueLoopTime, 46LL, (void*)sve_scalar_add_5_6);
 #endif
     require_feature("_ISSUE_");
+    reg_new_isa("NEON_MULTI_ISSUE", "ldr/fmla", "IPC",
+        kMultiIssueLoopTime, 34LL, (void*)neon_multiple_issue);
     reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC",
         kMultiIssueLoopTime, 50LL, (void*)multiple_issue);
 

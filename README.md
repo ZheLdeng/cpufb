@@ -179,6 +179,26 @@ See [X86_BENCHMARK_ACCOUNTING.md](X86_BENCHMARK_ACCOUNTING.md) for the audited
 operation counts and the exact meaning of TSC-based instruction rate and
 latency metrics. Remaining follow-up work is tracked in [TODO.md](TODO.md).
 
+## Compute/load/store issue model
+
+Pass one logical kernel group to the standalone model. Neoverse V3 SVE128
+FMLA is the default. The intended BF16 model for the eight-core Neoverse V1
+SVE256 machine uses the BFMMLA profile:
+
+```sh
+./tools/issue_model.py 1F+2L
+./tools/issue_model.py 4F+5L
+./tools/issue_model.py 4F+3L+2S
+./tools/issue_model.py 4F+3L+2S \
+    --profile neoverse-v1-sve256-bfmmla
+```
+
+It reports compute/load/store IPC, resource utilization, compute and memory
+efficiency, and operations/bytes per cycle. See
+[ISSUE_MODEL.md](ISSUE_MODEL.md) for the V3 FMLA, V1 FMLA, and V1 BFMMLA
+models, calibration points, measured error budgets, JSON output, and
+capacity overrides.
+
 ## Automated CLI regression tests
 
 Native x86-64 and ARM64 builds register CTest coverage for category/ISA

@@ -138,11 +138,13 @@ notice. New code should use the CMake build above.
 
 `./cpufb --thread_pool=[xxx] --idle_time=yyy`
 
-### Single-core memory bandwidth
+### Memory bandwidth
 
 ```sh
 ./cpufb --thread_pool='[0]' --memory-bandwidth
 ./cpufb --thread_pool='[0]' --memory-bandwidth --memory-size-mib=1024
+# One independent stream per selected CPU; reports aggregate throughput.
+./cpufb --thread_pool='[96-127]' --memory-bandwidth --memory-size-mib=64
 ```
 
 On Linux hosts where unprivileged PMU cycle counters are unavailable, set
@@ -153,32 +155,50 @@ cycle-normalized run.  It takes precedence over the cpufreq-sysfs fallback:
 CPUFB_FREQ_GHZ=3.3 ./cpufb --thread_pool='[96]' --include-test=load
 ```
 
-`--memory-bandwidth` measures one sequential read stream.  When
-`--memory-size-mib` is omitted, cpufb chooses
-`max(256 MiB, 4 x detected last-level cache)` and prints the topology source in
-the result table.  Linux selects the highest data/unified cache from
+`--memory-bandwidth` measures one independent sequential-read stream per
+selected CPU and reports their aggregate throughput.  `--memory-size-mib` is
+the workset of each stream. When omitted, cpufb chooses
+`max(256 MiB, 4 x detected last-level cache)` per stream and prints the
+topology source in the result table. Linux selects the highest data/unified cache from
 `/sys/devices/system/cpu/cpuN/cache/index*`.  macOS uses a reported L3 cache
 when available; Apple Silicon does not publicly expose its system-level cache,
 so it falls back to the largest reported performance-level L2 cache.  Set
-`--memory-size-mib` explicitly when a fixed workset is required.
+`--memory-size-mib` explicitly when a fixed workset is required. The same
+size/repetition options can be used with `--include-test=cache` to configure
+that table's DRAM row.
 
-### Cache probe and cache-bandwidth separation
+### Cache hierarchy and bandwidth
 
 ```sh
-# Cache capacity, associativity, and cache-line probing; intentionally slow.
+# Cache capacity/associativity/cache-line probes, plus L3 (when reported) and
+# one sequential DRAM-read stream per listed core. Multiple cores are timed
+# synchronously and reported as aggregate bandwidth.
 ./cpufb --thread_pool='[0]' --include-test=cache
+# Optional override for the cache table's DRAM row.
+./cpufb --thread_pool='[0]' --include-test=cache \
+    --memory-size-mib=1024 --memory-repetitions=3
 
 # L1/L2-resident load-instruction bandwidth only; no empirical cache probe.
 ./cpufb --thread_pool='[0]' --include-test=load
 ```
 
-The `cache` category owns the empirical pointer-chase capacity probe and the
-associativity probe.  The `load` category obtains L1/L2 capacity directly from
-Linux cache-topology sysfs or macOS cache sysctl, then uses half that capacity
-(up to 32 MiB) as its bandwidth workset.  A topology failure uses conservative
-64 KiB (L1) and 1 MiB (L2) defaults.  The old pointer-chase loop is a capacity
-probe, not a published cache-latency result; it is therefore not run by
-`--include-test=load`.
+The `cache` category owns the empirical pointer-chase capacity and
+associativity probes. It also reports a topology-detected L3 capacity and an
+L3 sequential-read row when the OS exposes an L3. For multiple selected cores,
+the L3 workset is fixed below the shared L3 and split evenly between streams;
+the L3 row is omitted once a per-stream share would fit in private L2. The same
+table always includes a DRAM sequential-read row. Each selected CPU has its
+own DRAM stream whose default workset is `max(256 MiB, 4 x detected
+last-level cache)`. Keep a multi-core L3 run within one LLC/NUMA domain. If no
+L3 is reported (common on Apple Silicon), the L3 rows are omitted and only the
+memory row is added.
+
+The `load` category remains the instruction-level L1/L2 cache-bandwidth table.
+It obtains L1/L2 capacity directly from Linux cache-topology sysfs or macOS
+cache sysctl, then uses half that capacity (up to 32 MiB) as its bandwidth
+workset. A topology failure uses conservative 64 KiB (L1) and 1 MiB (L2)
+defaults. The old pointer-chase loop is a capacity probe, not a published
+cache-latency result; it is therefore not run by `--include-test=load`.
 
   --thread_pool: [xxx] is the list of cpu thread to benchmarking, from setting affinities. Please reference the result of lstopo command. For example, [0,3,5-8,13-15].
 

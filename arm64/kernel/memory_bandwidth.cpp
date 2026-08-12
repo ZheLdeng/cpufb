@@ -3,8 +3,10 @@
 #include "cache_topology.hpp"
 #include "load.hpp"
 #include "table.hpp"
+#include "thread_pool.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <climits>
 #include <cmath>
@@ -46,6 +48,8 @@ using std::vector;
 
 namespace {
 
+constexpr std::int64_t kL3StreamPasses = 8;
+
 typedef void (*StreamKernel)(float *, int, int64_t);
 
 struct KernelSpec
@@ -62,6 +66,20 @@ struct BandwidthSample
     double gb_per_second;
     double bytes_per_cycle;
     double load_ipc;
+};
+
+struct BandwidthReport
+{
+    std::uint64_t bytes = 0;
+    std::uint64_t total_bytes = 0;
+    std::size_t stream_count = 1;
+    std::int64_t passes_per_sample = 1;
+    string kernel;
+    string workset_source;
+    string cycle_source;
+    BandwidthSample median = {0.0, 0.0, 0.0, 0.0};
+    double minimum_gb_per_second = 0.0;
+    double maximum_gb_per_second = 0.0;
 };
 
 double elapsed_seconds(const timespec &start, const timespec &end)
@@ -201,6 +219,106 @@ private:
     int fd_;
 };
 
+struct ParallelStreamTask
+{
+    const KernelSpec &kernel;
+    float *data;
+    int inner_loop;
+    std::int64_t passes_per_sample;
+    std::size_t stream_bytes;
+    std::atomic<std::size_t> next_worker;
+    vector<std::uint64_t> worker_cycles;
+    vector<timespec> worker_start;
+    vector<timespec> worker_end;
+
+    ParallelStreamTask(const KernelSpec &kernel_value,
+        float *data_value,
+        int inner_loop_value,
+        std::int64_t passes_per_sample_value,
+        std::size_t stream_bytes_value,
+        std::size_t worker_count) :
+        kernel(kernel_value),
+        data(data_value),
+        inner_loop(inner_loop_value),
+        passes_per_sample(passes_per_sample_value),
+        stream_bytes(stream_bytes_value),
+        next_worker(0),
+        worker_cycles(worker_count, 0),
+        worker_start(worker_count),
+        worker_end(worker_count)
+    {
+    }
+
+    void reset()
+    {
+        next_worker.store(0, std::memory_order_relaxed);
+        std::fill(worker_cycles.begin(), worker_cycles.end(), 0);
+    }
+};
+
+float *parallel_worker_data(ParallelStreamTask &task,
+    std::size_t worker_index)
+{
+    return reinterpret_cast<float *>(reinterpret_cast<char *>(task.data) +
+        worker_index * task.stream_bytes);
+}
+
+void parallel_stream_initialize(void *params)
+{
+    ParallelStreamTask *task =
+        reinterpret_cast<ParallelStreamTask *>(params);
+    const std::size_t worker_index = task->next_worker.fetch_add(1,
+        std::memory_order_relaxed);
+    std::memset(parallel_worker_data(*task, worker_index), 1,
+        task->stream_bytes);
+}
+
+void parallel_stream_warmup(void *params)
+{
+    ParallelStreamTask *task =
+        reinterpret_cast<ParallelStreamTask *>(params);
+    const std::size_t worker_index = task->next_worker.fetch_add(1,
+        std::memory_order_relaxed);
+    task->kernel.function(parallel_worker_data(*task, worker_index),
+        task->inner_loop, 1);
+}
+
+void parallel_stream_measure(void *params)
+{
+    ParallelStreamTask *task =
+        reinterpret_cast<ParallelStreamTask *>(params);
+    const std::size_t worker_index = task->next_worker.fetch_add(1,
+        std::memory_order_relaxed);
+    CycleCounter counter;
+    const bool counter_started = counter.start();
+    clock_gettime(CLOCK_MONOTONIC_RAW, &task->worker_start[worker_index]);
+    task->kernel.function(parallel_worker_data(*task, worker_index),
+        task->inner_loop, task->passes_per_sample);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &task->worker_end[worker_index]);
+    if (counter_started)
+        task->worker_cycles[worker_index] = counter.stop();
+}
+
+bool timespec_before(const timespec &left, const timespec &right)
+{
+    return left.tv_sec < right.tv_sec ||
+        (left.tv_sec == right.tv_sec && left.tv_nsec < right.tv_nsec);
+}
+
+double parallel_stream_elapsed_seconds(const ParallelStreamTask &task)
+{
+    if (task.worker_start.empty()) return 0.0;
+    timespec first = task.worker_start.front();
+    timespec last = task.worker_end.front();
+    for (std::size_t index = 1; index < task.worker_start.size(); ++index) {
+        if (timespec_before(task.worker_start[index], first))
+            first = task.worker_start[index];
+        if (timespec_before(last, task.worker_end[index]))
+            last = task.worker_end[index];
+    }
+    return elapsed_seconds(first, last);
+}
+
 KernelSpec select_stream_kernel()
 {
 #if defined(_SVE_) && defined(__linux__) && !defined(__APPLE__)
@@ -227,6 +345,7 @@ KernelSpec select_stream_kernel()
 BandwidthSample measure_once(const KernelSpec &kernel,
     float *data,
     int inner_loop,
+    std::int64_t passes_per_sample,
     double bytes,
     double load_instructions,
     CycleCounter &counter,
@@ -236,7 +355,7 @@ BandwidthSample measure_once(const KernelSpec &kernel,
     timespec end;
     bool counter_started = counter.start();
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    kernel.function(data, inner_loop, 1);
+    kernel.function(data, inner_loop, passes_per_sample);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     std::uint64_t cycles = counter_started ? counter.stop() : 0;
 
@@ -255,16 +374,11 @@ BandwidthSample measure_once(const KernelSpec &kernel,
     return sample;
 }
 
-} // namespace
-
-bool run_arm64_memory_bandwidth(const CliOptions &options)
+bool select_memory_workset(const CliOptions &options,
+    int cpu,
+    std::uint64_t &requested_bytes,
+    string &workset_source)
 {
-    const int cpu = options.thread_pool[0];
-    if (!pin_current_thread(cpu)) return false;
-
-    const KernelSpec kernel = select_stream_kernel();
-    std::uint64_t requested_bytes = 0;
-    string workset_source;
     if (options.memory_size_set) {
         if (options.memory_size_mib >
             (std::numeric_limits<std::uint64_t>::max() >> 20)) {
@@ -274,36 +388,123 @@ bool run_arm64_memory_bandwidth(const CliOptions &options)
         }
         requested_bytes = options.memory_size_mib << 20;
         workset_source = "CLI --memory-size-mib";
-    } else {
-        const cpufb::LastLevelCacheInfo cache =
-            cpufb::detect_last_level_cache(cpu);
-        requested_bytes = cpufb::recommended_stream_workset_bytes(cache);
-        if (cache.bytes == 0) {
-            workset_source = "auto: 256 MiB fallback (cache topology unavailable)";
-        } else {
-            workset_source = "auto: max(256 MiB, 4 x " +
-                cpufb::format_cache_capacity(cache.bytes) + ") from " +
-                cache.source;
-        }
+        return true;
     }
 
+    const cpufb::LastLevelCacheInfo cache =
+        cpufb::detect_last_level_cache(cpu);
+    requested_bytes = cpufb::recommended_stream_workset_bytes(cache);
+    if (cache.bytes == 0) {
+        workset_source =
+            "auto: 256 MiB fallback (cache topology unavailable)";
+    } else {
+        workset_source = "auto: max(256 MiB, 4 x " +
+            cpufb::format_cache_capacity(cache.bytes) + ") from " +
+            cache.source;
+    }
+    return true;
+}
+
+bool select_l3_workset(int cpu,
+    std::uint64_t bytes_per_block,
+    std::uint64_t &requested_bytes,
+    string &workset_source)
+{
+    const cpufb::CacheLevelInfo l3 =
+        cpufb::detect_data_cache_level(cpu, 3);
+    if (l3.bytes == 0) return false;
+
+    const cpufb::CacheLevelInfo l2 =
+        cpufb::detect_data_cache_level(cpu, 2);
+    // The L3 stream must evict the private L2 while remaining below L3.
+    // Start at 75% of L3, then move to the midpoint if a comparatively large
+    // L2 would otherwise contain the whole stream.
+    std::uint64_t candidate = l3.bytes - l3.bytes / 4;
+    if (l2.bytes > 0 && candidate <= l2.bytes && l3.bytes > l2.bytes) {
+        candidate = l2.bytes + (l3.bytes - l2.bytes) / 2;
+    }
+    candidate -= candidate % bytes_per_block;
+    if (candidate == 0 || candidate >= l3.bytes ||
+        (l2.bytes > 0 && candidate <= l2.bytes)) {
+        return false;
+    }
+
+    requested_bytes = candidate;
+    workset_source = "auto: L2 < workset < L3 (" +
+        cpufb::format_cache_capacity(l3.bytes) + ") from " + l3.source;
+    return true;
+}
+
+bool select_parallel_l3_workset(const vector<int> &cpus,
+    std::uint64_t bytes_per_block,
+    std::uint64_t &bytes_per_stream,
+    string &workset_source)
+{
+    if (cpus.empty()) return false;
+
+    std::uint64_t aggregate_bytes = 0;
+    if (!select_l3_workset(cpus.front(), bytes_per_block, aggregate_bytes,
+            workset_source)) {
+        return false;
+    }
+    if (cpus.size() == 1) {
+        bytes_per_stream = aggregate_bytes;
+        return true;
+    }
+
+    std::uint64_t largest_l2 = 0;
+    for (const int cpu : cpus) {
+        largest_l2 = std::max(largest_l2,
+            cpufb::detect_data_cache_level(cpu, 2).bytes);
+    }
+
+    bytes_per_stream = aggregate_bytes /
+        static_cast<std::uint64_t>(cpus.size());
+    bytes_per_stream -= bytes_per_stream % bytes_per_block;
+    // A stream no larger than its private L2 would not measure shared-L3
+    // throughput.  Do not silently turn the L3 row into an L2 measurement.
+    if (bytes_per_stream == 0 || bytes_per_stream <= largest_l2) return false;
+
+    const std::uint64_t actual_aggregate = bytes_per_stream * cpus.size();
+    const cpufb::CacheLevelInfo l3 =
+        cpufb::detect_data_cache_level(cpus.front(), 3);
+    workset_source = "auto: " +
+        cpufb::format_cache_capacity(actual_aggregate) + " aggregate / " +
+        cpufb::format_cache_capacity(bytes_per_stream) + " per stream; L2 < "
+        "per-stream workset < L3 (" + cpufb::format_cache_capacity(l3.bytes) +
+        ") from " + l3.source;
+    return true;
+}
+
+bool measure_stream_bandwidth(int cpu,
+    const KernelSpec &kernel,
+    std::uint64_t requested_bytes,
+    const string &workset_source,
+    std::uint32_t repetitions,
+    std::uint32_t idle_time,
+    std::int64_t passes_per_sample,
+    BandwidthReport &report)
+{
+    if (!pin_current_thread(cpu)) return false;
     if (requested_bytes == 0 ||
-        requested_bytes > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
-        std::cerr << "Error: selected memory workset is too large for this build."
+        requested_bytes > static_cast<std::uint64_t>(
+            std::numeric_limits<std::size_t>::max())) {
+        std::cerr << "Error: selected stream workset is too large for this build."
                   << std::endl;
         return false;
     }
+
     const std::size_t bytes = static_cast<std::size_t>(requested_bytes);
     if (bytes < kernel.bytes_per_block ||
         bytes % kernel.bytes_per_block != 0) {
-        std::cerr << "Error: memory workset must be a multiple of "
+        std::cerr << "Error: stream workset must be a multiple of "
                   << kernel.bytes_per_block << " bytes for " << kernel.name
                   << "." << std::endl;
         return false;
     }
     const std::uint64_t inner_loop_u64 = bytes / kernel.bytes_per_block;
     if (inner_loop_u64 > static_cast<std::uint64_t>(INT_MAX)) {
-        std::cerr << "Error: memory workset is too large for the stream kernel."
+        std::cerr << "Error: stream workset is too large for the stream kernel."
                   << std::endl;
         return false;
     }
@@ -323,7 +524,7 @@ bool run_arm64_memory_bandwidth(const CliOptions &options)
     std::memset(allocation, 1, bytes);
     float *data = static_cast<float *>(allocation);
 
-    if (options.idle_time > 0) sleep(options.idle_time);
+    if (idle_time > 0) sleep(idle_time);
     kernel.function(data, inner_loop, 1);
 
     CycleCounter counter;
@@ -331,9 +532,8 @@ bool run_arm64_memory_bandwidth(const CliOptions &options)
         counter.available() ? 0.0 : read_fallback_cpu_frequency_hz(cpu);
     string cycle_source = "perf CPU cycles";
     if (!counter.available()) {
-        cycle_source = fallback_frequency_hz > 0.0
-            ? "cpufreq estimate"
-            : "unavailable";
+        cycle_source = fallback_frequency_hz > 0.0 ?
+            "cpufreq estimate" : "unavailable";
         std::cerr << "Warning: hardware CPU cycles are unavailable; ";
         if (fallback_frequency_hz > 0.0)
             std::cerr << "B/cycle and load IPC use a cpufreq estimate.";
@@ -342,24 +542,27 @@ bool run_arm64_memory_bandwidth(const CliOptions &options)
         std::cerr << std::endl;
     }
 
-    const double transferred_bytes = static_cast<double>(bytes);
+    const double transferred_bytes = static_cast<double>(bytes) *
+        passes_per_sample;
     const double load_instructions =
-        static_cast<double>(inner_loop_u64 * kernel.loads_per_block);
+        static_cast<double>(inner_loop_u64 * kernel.loads_per_block) *
+        passes_per_sample;
     vector<BandwidthSample> samples;
-    samples.reserve(options.memory_repetitions);
+    samples.reserve(repetitions);
     for (std::uint32_t repetition = 0;
-         repetition < options.memory_repetitions;
+         repetition < repetitions;
          ++repetition) {
         BandwidthSample sample = measure_once(kernel,
             data,
             inner_loop,
+            passes_per_sample,
             transferred_bytes,
             load_instructions,
             counter,
             fallback_frequency_hz);
         if (sample.seconds <= 0.0 || !std::isfinite(sample.gb_per_second)) {
             std::free(allocation);
-            std::cerr << "Error: memory bandwidth timing failed." << std::endl;
+            std::cerr << "Error: stream bandwidth timing failed." << std::endl;
             return false;
         }
         samples.push_back(sample);
@@ -370,9 +573,322 @@ bool run_arm64_memory_bandwidth(const CliOptions &options)
         [](const BandwidthSample &left, const BandwidthSample &right) {
             return left.gb_per_second < right.gb_per_second;
         });
-    const BandwidthSample &median = samples[samples.size() / 2];
-    const double minimum = samples.front().gb_per_second;
-    const double maximum = samples.back().gb_per_second;
+    report.bytes = requested_bytes;
+    report.total_bytes = requested_bytes;
+    report.stream_count = 1;
+    report.passes_per_sample = passes_per_sample;
+    report.kernel = kernel.name;
+    report.workset_source = workset_source;
+    report.cycle_source = cycle_source;
+    report.median = samples[samples.size() / 2];
+    report.minimum_gb_per_second = samples.front().gb_per_second;
+    report.maximum_gb_per_second = samples.back().gb_per_second;
+    return true;
+}
+
+bool measure_parallel_stream_bandwidth(const vector<int> &cpus,
+    const KernelSpec &kernel,
+    std::uint64_t requested_bytes,
+    const string &workset_source,
+    std::uint32_t repetitions,
+    std::uint32_t idle_time,
+    std::int64_t passes_per_sample,
+    BandwidthReport &report)
+{
+    if (cpus.empty()) {
+        std::cerr << "Error: no CPUs were selected for the stream benchmark."
+                  << std::endl;
+        return false;
+    }
+    if (cpus.size() == 1) {
+        return measure_stream_bandwidth(cpus.front(), kernel, requested_bytes,
+            workset_source, repetitions, idle_time, passes_per_sample, report);
+    }
+    if (requested_bytes == 0 ||
+        requested_bytes > static_cast<std::uint64_t>(
+            std::numeric_limits<std::size_t>::max()) ||
+        requested_bytes < kernel.bytes_per_block ||
+        requested_bytes % kernel.bytes_per_block != 0) {
+        std::cerr << "Error: stream workset must be a nonzero multiple of "
+                  << kernel.bytes_per_block << " bytes for " << kernel.name
+                  << "." << std::endl;
+        return false;
+    }
+    if (requested_bytes > std::numeric_limits<std::uint64_t>::max() /
+            static_cast<std::uint64_t>(cpus.size())) {
+        std::cerr << "Error: aggregate stream workset is too large."
+                  << std::endl;
+        return false;
+    }
+
+    const std::uint64_t total_bytes_u64 = requested_bytes * cpus.size();
+    if (total_bytes_u64 > static_cast<std::uint64_t>(
+            std::numeric_limits<std::size_t>::max())) {
+        std::cerr << "Error: aggregate stream workset is too large for this "
+                  << "build." << std::endl;
+        return false;
+    }
+    const std::size_t stream_bytes = static_cast<std::size_t>(requested_bytes);
+    const std::size_t total_bytes = static_cast<std::size_t>(total_bytes_u64);
+    const std::uint64_t inner_loop_u64 = requested_bytes /
+        kernel.bytes_per_block;
+    if (inner_loop_u64 > static_cast<std::uint64_t>(INT_MAX)) {
+        std::cerr << "Error: stream workset is too large for the stream kernel."
+                  << std::endl;
+        return false;
+    }
+
+    void *allocation = NULL;
+    const int allocation_status = posix_memalign(&allocation, 4096, total_bytes);
+    if (allocation_status != 0) {
+        std::cerr << "Error: failed to allocate "
+                  << cpufb::format_cache_capacity(total_bytes_u64) << ": "
+                  << std::strerror(allocation_status) << std::endl;
+        return false;
+    }
+#ifdef __linux__
+    (void)madvise(allocation, total_bytes, MADV_HUGEPAGE);
+#endif
+
+    tpool_t *thread_pool = tpool_create(cpus);
+    if (thread_pool == NULL) {
+        std::free(allocation);
+        std::cerr << "Error: failed to create stream benchmark workers."
+                  << std::endl;
+        return false;
+    }
+
+    ParallelStreamTask task(kernel, static_cast<float *>(allocation),
+        static_cast<int>(inner_loop_u64), passes_per_sample, stream_bytes,
+        cpus.size());
+    timespec start;
+    timespec end;
+    task.reset();
+    if (!tpool_run_all(thread_pool, parallel_stream_initialize, &task,
+            &start, &end)) {
+        tpool_destroy(thread_pool);
+        std::free(allocation);
+        std::cerr << "Error: failed to initialize stream workers."
+                  << std::endl;
+        return false;
+    }
+
+    if (idle_time > 0) sleep(idle_time);
+    task.reset();
+    if (!tpool_run_all(thread_pool, parallel_stream_warmup, &task,
+            &start, &end)) {
+        tpool_destroy(thread_pool);
+        std::free(allocation);
+        std::cerr << "Error: failed to warm stream workers."
+                  << std::endl;
+        return false;
+    }
+
+    double fallback_frequency_hz = 0.0;
+    bool fallback_frequency_available = true;
+    for (const int cpu : cpus) {
+        const double frequency_hz = read_fallback_cpu_frequency_hz(cpu);
+        if (frequency_hz <= 0.0) {
+            fallback_frequency_available = false;
+            break;
+        }
+        fallback_frequency_hz += frequency_hz;
+    }
+
+    vector<BandwidthSample> samples;
+    samples.reserve(repetitions);
+    bool all_samples_have_cycles = true;
+    for (std::uint32_t repetition = 0;
+         repetition < repetitions;
+         ++repetition) {
+        task.reset();
+        if (!tpool_run_all(thread_pool, parallel_stream_measure, &task,
+                &start, &end)) {
+            tpool_destroy(thread_pool);
+            std::free(allocation);
+            std::cerr << "Error: synchronized stream timing failed."
+                      << std::endl;
+            return false;
+        }
+
+        BandwidthSample sample;
+        sample.seconds = parallel_stream_elapsed_seconds(task);
+        sample.gb_per_second = static_cast<double>(total_bytes_u64) *
+            passes_per_sample /
+            sample.seconds / 1.0e9;
+        std::uint64_t total_cycles = 0;
+        bool all_workers_have_cycles = true;
+        for (const std::uint64_t cycles : task.worker_cycles) {
+            if (cycles == 0) {
+                all_workers_have_cycles = false;
+                break;
+            }
+            total_cycles += cycles;
+        }
+        all_samples_have_cycles &= all_workers_have_cycles;
+        double measured_cycles = all_workers_have_cycles
+            ? static_cast<double>(total_cycles)
+            : 0.0;
+        if (measured_cycles == 0.0 && fallback_frequency_available)
+            measured_cycles = sample.seconds * fallback_frequency_hz;
+        sample.bytes_per_cycle = measured_cycles > 0.0
+            ? static_cast<double>(total_bytes_u64) * passes_per_sample /
+                measured_cycles
+            : 0.0;
+        const double load_instructions = static_cast<double>(inner_loop_u64) *
+            kernel.loads_per_block * cpus.size() * passes_per_sample;
+        sample.load_ipc = measured_cycles > 0.0
+            ? load_instructions / measured_cycles
+            : 0.0;
+        if (sample.seconds <= 0.0 || !std::isfinite(sample.gb_per_second)) {
+            tpool_destroy(thread_pool);
+            std::free(allocation);
+            std::cerr << "Error: stream bandwidth timing failed." << std::endl;
+            return false;
+        }
+        samples.push_back(sample);
+    }
+    tpool_destroy(thread_pool);
+    std::free(allocation);
+
+    std::sort(samples.begin(), samples.end(),
+        [](const BandwidthSample &left, const BandwidthSample &right) {
+            return left.gb_per_second < right.gb_per_second;
+        });
+    report.bytes = requested_bytes;
+    report.total_bytes = total_bytes_u64;
+    report.stream_count = cpus.size();
+    report.passes_per_sample = passes_per_sample;
+    report.kernel = kernel.name;
+    report.workset_source = workset_source;
+    report.cycle_source = all_samples_have_cycles ?
+        "perf CPU cycles (sum over cores)" :
+        (fallback_frequency_available ? "cpufreq estimate (sum over cores)" :
+         "unavailable");
+    report.median = samples[samples.size() / 2];
+    report.minimum_gb_per_second = samples.front().gb_per_second;
+    report.maximum_gb_per_second = samples.back().gb_per_second;
+    return true;
+}
+
+string format_cache_measurement_details(const BandwidthReport &report)
+{
+    string details = "min/max " +
+        format_decimal(report.minimum_gb_per_second, 3) + "/" +
+        format_decimal(report.maximum_gb_per_second, 3) + " GB/s";
+    if (report.stream_count > 1) {
+        details += ", aggregate of " +
+            std::to_string(report.stream_count) + " synchronized streams";
+    }
+    if (report.passes_per_sample > 1) {
+        details += ", " + std::to_string(report.passes_per_sample) +
+            " passes/sample";
+    }
+    if (report.median.bytes_per_cycle > 0.0) {
+        details += ", " + format_decimal(report.median.bytes_per_cycle, 3) +
+            " B/cycle";
+    }
+    if (report.median.load_ipc > 0.0) {
+        details += ", IPC " + format_decimal(report.median.load_ipc, 3);
+    }
+    return details + "; " + report.cycle_source + "; " +
+        report.workset_source;
+}
+
+string format_stream_workset(const BandwidthReport &report)
+{
+    const string per_stream = cpufb::format_cache_capacity(report.bytes);
+    if (report.stream_count == 1) return per_stream;
+    return per_stream + "/stream (" +
+        cpufb::format_cache_capacity(report.total_bytes) + " total)";
+}
+
+void append_cache_bandwidth_row(Table &table,
+    const string &item,
+    const vector<int> &cpus,
+    const BandwidthReport &report)
+{
+    vector<string> row(table.getCol());
+    row[0] = item;
+    row[1] = report.stream_count == 1 ?
+        "core " + std::to_string(cpus.front()) :
+        std::to_string(report.stream_count) + " cores";
+    row[2] = report.kernel;
+    row[3] = format_decimal(report.median.gb_per_second, 3) + " GB/s";
+    row[4] = format_stream_workset(report);
+    row[5] = format_cache_measurement_details(report);
+    table.addOneItem(row);
+}
+
+} // namespace
+
+bool append_arm64_cache_memory_bandwidth(const CliOptions &options,
+    Table &table)
+{
+    const vector<int> &cpus = options.thread_pool;
+    const int cpu = cpus.front();
+    const KernelSpec kernel = select_stream_kernel();
+    std::uint64_t requested_bytes = 0;
+    string workset_source;
+    BandwidthReport report;
+
+    if (select_parallel_l3_workset(cpus,
+            kernel.bytes_per_block,
+            requested_bytes,
+            workset_source)) {
+        if (!measure_parallel_stream_bandwidth(cpus,
+                kernel,
+                requested_bytes,
+                workset_source,
+                options.memory_repetitions,
+                options.idle_time,
+                kL3StreamPasses,
+                report)) {
+            return false;
+        }
+        append_cache_bandwidth_row(table,
+            cpus.size() == 1 ? "L3 sequential read bandwidth" :
+                "L3 aggregate sequential read bandwidth",
+            cpus, report);
+    }
+
+    if (!select_memory_workset(options, cpu, requested_bytes, workset_source) ||
+        !measure_parallel_stream_bandwidth(cpus,
+            kernel,
+            requested_bytes,
+            workset_source,
+            options.memory_repetitions,
+            options.idle_time,
+            1,
+            report)) {
+        return false;
+    }
+    append_cache_bandwidth_row(table,
+        cpus.size() == 1 ? "Memory sequential read bandwidth" :
+            "Memory aggregate sequential read bandwidth",
+        cpus, report);
+    return true;
+}
+
+bool run_arm64_memory_bandwidth(const CliOptions &options)
+{
+    const vector<int> &cpus = options.thread_pool;
+    const int cpu = cpus.front();
+    const KernelSpec kernel = select_stream_kernel();
+    std::uint64_t requested_bytes = 0;
+    string workset_source;
+    BandwidthReport report;
+    if (!select_memory_workset(options, cpu, requested_bytes, workset_source) ||
+        !measure_parallel_stream_bandwidth(cpus,
+            kernel,
+            requested_bytes,
+            workset_source,
+            options.memory_repetitions,
+            options.idle_time,
+            1,
+            report)) {
+        return false;
+    }
 
     Table table;
     vector<string> row(10);
@@ -389,24 +905,32 @@ bool run_arm64_memory_bandwidth(const CliOptions &options)
     table.setColumnNum(row.size());
     table.addOneItem(row);
 
-    row[0] = std::to_string(cpu);
-    row[1] = cpufb::format_cache_capacity(requested_bytes);
-    row[2] = kernel.name;
-    row[3] = format_decimal(median.gb_per_second, 3);
-    row[4] = median.bytes_per_cycle > 0.0
-        ? format_decimal(median.bytes_per_cycle, 3)
+    row[0] = report.stream_count == 1 ? std::to_string(cpu) :
+        std::to_string(report.stream_count) + " streams";
+    row[1] = format_stream_workset(report);
+    row[2] = report.kernel;
+    row[3] = format_decimal(report.median.gb_per_second, 3);
+    row[4] = report.median.bytes_per_cycle > 0.0
+        ? format_decimal(report.median.bytes_per_cycle, 3)
         : "-";
-    row[5] = median.load_ipc > 0.0
-        ? format_decimal(median.load_ipc, 3)
+    row[5] = report.median.load_ipc > 0.0
+        ? format_decimal(report.median.load_ipc, 3)
         : "-";
-    row[6] = format_decimal(minimum, 3);
-    row[7] = format_decimal(maximum, 3);
-    row[8] = cycle_source;
-    row[9] = workset_source;
+    row[6] = format_decimal(report.minimum_gb_per_second, 3);
+    row[7] = format_decimal(report.maximum_gb_per_second, 3);
+    row[8] = report.cycle_source;
+    row[9] = report.workset_source;
     table.addOneItem(row);
 
-    std::cout << "Single-core memory bandwidth: one sequential read stream, "
-              << options.memory_repetitions << " sample(s)" << std::endl;
+    if (report.stream_count == 1) {
+        std::cout << "Single-core memory bandwidth: one sequential read "
+                  << "stream, " << options.memory_repetitions
+                  << " sample(s)" << std::endl;
+    } else {
+        std::cout << "Multi-core memory bandwidth: " << report.stream_count
+                  << " synchronized read streams, "
+                  << options.memory_repetitions << " sample(s)" << std::endl;
+    }
     table.print();
 
     vector<std::pair<string, const Table *> > sections;

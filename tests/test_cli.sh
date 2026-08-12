@@ -302,9 +302,6 @@ case "${test_case}" in
         ;;
 
     memory_bandwidth)
-        expect_failure "requires exactly one CPU" \
-            "${binary}" "--thread_pool=[${test_core},${test_core}]" \
-            --memory-bandwidth --memory-size-mib=4 --memory-repetitions=1
         expect_failure "--memory-size-mib must be a positive integer" \
             "${binary}" "${thread_arg}" --memory-bandwidth --memory-size-mib=-1
         expect_failure "require --memory-bandwidth" \
@@ -334,6 +331,38 @@ case "${test_case}" in
                 if (rows != 1) exit 4
             }
         ' "${memory_output}" || fail "memory bandwidth CSV output has an invalid structure"
+        command_output="$(run_success "${binary}" \
+            "--thread_pool=[${test_core},${test_core}]" \
+            --memory-bandwidth --memory-size-mib=4 --memory-repetitions=1)"
+        require_contains "${command_output}" "Multi-core memory bandwidth"
+        require_contains "${command_output}" "2 synchronized read streams"
+        require_contains "${command_output}" "2 streams"
+        ;;
+
+    cache_bandwidth)
+        cache_output="${test_tmp}/cache.csv"
+        command_output="$(run_success "${binary}" "${thread_arg}" \
+            --include-test=cache --memory-size-mib=4 --memory-repetitions=1 \
+            --save="${cache_output}")"
+        require_contains "${command_output}" "Memory sequential read bandwidth"
+        require_contains "${command_output}" "Saved csv output:"
+        if [[ ! -s "${cache_output}" ]]; then
+            fail "cache CSV output was not created"
+        fi
+        awk -F',' -v expected_core="core ${test_core}" '
+            NR == 1 {
+                if ($1 != "section" || $2 != "Item" ||
+                    $5 != "Median Bandwidth" || $6 != "Workset") exit 2
+                next
+            }
+            $1 == "cache" && $2 == "Memory sequential read bandwidth" {
+                rows++
+                if ($3 != expected_core || $5 + 0 <= 0 || $6 != "4 MiB") exit 3
+            }
+            END {
+                if (rows != 1) exit 4
+            }
+        ' "${cache_output}" || fail "cache memory bandwidth CSV row is invalid"
         ;;
 
     *)

@@ -281,9 +281,17 @@ bool validate_memory_bandwidth_options(const CliOptions &options,
 {
     if (!options.memory_bandwidth) {
         if (options.memory_size_set || options.memory_repetitions_set) {
-            cerr << "Error: --memory-size-mib and --memory-repetitions "
-                 << "require --memory-bandwidth." << endl;
-            return false;
+            const bool explicit_cache_test =
+                options.filter.include_test.find("cache") !=
+                    options.filter.include_test.end() &&
+                options.filter.exclude_test.find("cache") ==
+                    options.filter.exclude_test.end();
+            if (!explicit_cache_test) {
+                cerr << "Error: --memory-size-mib and --memory-repetitions "
+                     << "require --memory-bandwidth or --include-test=cache."
+                     << endl;
+                return false;
+            }
         }
         return true;
     }
@@ -291,11 +299,6 @@ bool validate_memory_bandwidth_options(const CliOptions &options,
     if (!architecture_supported) {
         cerr << "Error: --memory-bandwidth is not supported on this "
              << "architecture." << endl;
-        return false;
-    }
-    if (options.thread_pool.size() != 1) {
-        cerr << "Error: --memory-bandwidth requires exactly one CPU in "
-             << "--thread_pool." << endl;
         return false;
     }
     if (!options.sweep_instruction.empty()) {

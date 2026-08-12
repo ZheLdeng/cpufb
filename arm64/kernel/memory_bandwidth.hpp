@@ -4,5 +4,7 @@
 #include "cli.hpp"
 
 bool run_arm64_memory_bandwidth(const cpufb_cli::CliOptions &options);
+bool append_arm64_cache_memory_bandwidth(
+    const cpufb_cli::CliOptions &options, Table &table);
 
 #endif

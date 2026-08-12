@@ -236,9 +236,10 @@ LastLevelCacheInfo detect_macos_last_level_cache()
 CacheLevelInfo detect_macos_data_cache_level(int level)
 {
     CacheLevelInfo best;
-    if (level != 1 && level != 2) return best;
+    if (level < 1 || level > 3) return best;
 
-    const std::string suffix = level == 1 ? "l1dcachesize" : "l2cachesize";
+    const std::string suffix = level == 1 ? "l1dcachesize" :
+        (level == 2 ? "l2cachesize" : "l3cachesize");
     for (int perf_level = 0; perf_level < 16; ++perf_level) {
         const std::string name = "hw.perflevel" +
             std::to_string(perf_level) + "." + suffix;

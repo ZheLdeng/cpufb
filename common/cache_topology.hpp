@@ -6,9 +6,9 @@
 
 namespace cpufb {
 
-// A data or unified cache at a requested hierarchy level.  Linux reports this
-// directly through sysfs; macOS exposes the per-performance-level L1D/L2
-// capacities through sysctl.
+// A data or unified cache at a requested hierarchy level. Linux reports this
+// directly through sysfs; macOS exposes available L1D/L2/L3 capacities
+// through sysctl.
 struct CacheLevelInfo
 {
     std::uint64_t bytes = 0;

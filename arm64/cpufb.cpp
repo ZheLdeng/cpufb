@@ -28,6 +28,7 @@
 #include<frequency.hpp>
 #include<multiple_issue.hpp>
 #include<common.hpp>
+#include <cache_topology.hpp>
 #include <cmath>
 
 #if defined(__linux__) && !defined(__APPLE__)
@@ -364,7 +365,9 @@ static void probe_arm_cache(std::vector<int> &set_of_threads)
     // cout << "get cachesize" << endl;
 }
 
-static void cpubm_arm_cache(std::vector<int> &set_of_threads,Table &table)
+static bool cpubm_arm_cache(std::vector<int> &set_of_threads,
+    Table &table,
+    const CliOptions &options)
 {
     vector<string> cont;
 
@@ -375,16 +378,32 @@ static void cpubm_arm_cache(std::vector<int> &set_of_threads,Table &table)
         to_string(cache_size.theory_L1) + " KiB" : "-";
     cont[2] = cache_size.test_L1 > 0 ?
         to_string(cache_size.test_L1) + " KiB" : "-";
+    cont[5] = cache_size.theory_L1_source;
     table.addOneItem(cont);
     cont[0] = "L2/unified cache capacity";
     cont[1] = cache_size.theory_L2 > 0 ?
         to_string(cache_size.theory_L2) + " KiB" : "-";
     cont[2] = cache_size.test_L2 > 0 ?
         to_string(cache_size.test_L2) + " KiB" : "-";
+    cont[5] = cache_size.theory_L2_source;
     table.addOneItem(cont);
+    const cpufb::CacheLevelInfo l3 =
+        cpufb::detect_data_cache_level(set_of_threads[0], 3);
+    if (l3.bytes > 0) {
+        cont[0] = "L3/unified cache capacity";
+        cont[1] = cpufb::format_cache_capacity(l3.bytes);
+        cont[2] = "-";
+        cont[3].clear();
+        cont[4].clear();
+        cont[5] = l3.source;
+        table.addOneItem(cont);
+    }
     cont[0] = "L1 ways of associativity";
     cont[1] = cache_size.theory_way > 0 ? to_string(cache_size.theory_way) : "-";
     cont[2] = cache_size.test_way > 0 ? to_string(cache_size.test_way) : "-";
+    cont[3].clear();
+    cont[4].clear();
+    cont[5].clear();
     table.addOneItem(cont);
     cont[0] = "cacheline size";
     cont[1] = cache_size.theory_cacheline > 0 ?
@@ -392,7 +411,7 @@ static void cpubm_arm_cache(std::vector<int> &set_of_threads,Table &table)
     cont[2] = cache_size.test_cacheline > 0 ?
         to_string(cache_size.test_cacheline) + " B" : "-";
     table.addOneItem(cont);
-    return;
+    return append_arm64_cache_memory_bandwidth(options, table);
 }
 
 
@@ -476,10 +495,13 @@ static void init_table(vector<Table*> &tables)
     tables[1]->setColumnNum(ti.size());
     tables[1]->addOneItem(ti);
 
-    ti.resize(3);
+    ti.resize(6);
     ti[0] = "Item";
-    ti[1] = "OS Topology";
-    ti[2] = "Empirical Probe";
+    ti[1] = "Topology / Core";
+    ti[2] = "Probe / Kernel";
+    ti[3] = "Median Bandwidth";
+    ti[4] = "Workset";
+    ti[5] = "Measurement";
     tables[2]->setColumnNum(ti.size());
     tables[2]->addOneItem(ti);
 
@@ -607,7 +629,8 @@ static bool cpubm_do_instruction_sweep(vector<int> &set_of_threads,
 static bool cpubm_do_bench(vector<int> &set_of_threads,
     uint32_t idle_time,
     const BenchmarkFilter &filter,
-    const SaveOptions &save_options)
+    const SaveOptions &save_options,
+    const CliOptions &options)
 {
     int i;
 
@@ -651,8 +674,10 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
         }
         // exit(0);
         // cout << "get freq" << endl;
-        if (should_run_test(filter, "cache"))
-            cpubm_arm_cache(set_of_threads, *tables[2]);
+        if (should_run_test(filter, "cache") &&
+            !cpubm_arm_cache(set_of_threads, *tables[2], options)) {
+            return false;
+        }
         if (should_run_test(filter, "load"))
             prepare_arm_load_cache(set_of_threads);
         // set thread pool
@@ -1466,14 +1491,14 @@ int main(int argc, char *argv[])
         fprintf(stderr, "You may also set --idle_time parameter.\n");
         fprintf(stderr, "Usage: %s --thread_pool=[xxx] --idle_time=yyy [--include-isa=list] [--exclude-isa=list] [--include-test=list] [--exclude-test=list]\n", argv[0]);
         fprintf(stderr, "       %s --thread_pool=[xxx] --sweep-instruction='Core Computation'\n", argv[0]);
-        fprintf(stderr, "       %s --thread_pool=[core] --memory-bandwidth [--memory-size-mib=N; default=auto] [--memory-repetitions=5]\n", argv[0]);
+        fprintf(stderr, "       %s --thread_pool=[cores] --memory-bandwidth [--memory-size-mib=N; default=auto per stream] [--memory-repetitions=5]\n", argv[0]);
         fprintf(stderr, "       %s --list-categories | --list-instructions\n", argv[0]);
         fprintf(stderr, "       add --save=path [--save-format=txt|csv] to write compact output.\n");
         fprintf(stderr, "[xxx] indicates all cores to benchmark.\n");
         fprintf(stderr, "Example: [0,3,5-8,13-15].\n");
         fprintf(stderr, "idle_time is the interval time(s) between every two benchmarks.\n");
         fprintf(stderr, "idle_time parameter can be ignored, the default value is 0s.\n");
-        fprintf(stderr, "test list supports compute,load,cache,freq,multi_issue (cache=probe; load=bandwidth).\n");
+        fprintf(stderr, "test list supports compute,load,cache,freq,multi_issue (cache=probe+L3/memory stream; load=L1/L2 instruction bandwidth).\n");
         fprintf(stderr, "isa list supports detected ISA names such as asimd,bf16,sve,SME2.\n");
         fprintf(stderr, "Use --list-categories to list available test and ISA categories.\n");
         fprintf(stderr, "Use --list-instructions to list valid sweep instruction names.\n");
@@ -1506,6 +1531,7 @@ int main(int argc, char *argv[])
     return cpubm_do_bench(options.thread_pool,
         options.idle_time,
         options.filter,
-        options.save) ? 0 : 1;
+        options.save,
+        options) ? 0 : 1;
 
 }

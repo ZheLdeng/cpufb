@@ -8,6 +8,7 @@
 #include<frequency.hpp>
 #include<common.hpp>
 #include<multiple_issue.hpp>
+#include <cache_topology.hpp>
 #include "runtime_features.h"
 
 #include <unistd.h>
@@ -253,7 +254,9 @@ static void cpubm_x64_load(cpubm_t &item, Table &table)
 }
 
 
-static void cpubm_x64_cache(std::vector<int> &set_of_threads,Table &table)
+static bool cpubm_x64_cache(std::vector<int> &set_of_threads,
+    Table &table,
+    const CliOptions &options)
 {
     vector<string> cont;
     cont.resize(table.getCol());
@@ -276,6 +279,9 @@ static void cpubm_x64_cache(std::vector<int> &set_of_threads,Table &table)
     cont[0] = "L1 ways of associativity";
     cont[1] = to_string(cache_size.theory_way);
     cont[2] = to_string(cache_size.test_way);
+    cont[3].clear();
+    cont[4].clear();
+    cont[5].clear();
     table.addOneItem(cont);
     cont[0] = "cacheline size";
     cont[1] = to_string(cache_size.theory_cacheline) + " B";
@@ -289,7 +295,18 @@ static void cpubm_x64_cache(std::vector<int> &set_of_threads,Table &table)
     cont[1] = to_string(cache_size.theory_L2) + " KB";
     cont[2] = to_string(cache_size.test_L2) + " KB";
     table.addOneItem(cont);
-    return;
+    const cpufb::CacheLevelInfo l3 =
+        cpufb::detect_data_cache_level(set_of_threads[0], 3);
+    if (l3.bytes > 0) {
+        cont[0] = "L3/unified cache capacity";
+        cont[1] = cpufb::format_cache_capacity(l3.bytes);
+        cont[2] = "-";
+        cont[3].clear();
+        cont[4].clear();
+        cont[5] = l3.source;
+        table.addOneItem(cont);
+    }
+    return append_x64_cache_memory_bandwidth(options, table);
 }
 
 static void cpubm_x64_multiple_issue(tpool_t *tm,
@@ -370,10 +387,13 @@ static void init_table(vector<Table*> &tables)
     tables[1]->setColumnNum(ti.size());
     tables[1]->addOneItem(ti);
 
-    ti.resize(3);
+    ti.resize(6);
     ti[0] = "Item";
-    ti[1] = "Theory";
-    ti[2] = "Test";
+    ti[1] = "Topology / Core";
+    ti[2] = "Probe / Kernel";
+    ti[3] = "Median Bandwidth";
+    ti[4] = "Workset";
+    ti[5] = "Measurement";
     tables[2]->setColumnNum(ti.size());
     tables[2]->addOneItem(ti);
 
@@ -458,7 +478,8 @@ static bool cpubm_do_instruction_sweep(vector<int> &set_of_threads,
 }
 
 static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
-    const BenchmarkFilter &filter, const SaveOptions &save_options)
+    const BenchmarkFilter &filter, const SaveOptions &save_options,
+    const CliOptions &options)
 {
     if (bm_list.empty()) return false;
     printf("Number Threads: %zu\nThread Pool Binding:", set_of_threads.size());
@@ -468,8 +489,10 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
     vector<Table*> tables;
     init_table(tables);
     if (benchmark_needs_freq(filter)) get_cpu_freq(set_of_threads, *tables[3]);
-    if (should_run_test(filter, "cache"))
-        cpubm_x64_cache(set_of_threads, *tables[2]);
+    if (should_run_test(filter, "cache") &&
+        !cpubm_x64_cache(set_of_threads, *tables[2], options)) {
+        return false;
+    }
     else if (should_run_test(filter, "load"))
         get_theory_cache(&cache_size, set_of_threads[0]);
 
@@ -765,7 +788,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "You may also set --idle_time parameter.\n");
         fprintf(stderr, "Usage: %s --thread_pool=[xxx] [--idle_time=yyy] [--include-test=list] [--exclude-test=list] [--include-isa=list] [--exclude-isa=list]\n", argv[0]);
         fprintf(stderr, "       %s --thread_pool=[xxx] --sweep-instruction='Core Computation'\n", argv[0]);
-        fprintf(stderr, "       %s --thread_pool=[core] --memory-bandwidth [--memory-size-mib=1024] [--memory-repetitions=5]\n", argv[0]);
+        fprintf(stderr, "       %s --thread_pool=[cores] --memory-bandwidth [--memory-size-mib=N; default=auto per stream] [--memory-repetitions=5]\n", argv[0]);
         fprintf(stderr, "       %s --list-categories | --list-instructions\n", argv[0]);
         fprintf(stderr, "[xxx] indicates all cores to benchmark.\n");
         fprintf(stderr, "Example: [0,3,5-8,13-15].\n");
@@ -795,5 +818,6 @@ int main(int argc, char *argv[])
     return cpubm_do_bench(options.thread_pool,
         options.idle_time,
         options.filter,
-        options.save) ? 0 : 1;
+        options.save,
+        options) ? 0 : 1;
 }

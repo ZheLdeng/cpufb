@@ -297,6 +297,7 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND
             sweep_output
         )
         list(APPEND _cli_test_names memory_bandwidth)
+        list(APPEND _cli_test_names cache_bandwidth)
         foreach(test_name IN LISTS _cli_test_names)
             add_test(
                 NAME "cpufb_cli_${test_name}"

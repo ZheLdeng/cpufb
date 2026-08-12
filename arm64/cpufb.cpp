@@ -43,6 +43,9 @@ using namespace cpufb_cli;
 extern vector<double> freq;
 static struct CacheData cache_size;
 static int64_t load_pl = 0;
+static string load_capacity_source;
+static constexpr int kFallbackL1CacheKiB = 64;
+static constexpr int kFallbackL2CacheKiB = 1024;
 typedef struct
 {
     string isa;
@@ -218,7 +221,7 @@ static int64_t cpubm_scaled_comp_pl(const cpubm_t &item)
         comp_pl = comp_pl * rdsvl() * rdsvl() / 8 / 8;
         //cout << type << " op = " << item.comp_pl << endl;
     } else if (has_opa && first_param.find("16") != string::npos) {
-        // 16-bit accumulator (SME_F16F16): rows=cols=SVL/2.
+        // 16-bit accumulator (SME_F16F16 / SME_B16B16): rows=cols=SVL/2.
         comp_pl = comp_pl * rdsvl() * rdsvl() / 2 / 2;
     } else if (type.find("sme") != string::npos) {
         comp_pl = comp_pl * rdsvl();
@@ -275,15 +278,29 @@ static void cpubm_arm_load(tpool_t *tm, cpubm_t &item, Table &table)
     cont.resize(table.getCol());
     //cout << "test load begin" << endl;
 
+    int empirical_capacity = 0;
     if (item.isa == "L1 Cache"){
-        load_pl = cache_size.theory_L1 > 0 ? cache_size.theory_L1 : cache_size.test_L1;
-        cont[3] = to_string(cache_size.theory_L1) + " KB";
-        cont[4] = to_string(cache_size.test_L1) + " KB";
+        load_pl = cache_size.theory_L1 > 0 ?
+            cache_size.theory_L1 : cache_size.test_L1;
+        empirical_capacity = cache_size.test_L1;
+        load_capacity_source = cache_size.theory_L1 > 0 ?
+            (cache_size.theory_L1_source.empty() ? "OS topology" :
+                cache_size.theory_L1_source) :
+            (empirical_capacity > 0 ? "cache probe" : "fallback");
     } else if (item.isa == "L2 Cache"){
-        load_pl = cache_size.theory_L2 > 0 ? cache_size.theory_L2 : cache_size.test_L2;
-        cont[3] = to_string(cache_size.theory_L2) + " KB";
-        cont[4] = to_string(cache_size.test_L2) + " KB";
-    } 
+        load_pl = cache_size.theory_L2 > 0 ?
+            cache_size.theory_L2 : cache_size.test_L2;
+        empirical_capacity = cache_size.test_L2;
+        load_capacity_source = cache_size.theory_L2 > 0 ?
+            (cache_size.theory_L2_source.empty() ? "OS topology" :
+                cache_size.theory_L2_source) :
+            (empirical_capacity > 0 ? "cache probe" : "fallback");
+    }
+
+    const int64_t workset_kib = min<int64_t>(load_pl / 2, 32 * 1024);
+    cont[3] = to_string(load_pl) + " KiB";
+    cont[4] = to_string(workset_kib) + " KiB";
+    cont[5] = load_capacity_source;
 
     tpool_t *load_tm = (tm != nullptr && tm->thread_num > 1) ? tm : nullptr;
     perf = get_bandwith(item.loop_time, (double)load_pl, item.type, item.bench, load_tm);
@@ -298,6 +315,19 @@ static void cpubm_arm_load(tpool_t *tm, cpubm_t &item, Table &table)
    
     table.addOneItem(cont);
     //cout << "test load end" << endl;
+}
+
+static void prepare_arm_load_cache(std::vector<int> &set_of_threads)
+{
+    get_cache_capacities(&cache_size, set_of_threads[0]);
+    if (cache_size.theory_L1 <= 0 && cache_size.test_L1 <= 0) {
+        cache_size.theory_L1 = kFallbackL1CacheKiB;
+        cache_size.theory_L1_source = "conservative fallback";
+    }
+    if (cache_size.theory_L2 <= 0 && cache_size.test_L2 <= 0) {
+        cache_size.theory_L2 = kFallbackL2CacheKiB;
+        cache_size.theory_L2_source = "conservative fallback";
+    }
 }
 
 static void sanitize_cache_size_probe()
@@ -340,13 +370,27 @@ static void cpubm_arm_cache(std::vector<int> &set_of_threads,Table &table)
 
     cont.resize(table.getCol());
     probe_arm_cache(set_of_threads);
+    cont[0] = "L1 data cache capacity";
+    cont[1] = cache_size.theory_L1 > 0 ?
+        to_string(cache_size.theory_L1) + " KiB" : "-";
+    cont[2] = cache_size.test_L1 > 0 ?
+        to_string(cache_size.test_L1) + " KiB" : "-";
+    table.addOneItem(cont);
+    cont[0] = "L2/unified cache capacity";
+    cont[1] = cache_size.theory_L2 > 0 ?
+        to_string(cache_size.theory_L2) + " KiB" : "-";
+    cont[2] = cache_size.test_L2 > 0 ?
+        to_string(cache_size.test_L2) + " KiB" : "-";
+    table.addOneItem(cont);
     cont[0] = "L1 ways of associativity";
-    cont[1] = to_string(cache_size.theory_way);
-    cont[2] = to_string(cache_size.test_way);
+    cont[1] = cache_size.theory_way > 0 ? to_string(cache_size.theory_way) : "-";
+    cont[2] = cache_size.test_way > 0 ? to_string(cache_size.test_way) : "-";
     table.addOneItem(cont);
     cont[0] = "cacheline size";
-    cont[1] = to_string(cache_size.theory_cacheline) + " B";
-    cont[2] = to_string(cache_size.test_cacheline) + " B";
+    cont[1] = cache_size.theory_cacheline > 0 ?
+        to_string(cache_size.theory_cacheline) + " B" : "-";
+    cont[2] = cache_size.test_cacheline > 0 ?
+        to_string(cache_size.test_cacheline) + " B" : "-";
     table.addOneItem(cont);
     return;
 }
@@ -401,10 +445,8 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
     free(cache_data);
     //cout << "test multi issue end" << endl;
 }
-//comupte: Instruction Set / Core Computation / Peak Performance / IPC
-//cachesize: cache level / Core Computation / bandwith / size / IPC / way
-//frequency : core id / theory freq / test freq
-//multi issue
+// compute: instruction throughput/IPC; load: cache-resident load bandwidth;
+// cache: capacity, associativity, and cache-line probes; freq: core frequency.
 static void init_table(vector<Table*> &tables)
 {
     tables.resize(5);
@@ -427,17 +469,17 @@ static void init_table(vector<Table*> &tables)
     ti.resize(6);
     ti[0] = "Cache Level";
     ti[1] = "Core Instruction";
-    ti[2] = "Bandwith";
-    ti[3] = "Theory Size";
-    ti[4] = "Test Size";
-    ti[5] = "Latency";
+    ti[2] = "Bandwidth";
+    ti[3] = "Cache Capacity";
+    ti[4] = "Workset";
+    ti[5] = "Capacity Source";
     tables[1]->setColumnNum(ti.size());
     tables[1]->addOneItem(ti);
 
     ti.resize(3);
     ti[0] = "Item";
-    ti[1] = "Theory";
-    ti[2] = "Test";
+    ti[1] = "OS Topology";
+    ti[2] = "Empirical Probe";
     tables[2]->setColumnNum(ti.size());
     tables[2]->addOneItem(ti);
 
@@ -609,11 +651,10 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
         }
         // exit(0);
         // cout << "get freq" << endl;
-        if (should_run_test(filter, "cache")) {
+        if (should_run_test(filter, "cache"))
             cpubm_arm_cache(set_of_threads, *tables[2]);
-        } else if (should_run_test(filter, "load")) {
-            probe_arm_cache(set_of_threads);
-        }
+        if (should_run_test(filter, "load"))
+            prepare_arm_load_cache(set_of_threads);
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);
@@ -1096,6 +1137,8 @@ static void cpufb_register_isa()
     require_feature("_SME_B16F32_");
     reg_new_isa("SME", "sme_bfmopa.vv(f32,bf16,bf16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme_bfmopa_vv_f32bf16bf16);
+    reg_new_isa("SME", "sme_bfmopa.vv(f32,bf16,bf16)_latency", "FLOPS",
+        kLatencyLoopTime, 96LL, (void*)sme_bfmopa2_vv_f32bf16bf16);
     require_feature("_SME_F32F32_");
     reg_new_isa("SME", "sme_fmopa.vv(f32,f32,f32)_latency", "FLOPS",
         kLatencyLoopTime, 48LL, (void*)sme_fmopa2_vv_f32f32f32);
@@ -1126,6 +1169,17 @@ static void cpufb_register_isa()
         kComputeLoopTime, 48LL, (void*)sme_fmopa_vv_f16f16f16);
     reg_new_isa("SME_F16F16", "sme_fmopa.vv(f16,f16,f16)_latency", "FLOPS",
         kLatencyLoopTime, 48LL, (void*)sme_fmopa2_vv_f16f16f16);
+#endif
+
+#ifdef _SME_B16B16_
+    require_feature("_SME_B16B16_");
+    // Non-widening BFMOPA: bf16 acc, rows=cols=SVL/2, per inst = SVL^2/2 FLOPs.
+    // Scaling rule (16 branch): comp_pl * SVL^2 / 4. Register 48 (=24*2).
+    // Twice the FLOPs/instruction of the widening BFMOPA in the SME group.
+    reg_new_isa("SME_B16B16", "sme_bfmopa.vv(bf16,bf16,bf16)", "FLOPS",
+        kComputeLoopTime, 48LL, (void*)sme_bfmopa_vv_bf16bf16bf16);
+    reg_new_isa("SME_B16B16", "sme_bfmopa.vv(bf16,bf16,bf16)_latency", "FLOPS",
+        kLatencyLoopTime, 48LL, (void*)sme_bfmopa2_vv_bf16bf16bf16);
 #endif
 
 #ifdef _SME_I16I32_
@@ -1251,11 +1305,9 @@ static void cpufb_register_isa()
         kLoadLoopTime, 32LL, (void*)load_neon_ld1b_kernel);
     reg_new_isa("--------", "neon-ld1h-x4(f16)", "Byte/Cycle",
         kLoadLoopTime, 32LL, (void*)load_neon_ld1h_kernel);
-    reg_new_isa("--------", "neon-ld1h-4x1-post(f16)", "Byte/Cycle",
-        kLoadLoopTime, 32LL, (void*)load_neon_ld1h_4x1_post_kernel);
-    reg_new_isa("--------", "neon-ld1h-4x1-ptr(f16)", "Byte/Cycle",
-        kLoadLoopTime, 32LL, (void*)load_neon_ld1h_4x1_ptr_kernel);
-    reg_new_isa("--------", "ldrq-4x1-off(128b)", "Byte/Cycle",
+    reg_new_isa("--------", "neon-ld1h-4x1(f16)", "Byte/Cycle",
+        kLoadLoopTime, 32LL, (void*)load_neon_ld1h_4x1_kernel);
+    reg_new_isa("--------", "ldr.q(f32)", "Byte/Cycle",
         kLoadLoopTime, 32LL, (void*)load_ldrq_4x1_offset_kernel);
     reg_new_isa("--------", "neon-ld1w(f32)", "Byte/Cycle",
         kLoadLoopTime, 32LL, (void*)load_neon_ld1w_kernel);
@@ -1293,11 +1345,9 @@ static void cpufb_register_isa()
         kLoadLoopTime, 128LL, (void*)load_neon_ld1b_kernel);
     reg_new_isa("--------", "neon-ld1h-x4(f16)", "Byte/Cycle",
         kLoadLoopTime, 128LL, (void*)load_neon_ld1h_kernel);
-    reg_new_isa("--------", "neon-ld1h-4x1-post(f16)", "Byte/Cycle",
-        kLoadLoopTime, 128LL, (void*)load_neon_ld1h_4x1_post_kernel);
-    reg_new_isa("--------", "neon-ld1h-4x1-ptr(f16)", "Byte/Cycle",
-        kLoadLoopTime, 128LL, (void*)load_neon_ld1h_4x1_ptr_kernel);
-    reg_new_isa("--------", "ldrq-4x1-off(128b)", "Byte/Cycle",
+    reg_new_isa("--------", "neon-ld1h-4x1(f16)", "Byte/Cycle",
+        kLoadLoopTime, 128LL, (void*)load_neon_ld1h_4x1_kernel);
+    reg_new_isa("--------", "ldr.q(f32)", "Byte/Cycle",
         kLoadLoopTime, 128LL, (void*)load_ldrq_4x1_offset_kernel);
     reg_new_isa("--------", "neon-ld1w(f32)", "Byte/Cycle",
         kLoadLoopTime, 128LL, (void*)load_neon_ld1w_kernel);
@@ -1416,14 +1466,14 @@ int main(int argc, char *argv[])
         fprintf(stderr, "You may also set --idle_time parameter.\n");
         fprintf(stderr, "Usage: %s --thread_pool=[xxx] --idle_time=yyy [--include-isa=list] [--exclude-isa=list] [--include-test=list] [--exclude-test=list]\n", argv[0]);
         fprintf(stderr, "       %s --thread_pool=[xxx] --sweep-instruction='Core Computation'\n", argv[0]);
-        fprintf(stderr, "       %s --thread_pool=[core] --memory-bandwidth [--memory-size-mib=1024] [--memory-repetitions=5]\n", argv[0]);
+        fprintf(stderr, "       %s --thread_pool=[core] --memory-bandwidth [--memory-size-mib=N; default=auto] [--memory-repetitions=5]\n", argv[0]);
         fprintf(stderr, "       %s --list-categories | --list-instructions\n", argv[0]);
         fprintf(stderr, "       add --save=path [--save-format=txt|csv] to write compact output.\n");
         fprintf(stderr, "[xxx] indicates all cores to benchmark.\n");
         fprintf(stderr, "Example: [0,3,5-8,13-15].\n");
         fprintf(stderr, "idle_time is the interval time(s) between every two benchmarks.\n");
         fprintf(stderr, "idle_time parameter can be ignored, the default value is 0s.\n");
-        fprintf(stderr, "test list supports compute,load,cache,freq,multi_issue.\n");
+        fprintf(stderr, "test list supports compute,load,cache,freq,multi_issue (cache=probe; load=bandwidth).\n");
         fprintf(stderr, "isa list supports detected ISA names such as asimd,bf16,sve,SME2.\n");
         fprintf(stderr, "Use --list-categories to list available test and ISA categories.\n");
         fprintf(stderr, "Use --list-instructions to list valid sweep instruction names.\n");

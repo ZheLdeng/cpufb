@@ -66,6 +66,7 @@ find_package(Threads REQUIRED)
 # common/ as an OBJECT library
 # ---------------------------------------------------------------------------
 add_library(cpufb_common OBJECT
+    "${CPUFB_COMMON_DIR}/cache_topology.cpp"
     "${CPUFB_COMMON_DIR}/cacheline_probe.cpp"
     "${CPUFB_COMMON_DIR}/cli.cpp"
     "${CPUFB_COMMON_DIR}/table.cpp"
@@ -251,6 +252,35 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
         LABELS "unit"
         TIMEOUT 30
     )
+
+    add_executable(cpufb_cache_topology_test
+        "${CMAKE_SOURCE_DIR}/tests/test_cache_topology.cpp"
+    )
+    target_link_libraries(cpufb_cache_topology_test PRIVATE cpufb_common)
+    add_test(
+        NAME cpufb_cache_topology
+        COMMAND cpufb_cache_topology_test
+    )
+    set_tests_properties(cpufb_cache_topology PROPERTIES
+        LABELS "unit"
+        TIMEOUT 30
+    )
+
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME cpufb_pair_issue_unit
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/tests/test_pair_issue.py"
+        )
+        set_tests_properties(cpufb_pair_issue_unit PROPERTIES
+            LABELS "unit"
+            TIMEOUT 30
+        )
+    else()
+        message(WARNING
+            "cpufb: Python3 not found; pair-issue unit tests disabled")
+    endif()
 endif()
 
 if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND

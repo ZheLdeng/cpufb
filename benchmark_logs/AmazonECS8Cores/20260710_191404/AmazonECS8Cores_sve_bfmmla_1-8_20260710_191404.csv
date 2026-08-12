@@ -1,0 +1,14 @@
+section,Item,Value
+sweep_metadata,Instruction Set,sve_bf16
+sweep_metadata,Core Computation,"sve_bfmmla(f32,bf16,bf16)"
+sweep_metadata,Metric,FLOPS
+sweep_metadata,Thread Pool,"[0,1,2,3,4,5,6,7]"
+section,Cores,Thread Pool,Peak Performance,Peak/Core,Speedup,Efficiency,IPC,Latency
+instruction_sweep,1,[0],331.49 GFLOPS,331.49 GFLOPS,1x,100%,2.001133,3
+instruction_sweep,2,"[0,1]",663.19 GFLOPS,331.6 GFLOPS,2.001x,100%,2.001781,3
+instruction_sweep,3,"[0,1,2]",861.89 GFLOPS,287.3 GFLOPS,2.6x,86.67%,1.734343,3
+instruction_sweep,4,"[0,1,2,3]",1.0596 TFLOPS,264.9 GFLOPS,3.196x,79.91%,1.599133,3
+instruction_sweep,5,"[0,1,2,3,4]",1.258 TFLOPS,251.61 GFLOPS,3.795x,75.9%,1.518912,3
+instruction_sweep,6,"[0,1,2,3,4,5]",1.4554 TFLOPS,242.56 GFLOPS,4.39x,73.17%,1.464283,3
+instruction_sweep,7,"[0,1,2,3,4,5,6]",1.6532 TFLOPS,236.18 GFLOPS,4.987x,71.25%,1.425760,3
+instruction_sweep,8,"[0,1,2,3,4,5,6,7]",1.8326 TFLOPS,229.08 GFLOPS,5.528x,69.11%,1.382890,3

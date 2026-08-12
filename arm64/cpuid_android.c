@@ -117,6 +117,9 @@ int main() {
         if (find("sme_f16f16",features,count)) {
             printf("_SME_F16F16_\n");
         }
+        if (find("sme_b16b16",features,count)) {
+            printf("_SME_B16B16_\n");
+        }
         if (find("sme_i16i64",features,count)) {
             printf("_SME_I16I32_\n");
         }

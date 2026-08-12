@@ -5,6 +5,7 @@
 #include <ctime>
 #include <iostream>
 #include <cstdint>
+#include <cmath>
 #include <string>
 #include <vector>
 #include <cstring>
@@ -34,6 +35,22 @@
 
 using namespace std;
 vector<double> freq;
+
+// Some virtualized Linux hosts deliberately deny unprivileged PMU cycle
+// counters.  A caller can then supply a documented fixed core clock through
+// CPUFB_FREQ_GHZ, rather than silently producing infinities for all
+// cycle-normalized measurements.
+static double cpu_freq_override_ghz()
+{
+    const char *value = getenv("CPUFB_FREQ_GHZ");
+    if (value == nullptr || *value == '\0') return 0.0;
+
+    char *end = nullptr;
+    const double ghz = strtod(value, &end);
+    if (end == value || *end != '\0' || !std::isfinite(ghz) || ghz <= 0.0)
+        return 0.0;
+    return ghz;
+}
 
 static void* thread_function_freq(void* arg){
     struct FrequencyData* data = (FrequencyData*)malloc(sizeof(FrequencyData));
@@ -70,6 +87,10 @@ static void* thread_function_freq(void* arg){
         data->theory_freq = 4.5;
         data->caculate_freq = 4.5;
         CPU_freq = 4.5 * 1e9;
+    } else if (std::string(cpuType) == "Apple M5 Pro"){
+        data->theory_freq = 4.6;
+        data->caculate_freq = 4.6;
+        CPU_freq = 4.6 * 1e9;
     }
 
 #endif
@@ -92,8 +113,10 @@ static void* thread_function_freq(void* arg){
     if(read_freq == 0){
         read_data(cpuid, &read_freq, "/cpufreq/cpuinfo_max_freq");
     }
+    const double fallback_ghz = cpu_freq_override_ghz();
     // cout << read_freq << endl;
-    data->theory_freq = double(read_freq) * 1e-6;
+    data->theory_freq = fallback_ghz > 0.0 ? fallback_ghz :
+        double(read_freq) * 1e-6;
     //warm up
     asimd_fmla_vv_f64f64f64(looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
@@ -107,7 +130,8 @@ static void* thread_function_freq(void* arg){
     
 
     if(cycles == 0){
-        CPU_freq = read_freq * 1e3;
+        CPU_freq = fallback_ghz > 0.0 ? fallback_ghz * 1e9 :
+            read_freq * 1e3;
     }else{
         CPU_freq = (double)cycles / time_used;
     }

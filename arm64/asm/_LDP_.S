@@ -79,39 +79,10 @@
     ret
 
 ###############################
-#void load_neon_ld1h_4x1_post_kernel(float*, int, int64_t);
-    PROLOGUE load_neon_ld1h_4x1_post_kernel
+#void load_neon_ld1h_4x1_kernel(float*, int, int64_t);
+    PROLOGUE load_neon_ld1h_4x1_kernel
     mov x4, x2
-    2:
-    mov x3, x1
-    mov x5, x0
-    1:
-    ld1 {v0.8h}, [x5], #16
-    ld1 {v1.8h}, [x5], #16
-    ld1 {v2.8h}, [x5], #16
-    ld1 {v3.8h}, [x5], #16
-    ld1 {v4.8h}, [x5], #16
-    ld1 {v5.8h}, [x5], #16
-    ld1 {v6.8h}, [x5], #16
-    ld1 {v7.8h}, [x5], #16
-    ld1 {v16.8h}, [x5], #16
-    ld1 {v17.8h}, [x5], #16
-    ld1 {v18.8h}, [x5], #16
-    ld1 {v19.8h}, [x5], #16
-    ld1 {v20.8h}, [x5], #16
-    ld1 {v21.8h}, [x5], #16
-    ld1 {v22.8h}, [x5], #16
-    ld1 {v23.8h}, [x5], #16
-    subs x3, x3, #1
-    bne 1b
-    subs x4, x4, #1
-    bne 2b
-    ret
-
-###############################
-#void load_neon_ld1h_4x1_ptr_kernel(float*, int, int64_t);
-    PROLOGUE load_neon_ld1h_4x1_ptr_kernel
-    mov x4, x2
+    mov x9, #64
     2:
     mov x3, x1
     mov x5, x0
@@ -119,38 +90,25 @@
     add x7, x0, #32
     add x8, x0, #48
     1:
-    ld1 {v0.8h}, [x5]
-    ld1 {v1.8h}, [x6]
-    ld1 {v2.8h}, [x7]
-    ld1 {v3.8h}, [x8]
-    add x5, x5, #64
-    add x6, x6, #64
-    add x7, x7, #64
-    add x8, x8, #64
-    ld1 {v4.8h}, [x5]
-    ld1 {v5.8h}, [x6]
-    ld1 {v6.8h}, [x7]
-    ld1 {v7.8h}, [x8]
-    add x5, x5, #64
-    add x6, x6, #64
-    add x7, x7, #64
-    add x8, x8, #64
-    ld1 {v16.8h}, [x5]
-    ld1 {v17.8h}, [x6]
-    ld1 {v18.8h}, [x7]
-    ld1 {v19.8h}, [x8]
-    add x5, x5, #64
-    add x6, x6, #64
-    add x7, x7, #64
-    add x8, x8, #64
-    ld1 {v20.8h}, [x5]
-    ld1 {v21.8h}, [x6]
-    ld1 {v22.8h}, [x7]
-    ld1 {v23.8h}, [x8]
-    add x5, x5, #64
-    add x6, x6, #64
-    add x7, x7, #64
-    add x8, x8, #64
+    // Four independent post-index chains, each advancing 64 B.  Their
+    // interleaving walks one contiguous stream while avoiding a single
+    // address-generation dependency chain.
+    ld1 {v0.8h}, [x5], x9
+    ld1 {v1.8h}, [x6], x9
+    ld1 {v2.8h}, [x7], x9
+    ld1 {v3.8h}, [x8], x9
+    ld1 {v4.8h}, [x5], x9
+    ld1 {v5.8h}, [x6], x9
+    ld1 {v6.8h}, [x7], x9
+    ld1 {v7.8h}, [x8], x9
+    ld1 {v16.8h}, [x5], x9
+    ld1 {v17.8h}, [x6], x9
+    ld1 {v18.8h}, [x7], x9
+    ld1 {v19.8h}, [x8], x9
+    ld1 {v20.8h}, [x5], x9
+    ld1 {v21.8h}, [x6], x9
+    ld1 {v22.8h}, [x7], x9
+    ld1 {v23.8h}, [x8], x9
     subs x3, x3, #1
     bne 1b
     subs x4, x4, #1

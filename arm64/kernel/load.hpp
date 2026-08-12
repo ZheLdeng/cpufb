@@ -2,6 +2,7 @@
 #define _LOAD_HPP
 
 #include <cstdint>
+#include <string>
 #include <vector>
 struct tpool;
 typedef struct tpool tpool_t;
@@ -12,8 +13,7 @@ extern "C"
     void load_ldr_kernel(float*, int64_t);
     void load_neon_ld1b_kernel(float*, int, int64_t);
     void load_neon_ld1h_kernel(float*, int, int64_t);
-    void load_neon_ld1h_4x1_post_kernel(float*, int, int64_t);
-    void load_neon_ld1h_4x1_ptr_kernel(float*, int, int64_t);
+    void load_neon_ld1h_4x1_kernel(float*, int, int64_t);
     void load_ldrq_4x1_offset_kernel(float*, int, int64_t);
     void load_neon_ld1w_kernel(float*, int, int64_t);
     void load_neon_ld1d_kernel(float*, int, int64_t);
@@ -38,6 +38,8 @@ extern "C"
 struct CacheData {
     int theory_L1 = 0;
     int theory_L2 = 0;
+    std::string theory_L1_source;
+    std::string theory_L2_source;
     int test_L1 = 0;
     int test_L2 = 0;
     int theory_way = 0;
@@ -46,6 +48,7 @@ struct CacheData {
     int test_cacheline = 0;
 };
 
+void get_cache_capacities(struct CacheData *cache_size, int cpu_id);
 void get_cachesize(struct CacheData *cache_size, int cpu_id);
 void get_multiway(struct CacheData *cache_size,int cpu_id);
 void get_cacheline(struct CacheData *cache_size, int cpu_id);

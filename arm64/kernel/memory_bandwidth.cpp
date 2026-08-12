@@ -1,5 +1,6 @@
 #include "memory_bandwidth.hpp"
 
+#include "cache_topology.hpp"
 #include "load.hpp"
 #include "table.hpp"
 
@@ -215,8 +216,8 @@ KernelSpec select_stream_kernel()
     }
 #endif
     KernelSpec spec = {
-        load_neon_ld1h_4x1_post_kernel,
-        "neon-ld1h-4x1-post(f16)",
+        load_neon_ld1h_4x1_kernel,
+        "neon-ld1h-4x1(f16)",
         256,
         16
     };
@@ -261,15 +262,38 @@ bool run_arm64_memory_bandwidth(const CliOptions &options)
     const int cpu = options.thread_pool[0];
     if (!pin_current_thread(cpu)) return false;
 
-    if (options.memory_size_mib >
-        (std::numeric_limits<std::size_t>::max() >> 20)) {
-        std::cerr << "Error: --memory-size-mib is too large for this build."
+    const KernelSpec kernel = select_stream_kernel();
+    std::uint64_t requested_bytes = 0;
+    string workset_source;
+    if (options.memory_size_set) {
+        if (options.memory_size_mib >
+            (std::numeric_limits<std::uint64_t>::max() >> 20)) {
+            std::cerr << "Error: --memory-size-mib is too large for this build."
+                      << std::endl;
+            return false;
+        }
+        requested_bytes = options.memory_size_mib << 20;
+        workset_source = "CLI --memory-size-mib";
+    } else {
+        const cpufb::LastLevelCacheInfo cache =
+            cpufb::detect_last_level_cache(cpu);
+        requested_bytes = cpufb::recommended_stream_workset_bytes(cache);
+        if (cache.bytes == 0) {
+            workset_source = "auto: 256 MiB fallback (cache topology unavailable)";
+        } else {
+            workset_source = "auto: max(256 MiB, 4 x " +
+                cpufb::format_cache_capacity(cache.bytes) + ") from " +
+                cache.source;
+        }
+    }
+
+    if (requested_bytes == 0 ||
+        requested_bytes > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max())) {
+        std::cerr << "Error: selected memory workset is too large for this build."
                   << std::endl;
         return false;
     }
-    const std::size_t bytes =
-        static_cast<std::size_t>(options.memory_size_mib) << 20;
-    const KernelSpec kernel = select_stream_kernel();
+    const std::size_t bytes = static_cast<std::size_t>(requested_bytes);
     if (bytes < kernel.bytes_per_block ||
         bytes % kernel.bytes_per_block != 0) {
         std::cerr << "Error: memory workset must be a multiple of "
@@ -288,8 +312,9 @@ bool run_arm64_memory_bandwidth(const CliOptions &options)
     void *allocation = NULL;
     const int allocation_status = posix_memalign(&allocation, 4096, bytes);
     if (allocation_status != 0) {
-        std::cerr << "Error: failed to allocate " << options.memory_size_mib
-                  << " MiB: " << std::strerror(allocation_status) << std::endl;
+        std::cerr << "Error: failed to allocate "
+                  << cpufb::format_cache_capacity(requested_bytes) << ": "
+                  << std::strerror(allocation_status) << std::endl;
         return false;
     }
 #ifdef __linux__
@@ -350,7 +375,7 @@ bool run_arm64_memory_bandwidth(const CliOptions &options)
     const double maximum = samples.back().gb_per_second;
 
     Table table;
-    vector<string> row(9);
+    vector<string> row(10);
     row[0] = "Core ID";
     row[1] = "Workset";
     row[2] = "Kernel";
@@ -360,11 +385,12 @@ bool run_arm64_memory_bandwidth(const CliOptions &options)
     row[6] = "Min GB/s";
     row[7] = "Max GB/s";
     row[8] = "Cycle Source";
+    row[9] = "Workset Source";
     table.setColumnNum(row.size());
     table.addOneItem(row);
 
     row[0] = std::to_string(cpu);
-    row[1] = std::to_string(options.memory_size_mib) + " MiB";
+    row[1] = cpufb::format_cache_capacity(requested_bytes);
     row[2] = kernel.name;
     row[3] = format_decimal(median.gb_per_second, 3);
     row[4] = median.bytes_per_cycle > 0.0
@@ -376,6 +402,7 @@ bool run_arm64_memory_bandwidth(const CliOptions &options)
     row[6] = format_decimal(minimum, 3);
     row[7] = format_decimal(maximum, 3);
     row[8] = cycle_source;
+    row[9] = workset_source;
     table.addOneItem(row);
 
     std::cout << "Single-core memory bandwidth: one sequential read stream, "

@@ -55,6 +55,7 @@ multiple issue.
 |SIMD|sve_f64mm|Matrix|fp64|From Neoverse V1+/Graviton3+/Grace|
 |DSA|sme (i8)|Matrix|int8 + mixed-sign (umopa/usmopa/sumopa)|Apple M4, Armv9.0-A SME|
 |DSA|sme_f16f16|Matrix|fp16 ← fp16 (fp16 ZA acc)|Armv9.2+ SME-F16F16 (req. SME2)|
+|DSA|sme_b16b16|Matrix|bf16 ← bf16 (bf16 ZA acc, non-widening bfmopa)|Armv9.2+ SME-B16B16 (req. SME2)|
 |DSA|sme_i16i32|Matrix|int32 ← int16 × int16|Armv9.2+ SME-I16I64 family (req. SME2)|
 
 ## Support riscv64 VECTOR ISA
@@ -137,6 +138,48 @@ notice. New code should use the CMake build above.
 
 `./cpufb --thread_pool=[xxx] --idle_time=yyy`
 
+### Single-core memory bandwidth
+
+```sh
+./cpufb --thread_pool='[0]' --memory-bandwidth
+./cpufb --thread_pool='[0]' --memory-bandwidth --memory-size-mib=1024
+```
+
+On Linux hosts where unprivileged PMU cycle counters are unavailable, set
+`CPUFB_FREQ_GHZ` to the documented fixed core frequency before a
+cycle-normalized run.  It takes precedence over the cpufreq-sysfs fallback:
+
+```bash
+CPUFB_FREQ_GHZ=3.3 ./cpufb --thread_pool='[96]' --include-test=load
+```
+
+`--memory-bandwidth` measures one sequential read stream.  When
+`--memory-size-mib` is omitted, cpufb chooses
+`max(256 MiB, 4 x detected last-level cache)` and prints the topology source in
+the result table.  Linux selects the highest data/unified cache from
+`/sys/devices/system/cpu/cpuN/cache/index*`.  macOS uses a reported L3 cache
+when available; Apple Silicon does not publicly expose its system-level cache,
+so it falls back to the largest reported performance-level L2 cache.  Set
+`--memory-size-mib` explicitly when a fixed workset is required.
+
+### Cache probe and cache-bandwidth separation
+
+```sh
+# Cache capacity, associativity, and cache-line probing; intentionally slow.
+./cpufb --thread_pool='[0]' --include-test=cache
+
+# L1/L2-resident load-instruction bandwidth only; no empirical cache probe.
+./cpufb --thread_pool='[0]' --include-test=load
+```
+
+The `cache` category owns the empirical pointer-chase capacity probe and the
+associativity probe.  The `load` category obtains L1/L2 capacity directly from
+Linux cache-topology sysfs or macOS cache sysctl, then uses half that capacity
+(up to 32 MiB) as its bandwidth workset.  A topology failure uses conservative
+64 KiB (L1) and 1 MiB (L2) defaults.  The old pointer-chase loop is a capacity
+probe, not a published cache-latency result; it is therefore not run by
+`--include-test=load`.
+
   --thread_pool: [xxx] is the list of cpu thread to benchmarking, from setting affinities. Please reference the result of lstopo command. For example, [0,3,5-8,13-15].
 
   --idle_time: the interval time(sec) between any two adjacent benchmarks, default is 0.
@@ -178,6 +221,26 @@ their throughput rows and are omitted from `--list-instructions`.
 See [X86_BENCHMARK_ACCOUNTING.md](X86_BENCHMARK_ACCOUNTING.md) for the audited
 operation counts and the exact meaning of TSC-based instruction rate and
 latency metrics. Remaining follow-up work is tracked in [TODO.md](TODO.md).
+
+## Experimental pair-issue test
+
+`tools/pair_issue_test.py` measures isolated and joint IPC for two Linux
+AArch64 instruction classes without scanning a full ratio grid. It currently
+supports SVE FP32 FMLA, SVE `ld1h` as its single default load class, NEON FP32
+FMLA, integer scalar ADD, and scalar FP32 FADD. For example:
+
+```sh
+./tools/pair_issue_test.py sve-fmla sve-ld1h --core 96
+./tools/pair_issue_test.py sve-fmla scalar-add --core 96
+./tools/pair_issue_test.py sve-fmla neon-fmla --core 96
+./tools/pair_issue_test.py neon-fmla scalar-add --core 96
+```
+
+The test starts at normalized pressure points 25%, 50%, and 75%, compares
+interleaved and blocked schedules, and adds points only around nonlinear
+overlap or a 97%-of-peak knee. See
+[PAIR_ISSUE_TEST.md](PAIR_ISSUE_TEST.md) for the measurement equations,
+requirements, caveats, JSON output, and dry-run planning mode.
 
 ## Compute/load/store issue model
 

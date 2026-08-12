@@ -245,6 +245,7 @@ extern "C"
 
 #ifdef _SME_
     void sme_bfmopa_vv_f32bf16bf16(int64_t);
+    void sme_bfmopa2_vv_f32bf16bf16(int64_t);
     void sme_fmopa_vv_f32f32f32(int64_t);
     void sme_fmopa2_vv_f32f32f32(int64_t);
     void sme_fmopa_vv_f32f16f16(int64_t);
@@ -257,6 +258,11 @@ extern "C"
 #ifdef _SME_F16F16_
     void sme_fmopa_vv_f16f16f16(int64_t);
     void sme_fmopa2_vv_f16f16f16(int64_t);
+#endif
+
+#ifdef _SME_B16B16_
+    void sme_bfmopa_vv_bf16bf16bf16(int64_t);
+    void sme_bfmopa2_vv_bf16bf16bf16(int64_t);
 #endif
 
 #ifdef _SME_I16I32_

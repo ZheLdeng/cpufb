@@ -197,7 +197,7 @@ CliOptions::CliOptions() :
     list_categories(false),
     list_instructions(false),
     memory_bandwidth(false),
-    memory_size_mib(1024),
+    memory_size_mib(0),
     memory_repetitions(5),
     memory_size_set(false),
     memory_repetitions_set(false),

@@ -6,6 +6,7 @@
 struct FrequencyData {
     double theory_freq = 0;
     double caculate_freq = 0;
+    std::string counter_source = "unavailable";
     double IPC_fp32 = 0;
     double IPC_fp64 = 0;
     double IPC_load = 0;

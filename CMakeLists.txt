@@ -122,6 +122,9 @@ set(_kernel_sources
     "${CPUFB_KERNEL_DIR}/frequency.cpp"
     "${CPUFB_KERNEL_DIR}/load.cpp"
 )
+if(CPUFB_ARCH STREQUAL "arm64" AND CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    list(APPEND _kernel_sources "${CPUFB_KERNEL_DIR}/macos_counters.cpp")
+endif()
 if(CPUFB_ARCH STREQUAL "arm64" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(APPEND _kernel_sources "${CPUFB_ARCH_DIR}/runtime_features.cpp")
 endif()
@@ -201,6 +204,9 @@ if(TARGET cpufb_simd)
 endif()
 if(_amx_target)
     target_link_libraries(cpufb PRIVATE ${_amx_target})
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    target_link_libraries(cpufb PRIVATE "-ldl")
 endif()
 
 # ---------------------------------------------------------------------------

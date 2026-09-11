@@ -22,6 +22,7 @@
 
 #ifdef __APPLE__
 #include <sys/sysctl.h>
+#include "macos_counters.hpp"
 #endif
 
 #ifdef _SVE_
@@ -47,30 +48,10 @@ static void* thread_function_freq(void* arg){
     double time_used;
 
 #ifdef __APPLE__
-    char cpuType[256];
-    size_t size = sizeof(cpuType);
-
-    // 获取 CPU 架构名称
-    if (sysctlbyname("machdep.cpu.brand_string", &cpuType, &size, NULL, 0) == -1) {
-        perror("sysctl");
-    }
-    if(std::string(cpuType) == "Apple M1"){
-        data->theory_freq = 3.2;
-        data->caculate_freq = 3.2;
-        CPU_freq = 3.2 * 1e9;
-    } else if (std::string(cpuType) == "Apple M2"){
-        data->theory_freq = 3.5;
-        data->caculate_freq = 3.5;
-        CPU_freq = 3.5 * 1e9;
-    } else if (std::string(cpuType) == "Apple M3"){
-        data->theory_freq = 4.06;
-        data->caculate_freq = 4.06;
-        CPU_freq = 4.06 * 1e9;
-    } else if (std::string(cpuType) == "Apple M4 Pro"){
-        data->theory_freq = 4.5;
-        data->caculate_freq = 4.5;
-        CPU_freq = 4.5 * 1e9;
-    }
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+    MacosCounters counters;
+    MacosCounterSnapshot start_counters, end_counters;
+    bool use_kperf = counters.read(start_counters);
 
 #endif
 #ifdef __linux__
@@ -121,9 +102,32 @@ static void* thread_function_freq(void* arg){
     asimd_fmla_vv_f64f64f64(looptime);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+#ifdef __APPLE__
+    if (use_kperf) use_kperf = counters.read(start_counters);
+#endif
     asimd_fmla_vv_f64f64f64(looptime);
+#ifdef __APPLE__
+    if (use_kperf) use_kperf = counters.read(end_counters);
+#endif
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
+#ifdef __APPLE__
+    if (use_kperf && end_counters.cycles > start_counters.cycles) {
+        CPU_freq = static_cast<double>(end_counters.cycles - start_counters.cycles) / time_used;
+        data->caculate_freq = CPU_freq * 1e-9;
+        data->counter_source = "kperf fixed counters";
+    } else {
+        double frequency_mhz = 0;
+        std::string error;
+        if (sample_powermetrics_frequency_mhz(frequency_mhz, error)) {
+            CPU_freq = frequency_mhz * 1e6;
+            data->caculate_freq = frequency_mhz * 1e-3;
+            data->counter_source = "powermetrics estimate";
+        } else {
+            data->counter_source = "unavailable (" + error + ")";
+        }
+    }
+#endif
     data->IPC_fp64 = CPU_freq > 0
         ? looptime * 24 / (time_used * CPU_freq) : 0;
 
@@ -217,8 +221,9 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
         cont[4] = ss4.str();
         cont[5] = ss5.str();
         #ifdef _SVE_
-	    cont[6] = ss6.str();
-	    cont[7] = ss7.str();
+        cont[6] = data->counter_source;
+        cont[7] = ss6.str();
+        cont[8] = ss7.str();
         #endif
         table.addOneItem(cont);
     }
@@ -252,9 +257,10 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
     cont[3] = ss3.str();
     cont[4] = ss4.str();
     cont[5] = ss5.str();
+    cont[6] = result->counter_source;
     #ifdef _SVE_
-    cont[6] = ss6.str();
-    cont[7] = ss7.str();
+    cont[7] = ss6.str();
+    cont[8] = ss7.str();
     #endif
     table.addOneItem(cont);
 #endif

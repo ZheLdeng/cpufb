@@ -430,9 +430,9 @@ static void init_table(vector<Table*> &tables)
     tables[2]->addOneItem(ti);
 
     #ifdef _SVE_
-    ti.resize(8);
+    ti.resize(9);
     #else
-    ti.resize(6);
+    ti.resize(7);
     #endif
     ti[0] = "Core ID";
     ti[1] = "Theory Freq";
@@ -440,9 +440,10 @@ static void init_table(vector<Table*> &tables)
     ti[3] = "IPC(FSU32)";
     ti[4] = "IPC(FSU64)";
     ti[5] = "IPC(LSU ldr)";
+    ti[6] = "Counter Source";
     #ifdef _SVE_
-    ti[6] = "IPC(SVE32)";
-    ti[7] = "IPC(SVE64)";
+    ti[7] = "IPC(SVE32)";
+    ti[8] = "IPC(SVE64)";
     #endif
     tables[3]->setColumnNum(ti.size());
     tables[3]->addOneItem(ti);

@@ -153,6 +153,25 @@ Examples:
 ./cpufb --thread_pool=[0] --mode=all
 ```
 
+### macOS counter backends
+
+On Apple Silicon, `cpufb` first attempts to read per-thread fixed counters
+(cycles and retired instructions) through the installed `kperf` framework. The
+framework is loaded dynamically, so this path is unavailable rather than a hard
+dependency when macOS denies counter access.
+
+If fixed counters cannot be read, `cpufb` falls back to a sampled P-core
+frequency from `powermetrics` and labels the resulting frequency and IPC values
+as `powermetrics estimate`. `powermetrics` requires root privileges:
+
+```sh
+sudo build/macos-arm64/cpufb '--thread_pool=[0]' --mode=compute
+```
+
+If neither source is available, the frequency/IPC fields remain `-` and the
+`Counter Source` column reports why. Do not compare a `powermetrics estimate`
+directly with PMU-derived IPC from Linux.
+
 
 ## Some x86-64 CPU benchmark results
 ---

@@ -220,8 +220,8 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
         cont[3] = ss3.str();
         cont[4] = ss4.str();
         cont[5] = ss5.str();
+        cont[6] = "perf_event cycles";
         #ifdef _SVE_
-        cont[6] = data->counter_source;
         cont[7] = ss6.str();
         cont[8] = ss7.str();
         #endif

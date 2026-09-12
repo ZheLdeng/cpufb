@@ -173,9 +173,9 @@ void get_reported_cache_info(struct CacheData *cache_data, int cpu_id)
         int size_kb = parse_cache_size_kb(size_text);
         int line_size = atoi(line_text.c_str());
         int ways = atoi(ways_text.c_str());
-        if (line_size > 0) cache_data->theory_cacheline = line_size;
         if (level == 1 && type == "Data") {
             cache_data->theory_L1 = size_kb;
+            if (line_size > 0) cache_data->theory_cacheline = line_size;
             cache_data->theory_way = ways;
         } else if (level == 2 && type != "Instruction") {
             cache_data->theory_L2 = max(cache_data->theory_L2, size_kb);

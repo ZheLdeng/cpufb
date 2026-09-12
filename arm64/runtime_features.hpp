@@ -17,6 +17,9 @@ struct Arm64RuntimeFeatures {
     bool sve_bf16 = false;
     bool sve_f32mm = false;
     bool sve_f64mm = false;
+    bool sme = false;
+    bool sme_i16i64 = false;
+    bool sme_f64f64 = false;
 
     bool supports(const std::string &compiled_token) const;
     std::vector<std::string> runnable_tokens() const;

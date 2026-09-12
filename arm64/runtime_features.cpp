@@ -47,6 +47,15 @@
 #ifndef HWCAP2_BF16
 #define HWCAP2_BF16 (1UL << 14)
 #endif
+#ifndef HWCAP2_SME
+#define HWCAP2_SME (1UL << 23)
+#endif
+#ifndef HWCAP2_SME_I16I64
+#define HWCAP2_SME_I16I64 (1UL << 24)
+#endif
+#ifndef HWCAP2_SME_F64F64
+#define HWCAP2_SME_F64F64 (1UL << 25)
+#endif
 
 bool Arm64RuntimeFeatures::supports(const std::string &t) const
 {
@@ -68,6 +77,9 @@ bool Arm64RuntimeFeatures::supports(const std::string &t) const
     if (t == "_SVE_F64MM_") return sve && sve_f64mm;
     if (t == "_SVE_FP16_FMLA_") return sve && fp16;
     if (t == "_SVE2_") return sve && sve2;
+    if (t == "_SME_") return sme;
+    if (t == "_SME_I16I32_") return sme && sme_i16i64;
+    if (t == "_SMEf64_") return sme && sme_f64f64;
     return false;
 }
 
@@ -130,6 +142,15 @@ std::vector<std::string> Arm64RuntimeFeatures::runnable_tokens() const
 #ifdef _SVE2_
     CPUFB_ADD_IF_RUNNABLE(_SVE2_);
 #endif
+#ifdef _SME_
+    CPUFB_ADD_IF_RUNNABLE(_SME_);
+#endif
+#ifdef _SME_I16I32_
+    CPUFB_ADD_IF_RUNNABLE(_SME_I16I32_);
+#endif
+#ifdef _SMEf64_
+    CPUFB_ADD_IF_RUNNABLE(_SMEf64_);
+#endif
 #ifdef _LDP_
     CPUFB_ADD_IF_RUNNABLE(_LDP_);
 #endif
@@ -159,6 +180,9 @@ const Arm64RuntimeFeatures &arm64_runtime_features()
         f.sve_bf16 = hwcap2 & HWCAP2_SVEBF16;
         f.i8mm = hwcap2 & HWCAP2_I8MM;
         f.bf16 = hwcap2 & HWCAP2_BF16;
+        f.sme = hwcap2 & HWCAP2_SME;
+        f.sme_i16i64 = hwcap2 & HWCAP2_SME_I16I64;
+        f.sme_f64f64 = hwcap2 & HWCAP2_SME_F64F64;
         return f;
     }();
     return features;

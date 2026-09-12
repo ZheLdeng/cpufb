@@ -40,46 +40,54 @@ $CXX -O2 $CFLAG $SRC/cpuid.cpp -o $BUILD_DIR/cpuid
 MARCH_FLAG=" "
 SIMD_MACRO=" "
 SIMD_OBJ=" "
-for SIMD in `$BUILD_DIR/cpuid`;
+SIMD_LIST=`$BUILD_DIR/cpuid`
+if echo "$SIMD_LIST" | grep -qx "_ASIMD_FCMA_" && \
+   ! $CC -march=armv8.3-a+fcma -x c -E /dev/null >/dev/null 2>&1; then
+    echo "Skipping _ASIMD_FCMA_: compiler does not support +fcma"
+    SIMD_LIST=`echo "$SIMD_LIST" | grep -vx "_ASIMD_FCMA_"`
+fi
+for SIMD in $SIMD_LIST;
 do
     SIMD_MACRO="$SIMD_MACRO-D$SIMD "
     SIMD_OBJ="$SIMD_OBJ$BUILD_DIR/$SIMD.o "
     
     #as $CFLAG -mcpu=all -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     if [ _BF16_ = $SIMD ]; then
-    $CC -march=armv8.2-a+bf16 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv8.2-a+bf16 $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _I8MM_ = $SIMD ]; then
-    $CC -march=armv8.2-a+i8mm $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv8.2-a+i8mm $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _ASIMD_DP_ = $SIMD ]; then
-    $CC -march=armv8.2-a+dotprod $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv8.2-a+dotprod $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _FHM_ = $SIMD ]; then
-    $CC -march=armv8.2-a+fp16+fp16fml $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv8.2-a+fp16+fp16fml $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    elif [ _ASIMD_FCMA_ = $SIMD ]; then
+    $CC -march=armv8.3-a+fp16+fcma $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SME_ = $SIMD ]; then
-    $CC -march=armv9-a+sme $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv9-a+sme $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SME2_ = $SIMD ]; then
-    $CC -march=armv9-a+sme2 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv9-a+sme2 $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SMEf64_ = $SIMD ]; then
-    $CC -march=armv9-a+sme2+sme-f64f64 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv9-a+sme2+sme-f64f64 $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SME_F16F16_ = $SIMD ]; then
-    $CC -march=armv9.2-a+sme2+sme-f16f16 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv9.2-a+sme2+sme-f16f16 $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SME_I16I32_ = $SIMD ]; then
-    $CC -march=armv9.2-a+sme2+sme-i16i64 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv9.2-a+sme2+sme-i16i64 $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SVE_I8MM_ = $SIMD ]; then
-    $CC -march=armv8.6-a+sve $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv8.6-a+sve $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SVE_BF16_ = $SIMD ]; then
-    $CC -march=armv8.6-a+sve $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv8.6-a+sve $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SVE_F32MM_ = $SIMD ]; then
-    $CC -march=armv8.6-a+sve+f32mm $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv8.6-a+sve+f32mm $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SVE_F64MM_ = $SIMD ]; then
-    $CC -march=armv8.6-a+sve+f64mm $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv8.6-a+sve+f64mm $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SVE_FP16_FMLA_ = $SIMD ]; then
-    $CC -march=armv8.2-a+sve+fp16 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv8.2-a+sve+fp16 $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SVE2_ = $SIMD ]; then
-    $CC -march=armv9-a+sve2 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv9-a+sve2 $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SVE_ = $SIMD ]; then
-    $CC -march=armv8-a+sve $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv8-a+sve $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     else
-    $CC -march=native $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=native $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     fi
     case "$SIMD" in
     *_SME_F16F16_*)
@@ -136,5 +144,11 @@ $CXX $CFLAG -O2 -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/frequency.cpp -o $BUILD
 $CXX $CFLAG -c $ASM/access.S -o $BUILD_DIR/access.o
 $CXX $CFLAG -I$KERNEL -I$COMM $SIMD_MACRO -c $KERNEL/load.cpp -o $BUILD_DIR/load.o
 
-$CXX $CFLAG -std=c++20 -O2 -pthread -o cpufb $BUILD_DIR/cpufb.o $BUILD_DIR/frequency.o $BUILD_DIR/access.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $SIMD_OBJ $AMX_KERNEL
+RUNTIME_FEATURES=""
+if [ "$system_name" != "Darwin" ]; then
+    $CXX $CFLAG -std=c++20 -O2 -I$KERNEL -I$COMM -c $SRC/runtime_features.cpp -o $BUILD_DIR/runtime_features.o
+    RUNTIME_FEATURES="$BUILD_DIR/runtime_features.o"
+fi
+
+$CXX $CFLAG -std=c++20 -O2 -pthread -o cpufb $BUILD_DIR/cpufb.o $BUILD_DIR/frequency.o $BUILD_DIR/access.o $BUILD_DIR/load.o $BUILD_DIR/thread_pool.o $BUILD_DIR/table.o $RUNTIME_FEATURES $SIMD_OBJ $AMX_KERNEL
 set +x

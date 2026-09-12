@@ -923,10 +923,10 @@ static void cpufb_register_isa()
 
 #ifdef _SVE2_
     // 24 inst * 16 OPs/inst (at VL=128b, 8 i16 lanes * 2 ops) / 16 = 24
-    reg_new_isa("sve2", "sve2_sqrdmlah.vv(s16,s16,s16)", "OPS",
-        kComputeLoopTime, 24LL, (void*)sve2_sqrdmlah_vv_s16s16s16);
     reg_new_isa("sve2", "sve2_sqrdmlah.vv(s16,s16,s16)_latency", "OPS",
         kLatencyLoopTime, 24LL, (void*)sve2_sqrdmlah_vv_s16s16s16_latency);
+    reg_new_isa("sve2", "sve2_sqrdmlah.vv(s16,s16,s16)", "OPS",
+        kComputeLoopTime, 24LL, (void*)sve2_sqrdmlah_vv_s16s16s16);
 #endif
 
 #ifdef _SME_
@@ -1049,9 +1049,12 @@ static void cpufb_register_isa()
 
 #ifdef _SMEf64_
     reg_new_isa("SMEf64", "sme_fmopa2.vv(f64,f64,f64)_latency", "FLOPS",
-    kComputeLoopTime, 48LL, (void*)sme_fmopa2_vv_f64f64f64);
+        kComputeLoopTime, 48LL, (void*)sme_fmopa2_vv_f64f64f64);
     reg_new_isa("SMEf64", "sme_fmopa.vv(f64,f64,f64)", "FLOPS",
-        kComputeLoopTime, 48LL, (void*)sme_fmopa_vv_f64f64f64); 
+        kComputeLoopTime, 48LL, (void*)sme_fmopa_vv_f64f64f64);
+#endif
+
+#if defined(_SMEf64_) && defined(_SME2_)
     reg_new_isa("SMEf64", "sme2_fmla.vs(f64,f64,f64)_latency", "FLOPS",
         kComputeLoopTime, 6LL, (void*)sme2_fmla2_vs_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla.vs(f64,f64,f64)", "FLOPS",
@@ -1175,8 +1178,11 @@ static void cpufb_register_isa()
         const string &isa = item.isa;
         const string &type = item.type;
 
-        if (type.find("sme") != string::npos || isa.find("SME") != string::npos)
-            return "_SME_UNSUPPORTED_";
+        if (isa == "SME" || isa == "SME_MULTI_ISSUE") return "_SME_";
+        if (isa == "SMEf64") return "_SMEf64_";
+        if (isa == "SME2") return "_SME2_";
+        if (isa == "SME_F16F16") return "_SME_F16F16_";
+        if (isa == "SME_I16I32") return "_SME_I16I32_";
         if (type.find("sve") != string::npos || isa.find("sve") != string::npos ||
             isa.find("SVE") != string::npos) {
             if (isa == "sve_i8mm") return "_SVE_I8MM_";

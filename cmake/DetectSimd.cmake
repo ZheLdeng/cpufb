@@ -27,7 +27,7 @@ function(cpufb_detect_simd arch out_features)
                 _ASIMD_FCMA_ _ASIMD_REDUCE_ _ASIMD_RECIP_
                 _ASIMD_INT_MAC_ _ASIMD_TBL_ _SVE_ _SVE_I8MM_
                 _SVE_BF16_ _SVE_F32MM_ _SVE_F64MM_ _SVE_FP16_FMLA_
-                _SVE2_ _LDP_ _ISSUE_)
+                _SVE2_ _SME_ _SMEf64_ _LDP_ _ISSUE_)
         endif()
         message(STATUS "cpufb: compiled ARM64 kernels: ${features}")
         message(STATUS "cpufb: runnable ARM64 kernels will be selected from HWCAP at startup")

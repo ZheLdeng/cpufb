@@ -22,7 +22,7 @@ function(cpufb_simd_asm_flags arch feature out_var)
         elseif(feature STREQUAL "_FHM_")
             set(flag "-march=armv8.2-a+fp16+fp16fml")
         elseif(feature STREQUAL "_ASIMD_FCMA_")
-            set(flag "-march=armv8.3-a+fp16")
+            set(flag "-march=armv8.3-a+fp16+fcma")
         elseif(feature STREQUAL "_ASIMD_REDUCE_"
                 OR feature STREQUAL "_ASIMD_RECIP_")
             # fp16 lanes inside these files are guarded by `#ifdef _ASIMD_HP_`,
@@ -83,9 +83,19 @@ endfunction()
 function(cpufb_compute_march_flag arch features_list out_var)
     set(march "")
     if(arch STREQUAL "arm64" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-        # Optional instructions live only in per-ISA assembly objects.  Keep
-        # C++ translation units at the mandatory architecture baseline.
+        # SME registration uses rdsvl in the main C++ translation unit; other
+        # optional instructions remain confined to their assembly objects.
         set(march "-march=armv8-a")
+        foreach(feat IN LISTS features_list)
+            if(feat STREQUAL "_SME_"
+                    OR feat STREQUAL "_SME2_"
+                    OR feat STREQUAL "_SMEf64_"
+                    OR feat STREQUAL "_SME_F16F16_"
+                    OR feat STREQUAL "_SME_I16I32_")
+                set(march "-march=armv9-a+sme")
+                break()
+            endif()
+        endforeach()
     elseif(arch STREQUAL "arm64")
         # Priority order matches build_arm64.sh's case-statement order: later
         # cases (SME family) override earlier (SVE family) override base SVE.

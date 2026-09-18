@@ -243,7 +243,9 @@ static ComputeResult cpubm_run_compute(tpool_t *tm, cpubm_t &item)
     // time_used is the synchronized wall time for one invocation per core.
     // Report estimated IPC per core rather than summing all cores into an
     // aggregate value that grows with the thread count.
-    result.ipc = item.loop_time * 24 / time_used / freq[0] / 1e9;
+    bool frequency_available = !freq.empty() && freq[0] > 0;
+    result.ipc = frequency_available
+        ? item.loop_time * 24 / time_used / freq[0] / 1e9 : 0;
     return result;
 }
 
@@ -264,7 +266,8 @@ static void cpubm_arm64_one(tpool_t *tm,
     cont[0] = item.isa;
     cont[1] = item.type;
     cont[2] = format_perf_value(result.perf, item.dim);
-    cont[3] = to_string(result.ipc);
+    bool frequency_available = !freq.empty() && freq[0] > 0;
+    cont[3] = frequency_available ? to_string(result.ipc) : "-";
     cont[4] = latency > 0 ? to_string(latency) : "-";
     table.addOneItem(cont);
 
@@ -308,12 +311,15 @@ static void cpubm_arm_load(tpool_t *tm, cpubm_t &item, Table &table)
 
     stringstream ss1;
 
-    ss1 << setprecision(5) << perf << " " << item.dim;
+    if (perf >= 0)
+        ss1 << setprecision(5) << perf << " " << item.dim;
+    else
+        ss1 << "-";
 
     cont[0] = item.isa;
     cont[1] = item.type;
     cont[2] = ss1.str();
-   
+
     table.addOneItem(cont);
     //cout << "test load end" << endl;
 }
@@ -411,6 +417,54 @@ static bool cpubm_arm_cache(std::vector<int> &set_of_threads,
     cont[2] = cache_size.test_cacheline > 0 ?
         to_string(cache_size.test_cacheline) + " B" : "-";
     table.addOneItem(cont);
+
+    // Cache-hierarchy latency curve: emit the dependent-load working-set
+    // sweep and the inferred per-level capacity/latency/jump estimates.
+    int cpu_id = set_of_threads[0];
+    get_reported_cache_info(&cache_size, cpu_id);
+    CacheCurveResult curve = measure_cache_hierarchy(&cache_size, cpu_id);
+
+    Table curve_table;
+    curve_table.setColumnNum(2);
+    vector<string> curve_head = {"Working Set", "Dependent-load Latency"};
+    curve_table.addOneItem(curve_head);
+    for (const auto &point : curve.points) {
+        vector<string> row(2);
+        if (point.working_set_bytes >= 1024 * 1024) {
+            ostringstream size;
+            size << fixed << setprecision(2)
+                 << point.working_set_bytes / (1024.0 * 1024.0) << " MB";
+            row[0] = size.str();
+        } else {
+            row[0] = to_string(point.working_set_bytes / 1024) + " KB";
+        }
+        ostringstream latency;
+        latency << fixed << setprecision(3) << point.latency_ns << " ns/load";
+        row[1] = latency.str();
+        curve_table.addOneItem(row);
+    }
+    curve_table.print();
+
+    Table estimate_table;
+    estimate_table.setColumnNum(4);
+    vector<string> estimate_head = {"Level", "Measured Capacity", "Latency", "Jump"};
+    estimate_table.addOneItem(estimate_head);
+    for (const auto &level : curve.levels) {
+        if (level.level != "L1" && level.level != "L2") continue;
+        vector<string> row(4);
+        row[0] = level.level;
+        row[1] = level.capacity_bytes >= 1024 * 1024
+            ? to_string(level.capacity_bytes / (1024 * 1024)) + " MB"
+            : to_string(level.capacity_bytes / 1024) + " KB";
+        ostringstream latency, jump;
+        latency << fixed << setprecision(3) << level.latency_ns << " ns/load";
+        jump << fixed << setprecision(2) << level.jump_ratio << "x";
+        row[2] = latency.str();
+        row[3] = jump.str();
+        estimate_table.addOneItem(row);
+    }
+    estimate_table.print();
+
     return append_arm64_cache_memory_bandwidth(options, table);
 }
 
@@ -449,11 +503,17 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
     tpool_wait(tm);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    perf = (double)item.loop_time * (inner_loop * item.comp_pl + 4)/
-        (time_used * freq[0] * 1e9);
+    bool frequency_available = !freq.empty() && freq[0] > 0;
+    perf = frequency_available
+        ? (double)item.loop_time * (inner_loop * item.comp_pl + 4) /
+            (time_used * freq[0] * 1e9)
+        : 0;
     stringstream ss;
 
-    ss << setprecision(5) << perf << " " << item.dim;
+    if (frequency_available)
+        ss << setprecision(5) << perf << " " << item.dim;
+    else
+        ss << "-";
 
     vector<string> cont;
     cont.resize(table.getCol());
@@ -506,9 +566,9 @@ static void init_table(vector<Table*> &tables)
     tables[2]->addOneItem(ti);
 
     #ifdef _SVE_
-    ti.resize(8);
+    ti.resize(9);
     #else
-    ti.resize(6);
+    ti.resize(7);
     #endif
     ti[0] = "Core ID";
     ti[1] = "Theory Freq";
@@ -516,9 +576,10 @@ static void init_table(vector<Table*> &tables)
     ti[3] = "IPC(FSU32)";
     ti[4] = "IPC(FSU64)";
     ti[5] = "IPC(LSU ldr)";
+    ti[6] = "Counter Source";
     #ifdef _SVE_
-    ti[6] = "IPC(SVE32)";
-    ti[7] = "IPC(SVE64)";
+    ti[7] = "IPC(SVE32)";
+    ti[8] = "IPC(SVE64)";
     #endif
     tables[3]->setColumnNum(ti.size());
     tables[3]->addOneItem(ti);
@@ -536,9 +597,9 @@ static void init_frequency_table(Table &table)
     vector<string> ti;
 
 #ifdef _SVE_
-    ti.resize(8);
+    ti.resize(9);
 #else
-    ti.resize(6);
+    ti.resize(7);
 #endif
     ti[0] = "Core ID";
     ti[1] = "Theory Freq";
@@ -546,9 +607,10 @@ static void init_frequency_table(Table &table)
     ti[3] = "IPC(FSU32)";
     ti[4] = "IPC(FSU64)";
     ti[5] = "IPC(LSU ldr)";
+    ti[6] = "Counter Source";
 #ifdef _SVE_
-    ti[6] = "IPC(SVE32)";
-    ti[7] = "IPC(SVE64)";
+    ti[7] = "IPC(SVE32)";
+    ti[8] = "IPC(SVE64)";
 #endif
     table.setColumnNum(ti.size());
     table.addOneItem(ti);
@@ -633,6 +695,8 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
     const CliOptions &options)
 {
     int i;
+    const uint32_t bench_limit = options.bench_limit;
+    uint32_t benches_run = 0;
 
     if (bm_list.size() > 0)
     {
@@ -687,7 +751,10 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
 
         // traverse task list
         for (i = 0; i < static_cast<int>(bm_list.size()); i++)
-        { 
+        {
+            if (bench_limit > 0 && benches_run >= bench_limit) {
+                break;
+            }
             // cout << bm_list[i].type << endl;
             if (catalog[i].is_latency) continue;
             if (!should_run_benchmark(filter, bm_list[i].isa, bm_list[i].dim))
@@ -713,6 +780,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
                 cout << "Wrong dimension !" << endl;
                 break;
             }
+            benches_run++;
         }
         bool save_ok = print_and_save_benchmark_tables(filter,
             save_options,
@@ -1300,9 +1368,12 @@ static void cpufb_register_isa()
 #ifdef _SMEf64_
     require_feature("_SME_F64F64_");
     reg_new_isa("SMEf64", "sme_fmopa2.vv(f64,f64,f64)_latency", "FLOPS",
-    kComputeLoopTime, 48LL, (void*)sme_fmopa2_vv_f64f64f64);
+        kComputeLoopTime, 48LL, (void*)sme_fmopa2_vv_f64f64f64);
     reg_new_isa("SMEf64", "sme_fmopa.vv(f64,f64,f64)", "FLOPS",
-        kComputeLoopTime, 48LL, (void*)sme_fmopa_vv_f64f64f64); 
+        kComputeLoopTime, 48LL, (void*)sme_fmopa_vv_f64f64f64);
+#endif
+
+#if defined(_SMEf64_) && defined(_SME2_)
     require_feature("_SME2_F64F64_");
     reg_new_isa("SMEf64", "sme2_fmla.vs(f64,f64,f64)_latency", "FLOPS",
         kComputeLoopTime, 6LL, (void*)sme2_fmla2_vs_f64f64f64);
@@ -1471,6 +1542,20 @@ static void cpufb_register_isa()
 #endif
 }
 
+static void scale_benchmark_loops(uint32_t loop_scale)
+{
+    if (loop_scale <= 1) {
+        return;
+    }
+
+    for (auto &bm : bm_list) {
+        bm.loop_time = bm.loop_time / loop_scale;
+        if (bm.loop_time < 1) {
+            bm.loop_time = 1;
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
     CliOptions options;
@@ -1488,8 +1573,8 @@ int main(int argc, char *argv[])
     if (!options.thread_pool_set)
     {
         fprintf(stderr, "Error: You must set --thread_pool parameter.\n");
-        fprintf(stderr, "You may also set --idle_time parameter.\n");
-        fprintf(stderr, "Usage: %s --thread_pool=[xxx] --idle_time=yyy [--include-isa=list] [--exclude-isa=list] [--include-test=list] [--exclude-test=list]\n", argv[0]);
+        fprintf(stderr, "You may also set --mode, --idle_time, --loop_scale and --bench_limit.\n");
+        fprintf(stderr, "Usage: %s --thread_pool=[xxx] --idle_time=yyy [--mode=all|cache|compute] [--loop_scale=zzz] [--bench_limit=nnn] [--include-isa=list] [--exclude-isa=list] [--include-test=list] [--exclude-test=list]\n", argv[0]);
         fprintf(stderr, "       %s --thread_pool=[xxx] --sweep-instruction='Core Computation'\n", argv[0]);
         fprintf(stderr, "       %s --thread_pool=[cores] --memory-bandwidth [--memory-size-mib=N; default=auto per stream] [--memory-repetitions=5]\n", argv[0]);
         fprintf(stderr, "       %s --list-categories | --list-instructions\n", argv[0]);
@@ -1499,6 +1584,9 @@ int main(int argc, char *argv[])
         fprintf(stderr, "idle_time is the interval time(s) between every two benchmarks.\n");
         fprintf(stderr, "idle_time parameter can be ignored, the default value is 0s.\n");
         fprintf(stderr, "test list supports compute,load,cache,freq,multi_issue (cache=probe+L3/memory stream; load=L1/L2 instruction bandwidth).\n");
+        fprintf(stderr, "mode selects cache hierarchy, compute benchmarks, or both; the default is all.\n");
+        fprintf(stderr, "loop_scale divides benchmark loop counts for quick smoke runs; default is 1.\n");
+        fprintf(stderr, "bench_limit limits the number of registered benchmarks to run; default is 0 for all.\n");
         fprintf(stderr, "isa list supports detected ISA names such as asimd,bf16,sve,SME2.\n");
         fprintf(stderr, "Use --list-categories to list available test and ISA categories.\n");
         fprintf(stderr, "Use --list-instructions to list valid sweep instruction names.\n");
@@ -1517,6 +1605,7 @@ int main(int argc, char *argv[])
         return run_arm64_memory_bandwidth(options) ? 0 : 1;
 
     cpufb_register_isa();
+    scale_benchmark_loops(options.loop_scale);
     BenchmarkCatalog catalog = build_benchmark_catalog();
 
     if (!validate_benchmark_filter(options.filter, catalog)) return 1;

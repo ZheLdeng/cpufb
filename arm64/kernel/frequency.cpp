@@ -23,6 +23,7 @@
 
 #ifdef __APPLE__
 #include <sys/sysctl.h>
+#include "macos_counters.hpp"
 #endif
 
 #ifdef _SVE_
@@ -54,7 +55,7 @@ static double cpu_freq_override_ghz()
 
 static void* thread_function_freq(void* arg){
     struct FrequencyData* data = (FrequencyData*)malloc(sizeof(FrequencyData));
-    double CPU_freq;
+    double CPU_freq = 0;
 #ifdef __APPLE__
     int64_t looptime = 20000000;
 #else
@@ -64,6 +65,14 @@ static void* thread_function_freq(void* arg){
     double time_used;
 
 #ifdef __APPLE__
+    // Prefer real cycle counts from the private kperf fixed counters (the
+    // common case on Apple Silicon).  powermetrics is the root-only sampled
+    // fallback and the hard-coded per-model clock is the last resort.
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+    MacosCounters counters;
+    MacosCounterSnapshot start_counters, end_counters;
+    bool use_kperf = counters.read(start_counters);
+
     char cpuType[256];
     size_t size = sizeof(cpuType);
 
@@ -127,7 +136,7 @@ static void* thread_function_freq(void* arg){
     time_used = get_time(&start, &end);
     long long cycles = pec.get_cycle();
 
-    
+
 
     if(cycles == 0){
         CPU_freq = fallback_ghz > 0.0 ? fallback_ghz * 1e9 :
@@ -135,7 +144,7 @@ static void* thread_function_freq(void* arg){
     }else{
         CPU_freq = (double)cycles / time_used;
     }
-    
+
     data->caculate_freq = CPU_freq * 1e-9;
     // cout << data->caculate_freq  << endl;
 #endif
@@ -145,23 +154,49 @@ static void* thread_function_freq(void* arg){
     asimd_fmla_vv_f64f64f64(looptime);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+#ifdef __APPLE__
+    if (use_kperf) use_kperf = counters.read(start_counters);
+#endif
     asimd_fmla_vv_f64f64f64(looptime);
+#ifdef __APPLE__
+    if (use_kperf) use_kperf = counters.read(end_counters);
+#endif
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    data->IPC_fp64 = looptime * 24 / (time_used * CPU_freq);
+#ifdef __APPLE__
+    if (use_kperf && end_counters.cycles > start_counters.cycles) {
+        CPU_freq = static_cast<double>(end_counters.cycles - start_counters.cycles) / time_used;
+        data->caculate_freq = CPU_freq * 1e-9;
+        data->counter_source = "kperf fixed counters";
+    } else {
+        double frequency_mhz = 0;
+        std::string error;
+        if (sample_powermetrics_frequency_mhz(frequency_mhz, error)) {
+            CPU_freq = frequency_mhz * 1e6;
+            data->caculate_freq = frequency_mhz * 1e-3;
+            data->counter_source = "powermetrics estimate";
+        } else {
+            data->counter_source = "unavailable (" + error + ")";
+        }
+    }
+#endif
+    data->IPC_fp64 = CPU_freq > 0
+        ? looptime * 24 / (time_used * CPU_freq) : 0;
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     asimd_fmla_vv_f32f32f32(looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    data->IPC_fp32 = looptime * 24 / (time_used * CPU_freq);
+    data->IPC_fp32 = CPU_freq > 0
+        ? looptime * 24 / (time_used * CPU_freq) : 0;
 
     float* cache_data = (float*)malloc(1024);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     load_ldr_kernel(cache_data, looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     time_used = get_time(&start, &end);
-    data->IPC_load = looptime * 24 / (time_used * CPU_freq);
+    data->IPC_load = CPU_freq > 0
+        ? looptime * 24 / (time_used * CPU_freq) : 0;
 
 #ifdef _SVE_
     data->IPC_fp32_sve = 0;
@@ -171,13 +206,15 @@ static void* thread_function_freq(void* arg){
         sve_fmla_vv_f32f32f32(looptime);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
         time_used = get_time(&start, &end);
-        data->IPC_fp32_sve = looptime * 24 / (time_used * CPU_freq);
+        data->IPC_fp32_sve = CPU_freq > 0
+            ? looptime * 24 / (time_used * CPU_freq) : 0;
 
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
         sve_fmla_vv_f64f64f64(looptime);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
         time_used = get_time(&start, &end);
-        data->IPC_fp64_sve = looptime * 24 / (time_used * CPU_freq);
+        data->IPC_fp64_sve = CPU_freq > 0
+            ? looptime * 24 / (time_used * CPU_freq) : 0;
     }
 #endif
     pthread_exit((void *)data);
@@ -196,20 +233,31 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
     for (int i = 0; i<num_thread; i++){
         pthread_create(&threads[i], NULL, thread_function_freq,  (void*)&set_of_threads[i] );
     }
-#ifndef __APPLE__  
+#ifndef __APPLE__
     for (int t = 0; t < num_thread; t++) {
         pthread_join(threads[t], &thread_result);
         result = (struct FrequencyData *)thread_result;
         stringstream ss1, ss2, ss3, ss4, ss5, ss6, ss7;
-        ss1 << std::setprecision(2) << result->theory_freq <<" GHZ" ;
-        ss2 << std::setprecision(2) << result->caculate_freq <<" GHZ" ;
-        ss3 << std::setprecision(2) << result->IPC_fp32 ;
-        ss4 << std::setprecision(2) << result->IPC_fp64 ;
-        ss5<< std::setprecision(2) << result->IPC_load ;
+        if (result->theory_freq > 0)
+            ss1 << std::setprecision(2) << result->theory_freq <<" GHZ";
+        else ss1 << "-";
+        if (result->caculate_freq > 0) {
+            ss2 << std::setprecision(2) << result->caculate_freq <<" GHZ";
+            ss3 << std::setprecision(2) << result->IPC_fp32;
+            ss4 << std::setprecision(2) << result->IPC_fp64;
+            ss5 << std::setprecision(2) << result->IPC_load;
+        } else {
+            ss2 << "-"; ss3 << "-"; ss4 << "-"; ss5 << "-";
+        }
         #ifdef _SVE_
         if (arm64_runtime_features().sve) {
-            ss6 << std::setprecision(2) << result->IPC_fp32_sve;
-            ss7 << std::setprecision(2) << result->IPC_fp64_sve;
+            if (result->caculate_freq > 0) {
+                ss6 << std::setprecision(2) << result->IPC_fp32_sve;
+                ss7 << std::setprecision(2) << result->IPC_fp64_sve;
+            } else {
+                ss6 << "-";
+                ss7 << "-";
+            }
         } else {
             ss6 << "-";
             ss7 << "-";
@@ -224,23 +272,30 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
         cont[3] = ss3.str();
         cont[4] = ss4.str();
         cont[5] = ss5.str();
+        cont[6] = "perf_event cycles";
         #ifdef _SVE_
-	    cont[6] = ss6.str();
-	    cont[7] = ss7.str();
+        cont[7] = ss6.str();
+        cont[8] = ss7.str();
         #endif
         table.addOneItem(cont);
     }
 #else
-    for (int t = 0; t < num_thread; t++) {  
+    for (int t = 0; t < num_thread; t++) {
         pthread_join(threads[t], &thread_result);
     }
     result = (struct FrequencyData *)thread_result;
     stringstream ss1, ss2, ss3, ss4, ss5, ss6, ss7;
-    ss1 << std::setprecision(2) << result->theory_freq <<" GHZ" ;
-    ss2 << std::setprecision(2) << result->caculate_freq <<" GHZ" ;
-    ss3 << std::setprecision(2) << result->IPC_fp32 ;
-    ss4 << std::setprecision(2) << result->IPC_fp64 ;
-    ss5<< std::setprecision(2) << result->IPC_load ;
+    if (result->theory_freq > 0)
+        ss1 << std::setprecision(2) << result->theory_freq <<" GHZ";
+    else ss1 << "-";
+    if (result->caculate_freq > 0) {
+        ss2 << std::setprecision(2) << result->caculate_freq <<" GHZ";
+        ss3 << std::setprecision(2) << result->IPC_fp32;
+        ss4 << std::setprecision(2) << result->IPC_fp64;
+        ss5 << std::setprecision(2) << result->IPC_load;
+    } else {
+        ss2 << "-"; ss3 << "-"; ss4 << "-"; ss5 << "-";
+    }
     #ifdef _SVE_
     ss6 << std::setprecision(2) << result->IPC_fp32_sve ;
     ss7 << std::setprecision(2) << result->IPC_fp64_sve ;
@@ -254,9 +309,10 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
     cont[3] = ss3.str();
     cont[4] = ss4.str();
     cont[5] = ss5.str();
+    cont[6] = result->counter_source;
     #ifdef _SVE_
-    cont[6] = ss6.str();
-    cont[7] = ss7.str();
+    cont[7] = ss6.str();
+    cont[8] = ss7.str();
     #endif
     table.addOneItem(cont);
 #endif

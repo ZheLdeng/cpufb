@@ -201,7 +201,11 @@ CliOptions::CliOptions() :
     memory_repetitions(5),
     memory_size_set(false),
     memory_repetitions_set(false),
-    thread_pool_set(false)
+    thread_pool_set(false),
+    mode(BENCH_MODE_ALL),
+    include_test_explicit(false),
+    loop_scale(1),
+    bench_limit(0)
 {
 }
 
@@ -213,12 +217,32 @@ bool parse_cli_options(int argc, char *argv[], CliOptions &options)
             options.thread_pool_set = true;
         } else if (strncmp(argv[i], "--idle_time=", 12) == 0) {
             options.idle_time = static_cast<uint32_t>(atoi(argv[i] + 12));
+        } else if (strncmp(argv[i], "--loop_scale=", 13) == 0) {
+            const uint32_t requested_scale =
+                static_cast<uint32_t>(atoi(argv[i] + 13));
+            options.loop_scale = requested_scale > 0 ? requested_scale : 1;
+        } else if (strncmp(argv[i], "--bench_limit=", 14) == 0) {
+            options.bench_limit = static_cast<uint32_t>(atoi(argv[i] + 14));
+        } else if (strncmp(argv[i], "--mode=", 7) == 0) {
+            const string requested_mode = argv[i] + 7;
+            if (requested_mode == "cache") {
+                options.mode = BENCH_MODE_CACHE;
+            } else if (requested_mode == "compute") {
+                options.mode = BENCH_MODE_COMPUTE;
+            } else if (requested_mode == "all") {
+                options.mode = BENCH_MODE_ALL;
+            } else {
+                cerr << "Error: --mode must be cache, compute or all."
+                     << endl;
+                return false;
+            }
         } else if (strncmp(argv[i], "--include-isa=", 14) == 0) {
             parse_filter_list(argv[i] + 14, options.filter.include_isa);
         } else if (strncmp(argv[i], "--exclude-isa=", 14) == 0) {
             parse_filter_list(argv[i] + 14, options.filter.exclude_isa);
         } else if (strncmp(argv[i], "--include-test=", 15) == 0) {
             parse_filter_list(argv[i] + 15, options.filter.include_test);
+            options.include_test_explicit = true;
         } else if (strncmp(argv[i], "--exclude-test=", 15) == 0) {
             parse_filter_list(argv[i] + 15, options.filter.exclude_test);
         } else if (strcmp(argv[i], "--list-categories") == 0) {
@@ -273,6 +297,18 @@ bool parse_cli_options(int argc, char *argv[], CliOptions &options)
             options.save.format_set = true;
         }
     }
+
+    // --mode is shorthand for the test-type filter. An explicit
+    // --include-test is more specific and therefore wins.
+    if (!options.include_test_explicit && options.mode != BENCH_MODE_ALL) {
+        if (options.mode == BENCH_MODE_CACHE) {
+            options.filter.include_test.insert("cache");
+        } else {
+            options.filter.include_test.insert("compute");
+            options.filter.include_test.insert("freq");
+            options.filter.include_test.insert("multi_issue");
+        }
+    }
     return true;
 }
 
@@ -308,7 +344,8 @@ bool validate_memory_bandwidth_options(const CliOptions &options,
     }
     if (!options.filter.include_isa.empty() ||
         !options.filter.exclude_isa.empty() ||
-        !options.filter.include_test.empty() ||
+        (options.include_test_explicit &&
+            !options.filter.include_test.empty()) ||
         !options.filter.exclude_test.empty()) {
         cerr << "Error: --memory-bandwidth cannot be combined with ISA or "
              << "test filters." << endl;

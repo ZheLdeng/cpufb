@@ -43,6 +43,13 @@ enum SaveFormat
     SAVE_FORMAT_CSV
 };
 
+enum BenchMode
+{
+    BENCH_MODE_ALL,
+    BENCH_MODE_CACHE,
+    BENCH_MODE_COMPUTE
+};
+
 struct SaveOptions
 {
     bool enabled;
@@ -68,6 +75,10 @@ struct CliOptions
     bool memory_repetitions_set;
     SaveOptions save;
     bool thread_pool_set;
+    BenchMode mode;
+    bool include_test_explicit;
+    std::uint32_t loop_scale;
+    std::uint32_t bench_limit;
 
     CliOptions();
 };

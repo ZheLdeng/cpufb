@@ -50,6 +50,9 @@
 #ifndef HWCAP2_SME
 #define HWCAP2_SME (1UL << 23)
 #endif
+#ifndef HWCAP2_SME_I16I64
+#define HWCAP2_SME_I16I64 (1UL << 24)
+#endif
 #ifndef HWCAP2_SME_F64F64
 #define HWCAP2_SME_F64F64 (1UL << 25)
 #endif
@@ -106,6 +109,10 @@ bool Arm64RuntimeFeatures::supports(const std::string &t) const
     if (t == "_SME2_") return sme && sme2;
     if (t == "_SME_F64F64_") return sme && sme_f64f64;
     if (t == "_SME2_F64F64_") return sme && sme2 && sme_f64f64;
+    // `cpuid` prints the SME f64f64 family as the _SMEf64_ token (matching the
+    // _SMEf64_.S benchmark and the _SMEf64_ build macro), so accept that name
+    // in addition to the descriptive aliases above.
+    if (t == "_SMEf64_") return sme && sme_f64f64;
     // These instruction families were added with SME2 and need both flags.
     if (t == "_SME_I16I32_") return sme && sme2 && sme_i16i32;
     if (t == "_SME_F16F16_") return sme && sme2 && sme_f16f16;
@@ -181,10 +188,12 @@ std::vector<std::string> Arm64RuntimeFeatures::runnable_tokens() const
 #endif
 #ifdef _SME2_
     CPUFB_ADD_IF_RUNNABLE(_SME2_);
+    CPUFB_ADD_IF_RUNNABLE(_SME2_F64F64_);
 #endif
 #ifdef _SMEf64_
+    // Token emitted by cpuid and used as the _SMEf64_ build macro.
+    CPUFB_ADD_IF_RUNNABLE(_SMEf64_);
     CPUFB_ADD_IF_RUNNABLE(_SME_F64F64_);
-    CPUFB_ADD_IF_RUNNABLE(_SME2_F64F64_);
 #endif
 #ifdef _SME_I16I32_
     CPUFB_ADD_IF_RUNNABLE(_SME_I16I32_);
@@ -231,6 +240,7 @@ const Arm64RuntimeFeatures &arm64_runtime_features()
         f.sme_b16f32 = hwcap2 & HWCAP2_SME_B16F32;
         f.sme_f32f32 = hwcap2 & HWCAP2_SME_F32F32;
         f.sme_f64f64 = hwcap2 & HWCAP2_SME_F64F64;
+        f.sme_i16i64 = hwcap2 & HWCAP2_SME_I16I64;
         f.sme_i16i32 = hwcap2 & HWCAP2_SME_I16I32;
         f.sme_f16f16 = hwcap2 & HWCAP2_SME_F16F16;
         f.sme_b16b16 = hwcap2 & HWCAP2_SME_B16B16;

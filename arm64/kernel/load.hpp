@@ -48,6 +48,25 @@ struct CacheData {
     int test_cacheline = 0;
 };
 
+struct CacheLatencyPoint {
+    uint64_t working_set_bytes = 0;
+    double latency_ns = 0;
+};
+
+struct CacheLevelEstimate {
+    std::string level;
+    uint64_t capacity_bytes = 0;
+    double latency_ns = 0;
+    double jump_ratio = 0;
+};
+
+struct CacheCurveResult {
+    std::vector<CacheLatencyPoint> points;
+    std::vector<CacheLevelEstimate> levels;
+};
+
+void get_reported_cache_info(struct CacheData *cache_size, int cpu_id);
+CacheCurveResult measure_cache_hierarchy(struct CacheData *cache_size, int cpu_id);
 void get_cache_capacities(struct CacheData *cache_size, int cpu_id);
 void get_cachesize(struct CacheData *cache_size, int cpu_id);
 void get_multiway(struct CacheData *cache_size,int cpu_id);

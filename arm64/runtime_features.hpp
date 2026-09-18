@@ -24,6 +24,9 @@ struct Arm64RuntimeFeatures {
     bool sme_b16f32 = false;
     bool sme_f32f32 = false;
     bool sme_f64f64 = false;
+    // main-only flag: HWCAP2_SME_I16I64 (bit 24) is a distinct Linux capability
+    // from SME_I16I32 (bit 39), so keep it in the superset.
+    bool sme_i16i64 = false;
     bool sme_i16i32 = false;
     bool sme_f16f16 = false;
     bool sme_b16b16 = false;

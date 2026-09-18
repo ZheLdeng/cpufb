@@ -45,7 +45,10 @@ private:
         // 打开性能计数器文件描述符
         fd = syscall(__NR_perf_event_open, &pe, 0, -1, -1, 0);
         if (fd == -1) {
-            perror("Warning: perf_event_open unavailable; using frequency fallback");
+            perror("perf_event_open");
+            std::cerr << "Warning: hardware cycle counter unavailable; "
+                         "falling back to the reported CPU frequency"
+                      << std::endl;
         }
     }
 

@@ -136,7 +136,7 @@ notice. New code should use the CMake build above.
 
 ## How to benchmark
 
-`./cpufb --thread_pool=[xxx] --idle_time=yyy`
+`./cpufb --thread_pool=[xxx] --mode=all --idle_time=yyy`
 
 ### Memory bandwidth
 
@@ -204,6 +204,16 @@ cache-latency result; it is therefore not run by `--include-test=load`.
 
   --idle_time: the interval time(sec) between any two adjacent benchmarks, default is 0.
 
+  --loop_scale: divides every registered benchmark's loop count, for quick smoke
+runs; the default is 1.
+
+  --bench_limit: limits how many registered benchmarks are actually run; the
+default is 0 for all.
+
+  --mode: `cache` measures the dependent-load latency curve and infers L1/L2
+  capacity and latency; `compute` runs compute/IPC benchmarks; `all` runs both
+  groups and the existing cache-bandwidth kernels. The default is `all`.
+
   --include-test / --exclude-test: comma-separated arm64 or x86-64 benchmark types. Supported types are compute, load, cache, freq, multi_issue.
 
   --include-isa / --exclude-isa: comma-separated compute ISA names. Examples include asimd, bf16, sve and SME2 on arm64, or avx2, fma, avx512_ifma and amx_bf16 on x86-64.
@@ -221,6 +231,9 @@ cache-latency result; it is therefore not run by `--include-test=load`.
 Examples:
 
 ```sh
+./cpufb --thread_pool=[0] --mode=cache
+./cpufb --thread_pool=[0] --mode=compute
+./cpufb --thread_pool=[0] --mode=all
 ./cpufb --list-categories
 ./cpufb --list-instructions
 ./cpufb --thread_pool='[0]' --include-test=compute --exclude-isa=sve,SME2
@@ -241,6 +254,25 @@ their throughput rows and are omitted from `--list-instructions`.
 See [X86_BENCHMARK_ACCOUNTING.md](X86_BENCHMARK_ACCOUNTING.md) for the audited
 operation counts and the exact meaning of TSC-based instruction rate and
 latency metrics. Remaining follow-up work is tracked in [TODO.md](TODO.md).
+
+### macOS counter backends
+
+On Apple Silicon, `cpufb` first attempts to read per-thread fixed counters
+(cycles and retired instructions) through the installed `kperf` framework. The
+framework is loaded dynamically, so this path is unavailable rather than a hard
+dependency when macOS denies counter access.
+
+If fixed counters cannot be read, `cpufb` falls back to a sampled P-core
+frequency from `powermetrics` and labels the resulting frequency and IPC values
+as `powermetrics estimate`. `powermetrics` requires root privileges:
+
+```sh
+sudo build/macos-arm64/cpufb '--thread_pool=[0]' --mode=compute
+```
+
+If neither source is available, the frequency/IPC fields remain `-` and the
+`Counter Source` column reports why. Do not compare a `powermetrics estimate`
+directly with PMU-derived IPC from Linux.
 
 ## Experimental pair-issue test
 

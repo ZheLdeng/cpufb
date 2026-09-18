@@ -16,6 +16,14 @@ chmod +x build.sh
 
 Output binary: `build/<preset>/cpufb`.
 
+Benchmark modes:
+
+```bash
+build/native-release/cpufb '--thread_pool=[0]' --mode=cache
+build/native-release/cpufb '--thread_pool=[0]' --mode=compute
+build/native-release/cpufb '--thread_pool=[0]' --mode=all
+```
+
 ## Common Scenarios
 
 | Scenario                    | Command                             |

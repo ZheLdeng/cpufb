@@ -83,7 +83,7 @@ do
     elif [ _SVE_FP16_FMLA_ = $SIMD ]; then
     $CC -march=armv8.2-a+sve+fp16 $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SVE2_ = $SIMD ]; then
-    $CC -march=armv9-a+sve2 $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
+    $CC -march=armv8-a+sve2 $CFLAG -I$ASM -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     elif [ _SVE_ = $SIMD ]; then
     $CC -march=armv8-a+sve $CFLAG -I$ASM $SIMD_MACRO -c $ASM/$SIMD.S -o $BUILD_DIR/$SIMD.o
     else
@@ -115,7 +115,7 @@ do
         MARCH_FLAG="-march=armv8.6-a+sve "
         ;;
     *_SVE2_*)
-        MARCH_FLAG="-march=armv9-a+sve2 "
+        MARCH_FLAG="-march=armv8-a+sve2 "
         ;;
     *_SVE_*)
         MARCH_FLAG="-march=armv8-a+sve "

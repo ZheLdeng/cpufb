@@ -1,4 +1,5 @@
 .globl amx_bf16_mm_f32bf16bf16
+.globl amx_bf16_mm_f32bf16bf16_latency
 
 amx_bf16_mm_f32bf16bf16:
     ldtilecfg (%rsi)
@@ -17,3 +18,15 @@ amx_bf16_mm_f32bf16bf16:
     jne .amx.bf16.mm.f32bf16bf16
     ret
 
+amx_bf16_mm_f32bf16bf16_latency:
+    ldtilecfg (%rsi)
+    tilezero %tmm0
+    tilezero %tmm4
+    tilezero %tmm5
+.Lamx_bf16_latency:
+    .rept 4
+        tdpbf16ps %tmm4, %tmm5, %tmm0
+    .endr
+    dec %rdi
+    jne .Lamx_bf16_latency
+    ret

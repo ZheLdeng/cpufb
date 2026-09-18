@@ -55,6 +55,7 @@ multiple issue.
 |SIMD|sve_f64mm|Matrix|fp64|From Neoverse V1+/Graviton3+/Grace|
 |DSA|sme (i8)|Matrix|int8 + mixed-sign (umopa/usmopa/sumopa)|Apple M4, Armv9.0-A SME|
 |DSA|sme_f16f16|Matrix|fp16 ← fp16 (fp16 ZA acc)|Armv9.2+ SME-F16F16 (req. SME2)|
+|DSA|sme_b16b16|Matrix|bf16 ← bf16 (bf16 ZA acc, non-widening bfmopa)|Armv9.2+ SME-B16B16 (req. SME2)|
 |DSA|sme_i16i32|Matrix|int32 ← int16 × int16|Armv9.2+ SME-I16I64 family (req. SME2)|
 
 ## Support riscv64 VECTOR ISA
@@ -137,13 +138,95 @@ notice. New code should use the CMake build above.
 
 `./cpufb --thread_pool=[xxx] --mode=all --idle_time=yyy`
 
+### Memory bandwidth
+
+```sh
+./cpufb --thread_pool='[0]' --memory-bandwidth
+./cpufb --thread_pool='[0]' --memory-bandwidth --memory-size-mib=1024
+# One independent stream per selected CPU; reports aggregate throughput.
+./cpufb --thread_pool='[96-127]' --memory-bandwidth --memory-size-mib=64
+```
+
+On Linux hosts where unprivileged PMU cycle counters are unavailable, set
+`CPUFB_FREQ_GHZ` to the documented fixed core frequency before a
+cycle-normalized run.  It takes precedence over the cpufreq-sysfs fallback:
+
+```bash
+CPUFB_FREQ_GHZ=3.3 ./cpufb --thread_pool='[96]' --include-test=load
+```
+
+`--memory-bandwidth` measures one independent sequential-read stream per
+selected CPU and reports their aggregate throughput.  `--memory-size-mib` is
+the workset of each stream. When omitted, cpufb chooses
+`max(256 MiB, 4 x detected last-level cache)` per stream and prints the
+topology source in the result table. Linux selects the highest data/unified cache from
+`/sys/devices/system/cpu/cpuN/cache/index*`.  macOS uses a reported L3 cache
+when available; Apple Silicon does not publicly expose its system-level cache,
+so it falls back to the largest reported performance-level L2 cache.  Set
+`--memory-size-mib` explicitly when a fixed workset is required. The same
+size/repetition options can be used with `--include-test=cache` to configure
+that table's DRAM row.
+
+### Cache hierarchy and bandwidth
+
+```sh
+# Cache capacity/associativity/cache-line probes, plus L3 (when reported) and
+# one sequential DRAM-read stream per listed core. Multiple cores are timed
+# synchronously and reported as aggregate bandwidth.
+./cpufb --thread_pool='[0]' --include-test=cache
+# Optional override for the cache table's DRAM row.
+./cpufb --thread_pool='[0]' --include-test=cache \
+    --memory-size-mib=1024 --memory-repetitions=3
+
+# L1/L2-resident load-instruction bandwidth only; no empirical cache probe.
+./cpufb --thread_pool='[0]' --include-test=load
+```
+
+The `cache` category owns the empirical pointer-chase capacity and
+associativity probes. It also reports a topology-detected L3 capacity and an
+L3 sequential-read row when the OS exposes an L3. For multiple selected cores,
+the L3 workset is fixed below the shared L3 and split evenly between streams;
+the L3 row is omitted once a per-stream share would fit in private L2. The same
+table always includes a DRAM sequential-read row. Each selected CPU has its
+own DRAM stream whose default workset is `max(256 MiB, 4 x detected
+last-level cache)`. Keep a multi-core L3 run within one LLC/NUMA domain. If no
+L3 is reported (common on Apple Silicon), the L3 rows are omitted and only the
+memory row is added.
+
+The `load` category remains the instruction-level L1/L2 cache-bandwidth table.
+It obtains L1/L2 capacity directly from Linux cache-topology sysfs or macOS
+cache sysctl, then uses half that capacity (up to 32 MiB) as its bandwidth
+workset. A topology failure uses conservative 64 KiB (L1) and 1 MiB (L2)
+defaults. The old pointer-chase loop is a capacity probe, not a published
+cache-latency result; it is therefore not run by `--include-test=load`.
+
   --thread_pool: [xxx] is the list of cpu thread to benchmarking, from setting affinities. Please reference the result of lstopo command. For example, [0,3,5-8,13-15].
 
   --idle_time: the interval time(sec) between any two adjacent benchmarks, default is 0.
 
+  --loop_scale: divides every registered benchmark's loop count, for quick smoke
+runs; the default is 1.
+
+  --bench_limit: limits how many registered benchmarks are actually run; the
+default is 0 for all.
+
   --mode: `cache` measures the dependent-load latency curve and infers L1/L2
   capacity and latency; `compute` runs compute/IPC benchmarks; `all` runs both
   groups and the existing cache-bandwidth kernels. The default is `all`.
+
+  --include-test / --exclude-test: comma-separated arm64 or x86-64 benchmark types. Supported types are compute, load, cache, freq, multi_issue.
+
+  --include-isa / --exclude-isa: comma-separated compute ISA names. Examples include asimd, bf16, sve and SME2 on arm64, or avx2, fma, avx512_ifma and amx_bf16 on x86-64.
+
+  --list-categories: list available test categories and compute ISA categories, without requiring --thread_pool.
+
+  --list-instructions: list available compute instruction names for sweep mode, without requiring --thread_pool.
+
+  --sweep-instruction / --scale-instruction: run one compute instruction across the current thread pool prefixes, from 1 core through all bound cores. The value matches the `Core Computation` name; quote it in the shell when it contains parentheses or commas.
+
+  --save / --output: save displayed benchmark data to a compact file. `.csv` paths default to CSV; other paths default to tab-delimited txt.
+
+  --save-format / --output-format: override save format with `csv` or `txt`.
 
 Examples:
 
@@ -151,7 +234,26 @@ Examples:
 ./cpufb --thread_pool=[0] --mode=cache
 ./cpufb --thread_pool=[0] --mode=compute
 ./cpufb --thread_pool=[0] --mode=all
+./cpufb --list-categories
+./cpufb --list-instructions
+./cpufb --thread_pool='[0]' --include-test=compute --exclude-isa=sve,SME2
+./cpufb --thread_pool='[0]' --exclude-test=load,cache,freq
+./cpufb --thread_pool='[0-7]' --sweep-instruction='sve_fmla.vv(f32,f32,f32)'
+./cpufb --thread_pool='[0-7]' --sweep-instruction='fmla.vv(f32,f32,f32)' --save=scale.csv
+./cpufb --thread_pool='[0]' --include-test=compute --save=compute.txt --save-format=txt
+./cpufb --thread_pool='[0]' --include-test=compute --include-isa=avx2,avx512_ifma
+./cpufb --thread_pool='[0-1]' --sweep-instruction='MADD52(u64,u52,u52)' --save=ifma-scale.csv
 ```
+
+The x86-64 path detects and builds only ISA kernels exposed by CPUID. In
+addition to the existing SSE, AVX, FMA, VNNI, AVX-512 and AMX tests, it
+includes AVX2 integer add/multiply, AVX-512 IFMA, AVX-512 VBMI byte permute,
+and AVX-512 VPOPCNTDQ tests when supported. Latency variants are paired with
+their throughput rows and are omitted from `--list-instructions`.
+
+See [X86_BENCHMARK_ACCOUNTING.md](X86_BENCHMARK_ACCOUNTING.md) for the audited
+operation counts and the exact meaning of TSC-based instruction rate and
+latency metrics. Remaining follow-up work is tracked in [TODO.md](TODO.md).
 
 ### macOS counter backends
 
@@ -171,6 +273,63 @@ sudo build/macos-arm64/cpufb '--thread_pool=[0]' --mode=compute
 If neither source is available, the frequency/IPC fields remain `-` and the
 `Counter Source` column reports why. Do not compare a `powermetrics estimate`
 directly with PMU-derived IPC from Linux.
+
+## Experimental pair-issue test
+
+`tools/pair_issue_test.py` measures isolated and joint IPC for two Linux
+AArch64 instruction classes without scanning a full ratio grid. It currently
+supports SVE FP32 FMLA, SVE `ld1h` as its single default load class, NEON FP32
+FMLA, integer scalar ADD, and scalar FP32 FADD. For example:
+
+```sh
+./tools/pair_issue_test.py sve-fmla sve-ld1h --core 96
+./tools/pair_issue_test.py sve-fmla scalar-add --core 96
+./tools/pair_issue_test.py sve-fmla neon-fmla --core 96
+./tools/pair_issue_test.py neon-fmla scalar-add --core 96
+```
+
+The test starts at normalized pressure points 25%, 50%, and 75%, compares
+interleaved and blocked schedules, and adds points only around nonlinear
+overlap or a 97%-of-peak knee. See
+[PAIR_ISSUE_TEST.md](PAIR_ISSUE_TEST.md) for the measurement equations,
+requirements, caveats, JSON output, and dry-run planning mode.
+
+## Compute/load/store issue model
+
+Pass one logical kernel group to the standalone model. Neoverse V3 SVE128
+FMLA is the default. The intended BF16 model for the eight-core Neoverse V1
+SVE256 machine uses the BFMMLA profile:
+
+```sh
+./tools/issue_model.py 1F+2L
+./tools/issue_model.py 4F+5L
+./tools/issue_model.py 4F+3L+2S
+./tools/issue_model.py 4F+3L+2S \
+    --profile neoverse-v1-sve256-bfmmla
+```
+
+It reports compute/load/store IPC, resource utilization, compute and memory
+efficiency, and operations/bytes per cycle. See
+[ISSUE_MODEL.md](ISSUE_MODEL.md) for the V3 FMLA, V1 FMLA, and V1 BFMMLA
+models, calibration points, measured error budgets, JSON output, and
+capacity overrides.
+
+## Automated CLI regression tests
+
+Native x86-64 and ARM64 builds register CTest coverage for category/ISA
+filters, invalid filters, exact/ambiguous instruction matching, TXT/CSV
+serialization, and single-core instruction-sweep output. The tests validate
+CLI behavior and file structure; they intentionally do not compare volatile
+performance values.
+
+```sh
+cmake --preset native-release
+cmake --build --preset native-release
+ctest --test-dir build/native-release --output-on-failure
+```
+
+Set `CPUFB_TEST_CORE` when the default first allowed CPU is not the desired
+test core.
 
 
 ## Some x86-64 CPU benchmark results

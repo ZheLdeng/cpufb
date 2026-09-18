@@ -79,6 +79,74 @@
     ret
 
 ###############################
+#void load_neon_ld1h_4x1_kernel(float*, int, int64_t);
+    PROLOGUE load_neon_ld1h_4x1_kernel
+    mov x4, x2
+    mov x9, #64
+    2:
+    mov x3, x1
+    mov x5, x0
+    add x6, x0, #16
+    add x7, x0, #32
+    add x8, x0, #48
+    1:
+    // Four independent post-index chains, each advancing 64 B.  Their
+    // interleaving walks one contiguous stream while avoiding a single
+    // address-generation dependency chain.
+    ld1 {v0.8h}, [x5], x9
+    ld1 {v1.8h}, [x6], x9
+    ld1 {v2.8h}, [x7], x9
+    ld1 {v3.8h}, [x8], x9
+    ld1 {v4.8h}, [x5], x9
+    ld1 {v5.8h}, [x6], x9
+    ld1 {v6.8h}, [x7], x9
+    ld1 {v7.8h}, [x8], x9
+    ld1 {v16.8h}, [x5], x9
+    ld1 {v17.8h}, [x6], x9
+    ld1 {v18.8h}, [x7], x9
+    ld1 {v19.8h}, [x8], x9
+    ld1 {v20.8h}, [x5], x9
+    ld1 {v21.8h}, [x6], x9
+    ld1 {v22.8h}, [x7], x9
+    ld1 {v23.8h}, [x8], x9
+    subs x3, x3, #1
+    bne 1b
+    subs x4, x4, #1
+    bne 2b
+    ret
+
+###############################
+#void load_ldrq_4x1_offset_kernel(float*, int, int64_t);
+    PROLOGUE load_ldrq_4x1_offset_kernel
+    mov x4, x2
+    2:
+    mov x3, x1
+    mov x5, x0
+    1:
+    ldr q0, [x5, #0]
+    ldr q1, [x5, #16]
+    ldr q2, [x5, #32]
+    ldr q3, [x5, #48]
+    ldr q4, [x5, #64]
+    ldr q5, [x5, #80]
+    ldr q6, [x5, #96]
+    ldr q7, [x5, #112]
+    ldr q16, [x5, #128]
+    ldr q17, [x5, #144]
+    ldr q18, [x5, #160]
+    ldr q19, [x5, #176]
+    ldr q20, [x5, #192]
+    ldr q21, [x5, #208]
+    ldr q22, [x5, #224]
+    ldr q23, [x5, #240]
+    add x5, x5, #256
+    subs x3, x3, #1
+    bne 1b
+    subs x4, x4, #1
+    bne 2b
+    ret
+
+###############################
 #void load_neon_ld1w_kernel(float*, int, int64_t);
     PROLOGUE load_neon_ld1w_kernel
     mov x4, x2

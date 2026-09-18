@@ -1,4 +1,5 @@
 .globl avx512_bf16_dp2a_f32bf16bf16
+.globl avx512_bf16_dp2a_f32bf16bf16_latency
 
 avx512_bf16_dp2a_f32bf16bf16:
     vpxorq %zmm0, %zmm0, %zmm0
@@ -39,3 +40,13 @@ avx512_bf16_dp2a_f32bf16bf16:
     jne .avx512.bf16.dp2a.fp32bf16bf16.L1
     ret
 
+avx512_bf16_dp2a_f32bf16bf16_latency:
+    vpxorq %zmm0, %zmm0, %zmm0
+.Lavx512_bf16_latency:
+    .rept 16
+        vdpbf16ps %zmm0, %zmm0, %zmm0
+    .endr
+    dec %rdi
+    jne .Lavx512_bf16_latency
+    vzeroupper
+    ret

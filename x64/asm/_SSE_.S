@@ -1,4 +1,8 @@
 .globl sse_add_mul_f32f32_f32
+.globl sse_add_f32
+.globl sse_add_f32_latency
+.globl sse_mul_f32
+.globl sse_mul_f32_latency
 
 sse_add_mul_f32f32_f32:
     xorps %xmm0, %xmm0
@@ -38,3 +42,43 @@ sse_add_mul_f32f32_f32:
     jne .sse.add.mul.f32f32_f32.L1
     ret
 
+sse_add_f32:
+    .irp r,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+        xorps %xmm\r,%xmm\r
+    .endr
+.Lsse_add:
+    .irp r,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+        addps %xmm\r,%xmm\r
+    .endr
+    dec %rdi
+    jne .Lsse_add
+    ret
+sse_add_f32_latency:
+    xorps %xmm0,%xmm0
+.Lsse_add_lat:
+    .rept 16
+        addps %xmm0,%xmm0
+    .endr
+    dec %rdi
+    jne .Lsse_add_lat
+    ret
+sse_mul_f32:
+    .irp r,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+        xorps %xmm\r,%xmm\r
+    .endr
+.Lsse_mul:
+    .irp r,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+        mulps %xmm\r,%xmm\r
+    .endr
+    dec %rdi
+    jne .Lsse_mul
+    ret
+sse_mul_f32_latency:
+    xorps %xmm0,%xmm0
+.Lsse_mul_lat:
+    .rept 16
+        mulps %xmm0,%xmm0
+    .endr
+    dec %rdi
+    jne .Lsse_mul_lat
+    ret

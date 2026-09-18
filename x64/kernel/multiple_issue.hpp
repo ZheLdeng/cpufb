@@ -4,5 +4,7 @@
 extern "C"
 {
     void multiple_issue(float*,int, int64_t);
+    void multiple_issue_avx(float*,int, int64_t);
+    void multiple_issue_avx512(float*,int, int64_t);
 }
 #endif

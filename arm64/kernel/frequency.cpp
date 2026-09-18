@@ -5,6 +5,7 @@
 #include <ctime>
 #include <iostream>
 #include <cstdint>
+#include <cmath>
 #include <string>
 #include <vector>
 #include <cstring>
@@ -36,6 +37,22 @@
 using namespace std;
 vector<double> freq;
 
+// Some virtualized Linux hosts deliberately deny unprivileged PMU cycle
+// counters.  A caller can then supply a documented fixed core clock through
+// CPUFB_FREQ_GHZ, rather than silently producing infinities for all
+// cycle-normalized measurements.
+static double cpu_freq_override_ghz()
+{
+    const char *value = getenv("CPUFB_FREQ_GHZ");
+    if (value == nullptr || *value == '\0') return 0.0;
+
+    char *end = nullptr;
+    const double ghz = strtod(value, &end);
+    if (end == value || *end != '\0' || !std::isfinite(ghz) || ghz <= 0.0)
+        return 0.0;
+    return ghz;
+}
+
 static void* thread_function_freq(void* arg){
     struct FrequencyData* data = (FrequencyData*)malloc(sizeof(FrequencyData));
     double CPU_freq = 0;
@@ -48,10 +65,42 @@ static void* thread_function_freq(void* arg){
     double time_used;
 
 #ifdef __APPLE__
+    // Prefer real cycle counts from the private kperf fixed counters (the
+    // common case on Apple Silicon).  powermetrics is the root-only sampled
+    // fallback and the hard-coded per-model clock is the last resort.
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
     MacosCounters counters;
     MacosCounterSnapshot start_counters, end_counters;
     bool use_kperf = counters.read(start_counters);
+
+    char cpuType[256];
+    size_t size = sizeof(cpuType);
+
+    // 获取 CPU 架构名称
+    if (sysctlbyname("machdep.cpu.brand_string", &cpuType, &size, NULL, 0) == -1) {
+        perror("sysctl");
+    }
+    if(std::string(cpuType) == "Apple M1"){
+        data->theory_freq = 3.2;
+        data->caculate_freq = 3.2;
+        CPU_freq = 3.2 * 1e9;
+    } else if (std::string(cpuType) == "Apple M2"){
+        data->theory_freq = 3.5;
+        data->caculate_freq = 3.5;
+        CPU_freq = 3.5 * 1e9;
+    } else if (std::string(cpuType) == "Apple M3"){
+        data->theory_freq = 4.06;
+        data->caculate_freq = 4.06;
+        CPU_freq = 4.06 * 1e9;
+    } else if (std::string(cpuType) == "Apple M4 Pro"){
+        data->theory_freq = 4.5;
+        data->caculate_freq = 4.5;
+        CPU_freq = 4.5 * 1e9;
+    } else if (std::string(cpuType) == "Apple M5 Pro"){
+        data->theory_freq = 4.6;
+        data->caculate_freq = 4.6;
+        CPU_freq = 4.6 * 1e9;
+    }
 
 #endif
 #ifdef __linux__
@@ -73,8 +122,10 @@ static void* thread_function_freq(void* arg){
     if(read_freq == 0){
         read_data(cpuid, &read_freq, "/cpufreq/cpuinfo_max_freq");
     }
+    const double fallback_ghz = cpu_freq_override_ghz();
     // cout << read_freq << endl;
-    data->theory_freq = double(read_freq) * 1e-6;
+    data->theory_freq = fallback_ghz > 0.0 ? fallback_ghz :
+        double(read_freq) * 1e-6;
     //warm up
     asimd_fmla_vv_f64f64f64(looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
@@ -85,14 +136,15 @@ static void* thread_function_freq(void* arg){
     time_used = get_time(&start, &end);
     long long cycles = pec.get_cycle();
 
-    
 
-    if(cycles == 0 && read_freq > 0){
-        CPU_freq = read_freq * 1e3;
-    }else if(cycles > 0){
+
+    if(cycles == 0){
+        CPU_freq = fallback_ghz > 0.0 ? fallback_ghz * 1e9 :
+            read_freq * 1e3;
+    }else{
         CPU_freq = (double)cycles / time_used;
     }
-    
+
     data->caculate_freq = CPU_freq * 1e-9;
     // cout << data->caculate_freq  << endl;
 #endif
@@ -181,7 +233,7 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
     for (int i = 0; i<num_thread; i++){
         pthread_create(&threads[i], NULL, thread_function_freq,  (void*)&set_of_threads[i] );
     }
-#ifndef __APPLE__  
+#ifndef __APPLE__
     for (int t = 0; t < num_thread; t++) {
         pthread_join(threads[t], &thread_result);
         result = (struct FrequencyData *)thread_result;
@@ -228,7 +280,7 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
         table.addOneItem(cont);
     }
 #else
-    for (int t = 0; t < num_thread; t++) {  
+    for (int t = 0; t < num_thread; t++) {
         pthread_join(threads[t], &thread_result);
     }
     result = (struct FrequencyData *)thread_result;

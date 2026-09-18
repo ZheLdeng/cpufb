@@ -1,171 +1,167 @@
+#include <pthread.h>
+#include <sched.h>
 #include <unistd.h>
-#include <sys/types.h>
-#include <cstdio>
-#include <cstdlib>
-#include <ctime>
-#include <iostream>
+
 #include <cstdint>
+#include <cstdio>
+#include <iomanip>
+#include <sstream>
 #include <string>
 #include <vector>
-#include <cstring>
-#include <iomanip>
-#include <fstream>
-#include <sstream>
-#include <stdlib.h>
-// #include <stdio.h>
+#include <x86intrin.h>
 
-#include "compute.hpp"
-#include "frequency.hpp"
 #include "common.hpp"
-#include "load.hpp"
+#include "frequency.hpp"
+
 #ifdef __linux__
-#include<sys/syscall.h>
+#include <sys/syscall.h>
 #endif
 #ifdef __APPLE__
 #include <sys/sysctl.h>
 #endif
 
 using namespace std;
+
 vector<double> freq;
 
+namespace {
 
-static void* thread_function_freq(void* arg){
-    struct FrequencyData* data = (FrequencyData*)malloc(sizeof(FrequencyData));
-    double CPU_freq;
-    int64_t looptime = 100000000;
+const int64_t kFrequencyLoopTime = 100000000;
+const double kInstructionsPerLoop = 16.0;
+
+typedef void (*FrequencyKernel)(int64_t);
+
+static double measure_kernel(FrequencyKernel kernel, int64_t loop_time)
+{
     struct timespec start, end;
-    double time_used;
-
-#ifdef __APPLE__
-    char cpuType[256];
-    size_t size = sizeof(cpuType);
-
-    // 获取 CPU 架构名称
-    if (sysctlbyname("machdep.cpu.brand_string", &cpuType, &size, NULL, 0) == -1) {
-        perror("sysctl");
-    }
-    if(std::string(cpuType) == "Apple M1"){
-        ata->theory_freq = 3.2;
-        data->caculate_freq = 3.2;
-        CPU_freq = 3.2 * 1e9;
-    }else if(std::string(cpuType) == "Apple M2"){
-        data->theory_freq = 3.5;
-        data->caculate_freq = 3.5;
-        CPU_freq = 3.5 * 1e9;
-    }else if(std::string(cpuType) == "Apple M3"){
-        data->theory_freq = 4.06;
-        data->caculate_freq = 4.06;
-        CPU_freq = 4.06 * 1e9;
-    }
-
-#endif
-#ifdef __linux__
-    int cpuid =* ((int *)arg);
-
-    // Set affinity to the specified core
-    cpu_set_t cpuset;
-    pid_t pid = syscall(SYS_gettid);
-    CPU_ZERO(&cpuset);
-    CPU_SET(cpuid, &cpuset);
-
-    if (sched_setaffinity(pid, sizeof(cpu_set_t), &cpuset) < 0) {
-        printf("Error: cpu id %d sched_setaffinity\n", cpuid);
-        printf("Warning: performance may be impacted \n");
-    }
-
-    // PerfEventCycle pec;
-    PerfEventCycle test_pec = PerfEventCycle(0);
-
-    test_pec.start();
-    volatile int counter = 0;
-    for (int i = 0; i < 10000; ++i) {
-        counter += 1;
-    }
-    test_pec.stop();
-    long long test_cycle = test_pec.get_cycle();
-
-    PerfEventCycle pec = (test_cycle == 0) ? PerfEventCycle(1) : PerfEventCycle(0);
-
-
-    //get CPU frequency
-    data->theory_freq = 0;
-    int read_freq = 0;
-    read_data(cpuid, &read_freq, "/cpufreq/scaling_max_freq");
-    data->theory_freq = double(read_freq) * 1e-6;
-    //warm up
-    sse2_add_mul_f64f64_f64(looptime, NULL);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    pec.start();
-    sse2_add_mul_f64f64_f64(looptime, NULL);
-    pec.stop();
+    kernel(loop_time);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    time_used = get_time(&start, &end);
-    CPU_freq = (double)pec.get_cycle() / time_used;
-    data->caculate_freq = CPU_freq * 1e-9;
-#endif
-
-    //  待补充 注释，warm up
-    //warm up
-    sse2_add_mul_f64f64_f64(looptime, NULL);
-
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    fma_f64f64f64(looptime, NULL);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    time_used = get_time(&start, &end);
-    data->IPC_fp64 = looptime * 16 / (time_used * CPU_freq);
-
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    fma_f32f32f32(looptime, NULL);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    time_used = get_time(&start, &end);
-    data->IPC_fp32 = looptime * 16 / (time_used * CPU_freq);
-
-    float* cache_data = (float*)malloc(1024);
-
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    load_movups_kernel(cache_data, looptime);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    time_used = get_time(&start, &end);
-    data->IPC_load = looptime * 16 / (time_used * CPU_freq);
-
-    pthread_exit((void *)data);
+    return get_time(&start, &end);
 }
 
-// 变量名待修改
-void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
+static double instruction_rate(double elapsed, double tsc_frequency)
 {
-    int num_thread = set_of_threads.size();
-    void *thread_result;
-    FrequencyData *result;
-    freq.resize(num_thread);
+    if (elapsed <= 0.0 || tsc_frequency <= 0.0) return 0.0;
+    return kFrequencyLoopTime * kInstructionsPerLoop /
+        (elapsed * tsc_frequency);
+}
 
-    pthread_t threads[num_thread];
-    int i = 0;
-    for (int i = 0; i<num_thread; i++){
-        pthread_create(&threads[i], NULL, thread_function_freq,  (void*)&set_of_threads[i] );
+static void* thread_function_freq(void* arg)
+{
+    FrequencyData* data = new FrequencyData();
+    double tsc_frequency = 0.0;
+
+#ifdef __APPLE__
+    char cpu_type[256] = {0};
+    size_t size = sizeof(cpu_type);
+    if (sysctlbyname("machdep.cpu.brand_string", cpu_type, &size, NULL, 0) == -1) {
+        perror("sysctl");
+    }
+    if (std::string(cpu_type) == "Apple M1") {
+        data->theory_freq = 3.2;
+        data->caculate_freq = 3.2;
+        tsc_frequency = 3.2e9;
+    } else if (std::string(cpu_type) == "Apple M2") {
+        data->theory_freq = 3.5;
+        data->caculate_freq = 3.5;
+        tsc_frequency = 3.5e9;
+    } else if (std::string(cpu_type) == "Apple M3") {
+        data->theory_freq = 4.06;
+        data->caculate_freq = 4.06;
+        tsc_frequency = 4.06e9;
+    }
+#endif
+
+#ifdef __linux__
+    const int cpu_id = *static_cast<int*>(arg);
+
+    cpu_set_t cpuset;
+    const pid_t pid = syscall(SYS_gettid);
+    CPU_ZERO(&cpuset);
+    CPU_SET(cpu_id, &cpuset);
+    if (sched_setaffinity(pid, sizeof(cpu_set_t), &cpuset) < 0) {
+        printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
+        printf("Warning: performance may be impacted\n");
     }
 
-    for (int t = 0; t < num_thread; t++) {
-        pthread_join(threads[t], &thread_result);
-        result = (struct FrequencyData *)thread_result;
-        stringstream ss1, ss2, ss3, ss4, ss5, ss6, ss7;
-        ss1 << std::setprecision(2) << result->theory_freq <<" GHZ" ;
-        ss2 << std::setprecision(2) << result->caculate_freq <<" GHZ" ;
-        ss3 << std::setprecision(2) << result->IPC_fp32 ;
-        ss4 << std::setprecision(2) << result->IPC_fp64 ;
-        ss5<< std::setprecision(2) << result->IPC_load ;
-        freq[t] = result->caculate_freq;
+    int max_frequency_khz = 0;
+    read_data(cpu_id, &max_frequency_khz, "/cpufreq/scaling_max_freq");
+    data->theory_freq = static_cast<double>(max_frequency_khz) * 1e-6;
 
-        vector<string> cont;
-        cont.resize(table.getCol());
-        cont[0] = to_string(set_of_threads[t]);
-        cont[1] = ss1.str();
-        cont[2] = ss2.str();
-        cont[3] = ss3.str();
-        cont[4] = ss4.str();
-        cont[5] = ss5.str();
+    // Calibrate the invariant TSC using the same always-built SSE2 kernel used
+    // below.  LFENCE keeps both TSC reads outside the measured kernel body.
+    cpufb_x64_frequency_fsu64(kFrequencyLoopTime);
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+    _mm_lfence();
+    const uint64_t start_tsc = __rdtsc();
+    cpufb_x64_frequency_fsu64(kFrequencyLoopTime);
+    _mm_lfence();
+    const uint64_t end_tsc = __rdtsc();
+    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    const double elapsed = get_time(&start, &end);
+    if (elapsed > 0.0)
+        tsc_frequency = static_cast<double>(end_tsc - start_tsc) / elapsed;
+    data->caculate_freq = tsc_frequency * 1e-9;
+#endif
 
-        table.addOneItem(cont);
+    cpufb_x64_frequency_fsu64(kFrequencyLoopTime);
+    data->IPC_fp64 = instruction_rate(
+        measure_kernel(cpufb_x64_frequency_fsu64, kFrequencyLoopTime),
+        tsc_frequency);
+
+    cpufb_x64_frequency_fsu32(kFrequencyLoopTime);
+    data->IPC_fp32 = instruction_rate(
+        measure_kernel(cpufb_x64_frequency_fsu32, kFrequencyLoopTime),
+        tsc_frequency);
+
+    alignas(64) float cache_data[16] = {0.0f};
+    cpufb_x64_frequency_load(cache_data, kFrequencyLoopTime);
+    struct timespec load_start, load_end;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &load_start);
+    cpufb_x64_frequency_load(cache_data, kFrequencyLoopTime);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &load_end);
+    data->IPC_load = instruction_rate(get_time(&load_start, &load_end),
+        tsc_frequency);
+
+    return data;
+}
+
+}  // namespace
+
+void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
+{
+    const size_t num_threads = set_of_threads.size();
+    freq.resize(num_threads);
+    vector<pthread_t> threads(num_threads);
+
+    for (size_t i = 0; i < num_threads; ++i)
+        pthread_create(&threads[i], NULL, thread_function_freq,
+            static_cast<void*>(&set_of_threads[i]));
+
+    for (size_t i = 0; i < num_threads; ++i) {
+        void* thread_result = NULL;
+        pthread_join(threads[i], &thread_result);
+        FrequencyData* result = static_cast<FrequencyData*>(thread_result);
+
+        stringstream theory_freq, measured_freq, fsu32, fsu64, load;
+        theory_freq << setprecision(2) << result->theory_freq << " GHZ";
+        measured_freq << setprecision(2) << result->caculate_freq << " GHZ";
+        fsu32 << setprecision(2) << result->IPC_fp32;
+        fsu64 << setprecision(2) << result->IPC_fp64;
+        load << setprecision(2) << result->IPC_load;
+        freq[i] = result->caculate_freq;
+
+        vector<string> row(table.getCol());
+        row[0] = to_string(set_of_threads[i]);
+        row[1] = theory_freq.str();
+        row[2] = measured_freq.str();
+        row[3] = fsu32.str();
+        row[4] = fsu64.str();
+        row[5] = load.str();
+        table.addOneItem(row);
+
+        delete result;
     }
-
 }

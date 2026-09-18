@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <ctime>
 #include <cstdlib>
+#include <cstdint>
 #include <unistd.h>
 #include <sys/ioctl.h>
 
@@ -67,8 +68,10 @@ private:
         ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
 
         // 读取 CPU 周期数
-        if (read(fd, &count, sizeof(long long)) != sizeof(long long))
+        const ssize_t bytes_read = read(fd, &count, sizeof(count));
+        if (bytes_read != static_cast<ssize_t>(sizeof(count))) {
             count = 0;
+        }
 
         close(fd);
         fd = -1;
@@ -100,13 +103,11 @@ inline void read_data(int cpu_id, int *data, std::string path)
 #endif
 
 #ifdef _SME_
+extern "C" uint64_t load_sme_vector_bytes(void);
+
 static uint64_t rdsvl()
 {
-  uint64_t len;
-  asm volatile ("rdsvl %0, 1"
-                : "=r"(len)
-               );
-  return len;
+  return load_sme_vector_bytes();
 }
 #endif
 

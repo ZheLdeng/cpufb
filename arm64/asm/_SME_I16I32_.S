@@ -77,8 +77,8 @@
     smopa za2.s, p0/m, p1/m, z28.h, z29.h
     smopa za3.s, p0/m, p1/m, z30.h, z31.h
     bne .sme_smopa_vv_i32i16i16L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret
 
 ############
@@ -113,8 +113,8 @@
     umopa za2.s, p0/m, p1/m, z28.h, z29.h
     umopa za3.s, p0/m, p1/m, z30.h, z31.h
     bne .sme_umopa_vv_i32i16i16L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret
 
 ############
@@ -149,8 +149,8 @@
     smopa za0.s, p0/m, p1/m, z8.h, z9.h
     smopa za0.s, p0/m, p1/m, z8.h, z9.h
     bne .sme_smopa2_vv_i32i16i16L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret
 
 ############
@@ -185,6 +185,6 @@
     umopa za0.s, p0/m, p1/m, z8.h, z9.h
     umopa za0.s, p0/m, p1/m, z8.h, z9.h
     bne .sme_umopa2_vv_i32i16i16L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret

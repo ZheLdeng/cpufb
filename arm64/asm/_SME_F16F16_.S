@@ -75,8 +75,8 @@
     fmopa za0.h, p0/m, p1/m, z28.h, z29.h
     fmopa za1.h, p0/m, p1/m, z30.h, z31.h
     bne .sme_fmopa_vv_f16f16f16L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret
 
 ############
@@ -111,6 +111,6 @@
     fmopa za0.h, p0/m, p1/m, z8.h, z9.h
     fmopa za0.h, p0/m, p1/m, z8.h, z9.h
     bne .sme_fmopa2_vv_f16f16f16L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret

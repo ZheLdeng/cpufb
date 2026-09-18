@@ -1,5 +1,8 @@
 .globl load_movups_kernel
 .globl load_vmovups_kernel
+.globl load_movss_stream_kernel
+.globl load_movups_xmm_kernel
+.globl load_vmovups_zmm_kernel
 
 load_movups_kernel:
     mov %rsi, %r8
@@ -54,4 +57,62 @@ load_vmovups_kernel:
 
     sub $0x1, %r10
     jne .load.vmovups.kernel.L2
+    ret
+
+load_movss_stream_kernel:
+    mov %rdx, %r10
+.Lload_movss_outer:
+    mov %rdi, %r8
+    mov %rsi, %r9
+.Lload_movss_inner:
+    .set off,0
+    .rept 128
+        movss off(%r8), %xmm0
+        .set off,off+4
+    .endr
+    add $512, %r8
+    dec %r9
+    jne .Lload_movss_inner
+    dec %r10
+    jne .Lload_movss_outer
+    ret
+
+load_movups_xmm_kernel:
+    mov %rdx, %r10
+.Lload_xmm_outer:
+    mov %rdi, %r8
+    mov %rsi, %r9
+.Lload_xmm_inner:
+    .set off,0
+    .rept 32
+        movups off(%r8), %xmm0
+        .set off,off+16
+    .endr
+    add $512, %r8
+    dec %r9
+    jne .Lload_xmm_inner
+    dec %r10
+    jne .Lload_xmm_outer
+    ret
+
+load_vmovups_zmm_kernel:
+    mov %rdx, %r10
+.Lload_zmm_outer:
+    mov %rdi, %r8
+    mov %rsi, %r9
+.Lload_zmm_inner:
+    vmovups 0(%r8), %zmm0
+    vmovups 64(%r8), %zmm1
+    vmovups 128(%r8), %zmm2
+    vmovups 192(%r8), %zmm3
+    vmovups 256(%r8), %zmm4
+    vmovups 320(%r8), %zmm5
+    vmovups 384(%r8), %zmm6
+    vmovups 448(%r8), %zmm7
+    add $512, %r8
+    dec %r9
+    jne .Lload_zmm_inner
+    dec %r10
+    jne .Lload_zmm_outer
+    vzeroupper
     ret

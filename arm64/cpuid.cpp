@@ -139,6 +139,16 @@ void test_sme_f16f16(void) {
     );
 }
 
+void test_sme_b16b16(void) {
+    // BFMOPA za0.h, p0/m, p0/m, z0.h, z0.h  (FEAT_SME_B16B16, non-widening)
+    __asm__ volatile(
+        ".inst 0xd503477f\n"  // SMSTART
+        ".inst 0x81a00008\n"
+        ".inst 0xd503467f\n"  // SMSTOP
+        :::
+    );
+}
+
 void test_sme_i16i32(void) {
     // SMOPA za0.s, p0/m, p0/m, z0.h, z0.h  (FEAT_SME_I16I32 / part of sme-i16i64)
     __asm__ volatile(
@@ -210,6 +220,7 @@ void test_sve_f32mm(void) { }
 void test_sve_f64mm(void) { }
 void test_sve_fp16_fmla(void) { }
 void test_sme_f16f16(void) { }
+void test_sme_b16b16(void) { }
 void test_sme_i16i32(void) { }
 
 #endif
@@ -304,6 +315,7 @@ int get_cpuid(void) {
             test_instruction_in_child(test_sme_f64, "SMEf64");
         }
         test_instruction_in_child(test_sme_f16f16, "SME_F16F16");
+        test_instruction_in_child(test_sme_b16b16, "SME_B16B16");
         test_instruction_in_child(test_sme_i16i32, "SME_I16I32");
     }
     

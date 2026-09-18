@@ -8,6 +8,7 @@
 /cpufb
 
 # Editor / tooling
+/AGENTS.md
 /.claude/
 /.vscode/
 /.idea/

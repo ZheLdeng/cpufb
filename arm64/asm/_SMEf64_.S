@@ -65,8 +65,8 @@
     FMOPA za6.d, p0/M, p1/M, z30.d, z30.d
     FMOPA za7.d, p0/M, p1/M, z31.d, z31.d
     bne .sme_fmopa_vv_f64f64f64L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret
 ############
     PROLOGUE sme_fmopa2_vv_f64f64f64
@@ -100,8 +100,8 @@
     FMOPA za0.d, p0/M, p1/M, z30.d, z30.d
     FMOPA za0.d, p0/M, p1/M, z31.d, z31.d
     bne .sme_fmopa2_vv_f64f64f64L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret
 
 ####

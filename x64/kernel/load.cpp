@@ -8,7 +8,10 @@
 #include <vector>
 #include <iostream>
 #include <immintrin.h>
+#include <algorithm>
+#include <random>
 
+#include "cacheline_probe.hpp"
 #include "compute.hpp"
 #include "frequency.hpp"
 #include "common.hpp"
@@ -25,15 +28,17 @@
 #define WINDOW_NUM 2048
 //WINDOW 大小 4MB
 #define WINDOW_SIZE 16 * 1024 * 1024
-#define LOOP_TIME 1000000
+#define LOOP_TIME 200000
+#define PROBE_REPEATS 7
 
 #define STRIDE 8
 
 #define PTR_BITS 3
 #define MAX_RAND 100000
 
-#define BUFFER_NUM 16
-#define BUFFER_SIZE 4 * 1024 * 1024
+#define MULTIWAY_MIN_LINES 16
+#define MULTIWAY_MAX_LINES 64
+#define MULTIWAY_JUMP_THRESHOLD 0.25
 
 using namespace std;
 
@@ -72,8 +77,13 @@ static inline void shuffleGroups(std::vector<int64_t>& vec, int sub) {
     }
 }
 
-static inline void flush_cache_line(void* addr) {
+static void flush_cache_line(void* addr) {
     _mm_clflush(addr);  // 使用 CLFLUSH
+}
+
+static void finish_cache_line_flush()
+{
+    _mm_mfence();
 }
 
 static inline void init(int64_t *ptr, vector<int64_t> ptr_index, int64_t group)
@@ -133,7 +143,7 @@ static inline double inloop(int group, int win_size)
     int total_num = (win_size) >> 6; //每64byte 1个数
     vector<int64_t> ptr_index(total_num) ;
 
-    for (i = 0; i < 100; i++) {
+    for (i = 0; i < PROBE_REPEATS; i++) {
         int64_t index = 0;
         // cout << "main loop start " << i << endl;
         for (int64_t m = 0; m < total_num; ++m) {
@@ -156,7 +166,7 @@ static inline double inloop(int group, int win_size)
     }
     free(ptr);
     // printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
-    return sum_time_used / 100;
+    return sum_time_used / PROBE_REPEATS;
 }
 
 static void get_slope(vector<double>& time_used, vector<double>& slope)
@@ -219,13 +229,6 @@ static inline void random_access(vector<double>& time_used) {
 
 void get_cacheline(struct CacheData *cache_size, int cpu_id)
 {
-    struct timespec start, end;
-    int i, j, k;
-    vector<double> slope;
-    int datasize = 64 * 1024;
-    vector<double> time_used;
-    uintptr_t *ptr = (uintptr_t*)malloc(datasize);
-    double first_time, second_time;
 #ifdef __linux__
     pid_t pid = syscall(SYS_gettid);
     cpu_set_t mask;
@@ -237,55 +240,26 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
     }
     read_data(cpu_id, &cache_size->theory_cacheline, "/cache/index0/coherency_line_size");
 #endif
-    for(int buf = 16 ; buf <= 1024 ; buf *= 2){
+    cache_size->test_cacheline = probe_cacheline_size(
+        cache_size->theory_cacheline, CACHE_LINE, flush_cache_line,
+        finish_cache_line_flush);
+}
 
-        first_time = 0;
-        second_time = 0;
-        int w = datasize / buf;
-        int n = (buf >> 3)/2 + 1 ;
-        for(j = 0 ; j < datasize >> 3 ; j++){
-            ptr[j] = 0;
-        }
-        uintptr_t* next;
-        for( j = 0 ; j < w-1 ; j++){
-            ptr[(j * buf) >> 3 ]=(uintptr_t)&ptr[((j + 1) * buf) >> 3];
-            ptr[((j * buf) >> 3) + n]=(uintptr_t)&ptr[(((j + 1) * buf) >> 3) + n];
-        }
-        ptr[(j * buf) >> 3] = (uintptr_t)&ptr[0];
-        ptr[((j * buf) >> 3) + n] = (uintptr_t)&ptr[n];
-
-        for(i = 0; i < 1000 ; i++){
-            for(k = 0; k < datasize >> 3; k++){
-                flush_cache_line(&ptr[k]);
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            next = (uintptr_t*)&ptr[0];
-            for(k=0 ; k < w ; k++){
-                next = (uintptr_t*)*next;
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            first_time +=  (get_time(&start, &end) / w);
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            next = (uintptr_t*)&ptr[n];
-            for(k=0 ; k < w ; k++){
-                next = (uintptr_t*)*next;
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            second_time += (get_time(&start, &end)/w);
-        }
-        time_used.push_back(second_time / first_time);
-        // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
-        //     << second_time / first_time << endl;
-    }
-    for (size_t i = 0; i < time_used.size() - 1; ++i) {
-    if (time_used[i] < time_used[i + 1]) {
-            // cout << i << " " << 16 * pow(2, i) << endl;
-        cache_size->test_cacheline = 16 * pow(2, i);
-        break;
-        }
-    }
-    free(ptr);
-    return;
+void get_theory_cache(struct CacheData *cache_size, int cpu_id)
+{
+#ifdef __linux__
+    read_data(cpu_id, &cache_size->theory_L1, "/cache/index0/size");
+    read_data(cpu_id, &cache_size->theory_L2, "/cache/index2/size");
+    read_data(cpu_id, &cache_size->theory_way,
+        "/cache/index0/ways_of_associativity");
+    read_data(cpu_id, &cache_size->theory_cacheline,
+        "/cache/index0/coherency_line_size");
+#endif
+    if (cache_size->test_L1 <= 0) cache_size->test_L1 = cache_size->theory_L1;
+    if (cache_size->test_L2 <= 0) cache_size->test_L2 = cache_size->theory_L2;
+    if (cache_size->test_way <= 0) cache_size->test_way = cache_size->theory_way;
+    if (cache_size->test_cacheline <= 0)
+        cache_size->test_cacheline = cache_size->theory_cacheline;
 }
 
 void get_cachesize(struct CacheData *cache_size, int cpu_id)
@@ -320,9 +294,9 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
 void get_multiway(struct CacheData *cache_size, int cpu_id)
 {
     struct timespec start, end;
-    double time_used = 0, pre_time_used = 0;
-    int i, j, k, w;
-    int64_t loop_time = LOOP_TIME, test_time = 100;
+    double pre_time_used = 0;
+    int detected_way = 0;
+    int64_t loop_time = LOOP_TIME, test_time = PROBE_REPEATS;
 
 #ifdef __linux__
     pid_t pid = syscall(SYS_gettid);
@@ -334,43 +308,76 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
         printf("Warning: performance may be impacted \n");
     }
     read_data(cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
+    read_data(cpu_id, &cache_size->theory_L1, "/cache/index0/size");
+    read_data(cpu_id, &cache_size->theory_cacheline,
+        "/cache/index0/coherency_line_size");
 #endif
 
-    for (w = 0; w < BUFFER_NUM; w++) {
-        uint64_t *index = (uint64_t*)malloc(BUFFER_SIZE * (w + 1));
-        uint64_t next = 0;
-        //init
-        for ( j = 0; j < w; j++) {
-            index[(j * BUFFER_SIZE) >> 3 ] = ((j + 1) * BUFFER_SIZE) >> 3;
+    // One way spans every L1 set exactly once, so this stride maps each
+    // address to the same set.  Unlike the old 4 MiB stride, the usual 4 KiB
+    // value walks consecutive pages instead of aliasing one L1 DTLB set.
+    size_t conflict_stride = 4096;
+    if (cache_size->theory_L1 > 0 && cache_size->theory_way > 0) {
+        size_t bytes_per_way = static_cast<size_t>(cache_size->theory_L1) *
+            1024 / cache_size->theory_way;
+        if (bytes_per_way >= static_cast<size_t>(cache_size->theory_cacheline))
+            conflict_stride = bytes_per_way;
+    }
+    int max_lines = MULTIWAY_MIN_LINES;
+    if (cache_size->theory_way > 0)
+        max_lines = min(MULTIWAY_MAX_LINES,
+            max(MULTIWAY_MIN_LINES, cache_size->theory_way + 4));
+
+    for (int line_count = 1; line_count <= max_lines; ++line_count) {
+        uint64_t *index = static_cast<uint64_t*>(
+            malloc(conflict_stride * line_count));
+        if (index == NULL) break;
+
+        vector<int> order(line_count);
+        for (int i = 0; i < line_count; ++i) order[i] = i;
+        // A shuffled dependency ring prevents sequential-page prefetch and
+        // replacement-policy artifacts from creating an early transition.
+        mt19937 generator(0x9e3779b9U + line_count);
+        shuffle(order.begin(), order.end(), generator);
+        const uint64_t stride_words = conflict_stride / sizeof(uint64_t);
+        for (int i = 0; i < line_count; ++i) {
+            index[order[i] * stride_words] =
+                order[(i + 1) % line_count] * stride_words;
         }
-        index[(j * BUFFER_SIZE) >> 3] = 0;
-        //warm up
-        next = 0;
-        for (k = 0; k < loop_time; k++) {
+
+        const uint64_t first = order[0] * stride_words;
+        uint64_t next = first;
+        for (int64_t k = 0; k < loop_time; ++k) {
             next = index[next];
         }
 
-        pre_time_used = time_used;
-        time_used = 0;
-        for (i = 0; i < test_time;i++) {
+        vector<double> samples;
+        samples.reserve(test_time);
+        for (int64_t i = 0; i < test_time; ++i) {
+            next = first;
             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            next = 0;
-            for (k = 0; k<loop_time; k++) {
+            for (int64_t k = 0; k < loop_time; ++k) {
                 next = index[next];
             }
+            __asm__ volatile("" : "+r"(next) : : "memory");
             clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            time_used += get_time(&start, &end);
+            samples.push_back(get_time(&start, &end));
         }
-        time_used /= test_time;
-        // cout<<time_used<<" "<<time_used/pre_time_used<<endl;
-        if (w > 0 && time_used/pre_time_used - 1 > 1e-1) {
+        sort(samples.begin(), samples.end());
+        // Interrupts and scheduler activity only lengthen samples, so the
+        // median is a more robust transition signal than their mean.
+        const double time_used = samples[samples.size() / 2];
+        free(index);
+
+        if (line_count > 1 &&
+            time_used / pre_time_used - 1.0 > MULTIWAY_JUMP_THRESHOLD) {
+            detected_way = line_count - 1;
             break;
         }
-        free(index);
+        pre_time_used = time_used;
+        detected_way = line_count;
     }
-    cache_size->test_way = w;
-    return;
-
+    cache_size->test_way = detected_way;
 }
 
 double get_bandwith(uint64_t looptime, double data_size, string type)
@@ -382,35 +389,31 @@ double get_bandwith(uint64_t looptime, double data_size, string type)
     if (data_size > 2 * 1024) {
         data_size = 2 * 1024;
     }
-    float* cache_data = (float*)malloc(data_size * 1024);
+    if (data_size <= 0.0) return 0.0;
+
+    uint64_t bytes_per_loop = static_cast<uint64_t>(data_size * 1024);
+    const uint64_t target_bytes = 32ULL * 1024 * 1024 * 1024;
+    uint64_t effective_looptime = std::max<uint64_t>(1,
+        std::min<uint64_t>(looptime, target_bytes / bytes_per_loop));
+    float* cache_data = (float*)malloc(bytes_per_loop);
 
     //Preventing Compiler Optimization
     for (int i = 0; i < data_size * 1024/sizeof(float); i++) {
         cache_data[i] = i;
     }
     int inner_loop = data_size * 1024 / sizeof(float) / (4 * 32);
-#ifdef _SVE_LD1W_
-	// warm up
-    if (type.find("ld1w")!= string::npos) {
-        load_ld1w_kernel(cache_data, data_size * 1024 / sizeof(float), looptime);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        load_ld1w_kernel(cache_data, data_size * 1024 / sizeof(float), looptime);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    } else {
-        load_vmovups_kernel(cache_data, inner_loop, looptime);
+    void (*kernel)(float*, int, int64_t) = load_vmovups_kernel;
+    if (type.find("movss") != string::npos) kernel = load_movss_stream_kernel;
+    else if (type.find("xmm") != string::npos) kernel = load_movups_xmm_kernel;
+    else if (type.find("zmm") != string::npos) kernel = load_vmovups_zmm_kernel;
 
-        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        load_vmovups_kernel(cache_data, inner_loop, looptime);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    }
-#else
-    load_vmovups_kernel(cache_data, inner_loop, looptime);
+    kernel(cache_data, inner_loop, effective_looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    load_vmovups_kernel(cache_data, inner_loop, looptime);
+    kernel(cache_data, inner_loop, effective_looptime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-#endif
     time_used = get_time(&start, &end);
-    perf = (double)looptime * data_size * 1024 / (time_used * freq[0] * 1e9);
+    perf = static_cast<double>(effective_looptime) * bytes_per_loop /
+        (time_used * freq[0] * 1e9);
 
     free(cache_data);
     return perf;

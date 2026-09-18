@@ -1,8 +1,19 @@
 #ifndef _FREQUENCY_HPP
 #define _FREQUENCY_HPP
-#include <string>  
+
+#include <cstdint>
+#include <string>
 #include <vector>
+
 #include "table.hpp"
+
+extern "C"
+{
+    void cpufb_x64_frequency_fsu32(int64_t loop_time);
+    void cpufb_x64_frequency_fsu64(int64_t loop_time);
+    void cpufb_x64_frequency_load(const void *data, int64_t loop_time);
+}
+
 struct FrequencyData {
     double theory_freq = 0;
     double caculate_freq = 0;

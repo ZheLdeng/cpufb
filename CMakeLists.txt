@@ -66,6 +66,9 @@ find_package(Threads REQUIRED)
 # common/ as an OBJECT library
 # ---------------------------------------------------------------------------
 add_library(cpufb_common OBJECT
+    "${CPUFB_COMMON_DIR}/cache_topology.cpp"
+    "${CPUFB_COMMON_DIR}/cacheline_probe.cpp"
+    "${CPUFB_COMMON_DIR}/cli.cpp"
     "${CPUFB_COMMON_DIR}/table.cpp"
     "${CPUFB_COMMON_DIR}/thread_pool.cpp"
 )
@@ -97,9 +100,21 @@ foreach(feat IN LISTS CPUFB_SIMD_FEATURES)
     endif()
 endforeach()
 
-# arm64 has an extra access.S that is always built (not feature-gated)
+# arm64 has an extra access.S that is always built (not feature-gated).
 if(CPUFB_ARCH STREQUAL "arm64" AND EXISTS "${CPUFB_ASM_DIR}/access.S")
     list(APPEND _simd_sources "${CPUFB_ASM_DIR}/access.S")
+endif()
+
+# x64 load and baseline multi-issue benchmarks are infrastructure rather than
+# optional compute ISA rows.  Keep them available even when a user supplies a
+# reduced CPUFB_SIMD_FEATURES_OVERRIDE; native CPUID detection also lists these
+# files, so remove any duplicate paths afterwards.
+if(CPUFB_ARCH STREQUAL "x64")
+    list(APPEND _simd_sources
+        "${CPUFB_ASM_DIR}/_LDP_.S"
+        "${CPUFB_ASM_DIR}/_ISSUE_.S"
+    )
+    list(REMOVE_DUPLICATES _simd_sources)
 endif()
 
 if(_simd_sources)
@@ -124,6 +139,15 @@ set(_kernel_sources
 )
 if(CPUFB_ARCH STREQUAL "arm64" AND CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(APPEND _kernel_sources "${CPUFB_KERNEL_DIR}/macos_counters.cpp")
+endif()
+if(CPUFB_ARCH STREQUAL "arm64" OR CPUFB_ARCH STREQUAL "x64")
+    list(APPEND _kernel_sources
+        "${CPUFB_KERNEL_DIR}/memory_bandwidth.cpp")
+endif()
+if(CPUFB_ARCH STREQUAL "x64")
+    # The frequency probe is an x86-64 SSE/SSE2 baseline and must not depend
+    # on whichever optional compute kernels were selected by CPUID/override.
+    list(APPEND _kernel_sources "${CPUFB_ASM_DIR}/frequency.S")
 endif()
 if(CPUFB_ARCH STREQUAL "arm64" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(APPEND _kernel_sources "${CPUFB_ARCH_DIR}/runtime_features.cpp")
@@ -216,3 +240,83 @@ include(GNUInstallDirs)
 install(TARGETS cpufb RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 
 include(AndroidDeploy)
+
+# ---------------------------------------------------------------------------
+# CLI regression tests
+# ---------------------------------------------------------------------------
+include(CTest)
+if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
+    add_executable(cpufb_latency_pairing_test
+        "${CMAKE_SOURCE_DIR}/tests/test_latency_pairing.cpp"
+    )
+    target_link_libraries(cpufb_latency_pairing_test PRIVATE cpufb_common)
+    add_test(
+        NAME cpufb_latency_pairing
+        COMMAND cpufb_latency_pairing_test
+    )
+    set_tests_properties(cpufb_latency_pairing PROPERTIES
+        LABELS "unit"
+        TIMEOUT 30
+    )
+
+    add_executable(cpufb_cache_topology_test
+        "${CMAKE_SOURCE_DIR}/tests/test_cache_topology.cpp"
+    )
+    target_link_libraries(cpufb_cache_topology_test PRIVATE cpufb_common)
+    add_test(
+        NAME cpufb_cache_topology
+        COMMAND cpufb_cache_topology_test
+    )
+    set_tests_properties(cpufb_cache_topology PROPERTIES
+        LABELS "unit"
+        TIMEOUT 30
+    )
+
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME cpufb_pair_issue_unit
+            COMMAND "${Python3_EXECUTABLE}"
+                "${CMAKE_SOURCE_DIR}/tests/test_pair_issue.py"
+        )
+        set_tests_properties(cpufb_pair_issue_unit PROPERTIES
+            LABELS "unit"
+            TIMEOUT 30
+        )
+    else()
+        message(WARNING
+            "cpufb: Python3 not found; pair-issue unit tests disabled")
+    endif()
+endif()
+
+if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND
+        (CPUFB_ARCH STREQUAL "x64" OR CPUFB_ARCH STREQUAL "arm64"))
+    find_program(CPUFB_BASH_EXECUTABLE bash)
+    if(CPUFB_BASH_EXECUTABLE)
+        set(_cli_test_script "${CMAKE_SOURCE_DIR}/tests/test_cli.sh")
+        set(_cli_test_names
+            list
+            invalid_filters
+            instruction_matching
+            filters_txt
+            csv_output
+            sweep_output
+        )
+        list(APPEND _cli_test_names memory_bandwidth)
+        list(APPEND _cli_test_names cache_bandwidth)
+        foreach(test_name IN LISTS _cli_test_names)
+            add_test(
+                NAME "cpufb_cli_${test_name}"
+                COMMAND "${CPUFB_BASH_EXECUTABLE}" "${_cli_test_script}"
+                    "${test_name}" "$<TARGET_FILE:cpufb>" "${CPUFB_ARCH}"
+            )
+            set_tests_properties("cpufb_cli_${test_name}" PROPERTIES
+                LABELS "cli"
+                RUN_SERIAL TRUE
+                TIMEOUT 240
+            )
+        endforeach()
+    else()
+        message(WARNING "cpufb: bash not found; CLI regression tests disabled")
+    endif()
+endif()

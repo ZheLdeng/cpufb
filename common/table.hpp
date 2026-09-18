@@ -1,6 +1,7 @@
 #ifndef _TABLE_HPP
 #define _TABLE_HPP
 
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,9 @@ public:
     void setColumnNum(int col);
     void addOneItem(std::vector<std::string> &item);
     void print();
+    void writeCompact(std::ostream &out,
+        char delimiter,
+        const std::string &rowPrefix = "") const;
     int getCol();
 
 private:

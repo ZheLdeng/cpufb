@@ -68,8 +68,8 @@
     BFMLAL ZA.S[w10, 0:1], Z4.H, Z5.H[0]
     BFMLAL ZA.S[w11, 0:1], Z4.H, Z5.H[0]
     bne .sme2_bfmlal_vs_f32bf16bf16L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret
 ############
     PROLOGUE sme2_bfmlal4_vs_f32bf16bf16
@@ -103,8 +103,8 @@
     BFMLAL ZA.S[w10, 0:1, VGx4], {z0.h-z3.h}, z5.h[0]
     BFMLAL ZA.S[w11, 0:1, VGx4], {z0.h-z3.h}, z5.h[0]
     bne .sme2_bfmlal4_vs_f32bf16bf16L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret
 ############
     PROLOGUE sme2_bfmlal_vv_f32bf16bf16

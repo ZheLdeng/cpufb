@@ -1,5 +1,7 @@
 .globl avx_vnni_dp4a_s32u8s8
 .globl avx_vnni_dp2a_s32s16s16
+.globl avx_vnni_dp4a_s32u8s8_latency
+.globl avx_vnni_dp2a_s32s16s16_latency
 
 avx_vnni_dp4a_s32u8s8:
     vpxor %ymm0, %ymm0, %ymm0
@@ -77,3 +79,24 @@ avx_vnni_dp2a_s32s16s16:
     jne .avx.vnni.dp2a.s32s16s16.L1
     ret
 
+avx_vnni_dp4a_s32u8s8_latency:
+    vpxor %ymm0, %ymm0, %ymm0
+.Lavx_vnni_dp4a_latency:
+    .rept 16
+        {vex} vpdpbusd %ymm0, %ymm0, %ymm0
+    .endr
+    dec %rdi
+    jne .Lavx_vnni_dp4a_latency
+    vzeroupper
+    ret
+
+avx_vnni_dp2a_s32s16s16_latency:
+    vpxor %ymm0, %ymm0, %ymm0
+.Lavx_vnni_dp2a_latency:
+    .rept 16
+        {vex} vpdpwssd %ymm0, %ymm0, %ymm0
+    .endr
+    dec %rdi
+    jne .Lavx_vnni_dp2a_latency
+    vzeroupper
+    ret

@@ -1,5 +1,11 @@
 .align 5
 #include "common_arm64.h"
+
+#uint64_t load_sme_vector_bytes(void);
+    PROLOGUE load_sme_vector_bytes
+    rdsvl x0, #1
+    ret
+
 .macro SME_INIT
     fmov z0.s, p0/m, #0
     fmov z1.s, p0/m, #0
@@ -65,8 +71,45 @@
     BFMOPA za2.S, p0/M, p1/M, z30.H, z30.H
     BFMOPA za3.S, p0/M, p1/M, z31.H, z31.H
     bne .sme_bfmopa_vv_f32bf16bf16L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
+    ret
+############
+# Latency variant: every BFMOPA accumulates into the same ZA tile, so the
+# dependency chain exposes the ZA-accumulate latency instead of throughput.
+    PROLOGUE sme_bfmopa2_vv_f32bf16bf16
+    preserve_caller_vec
+    smstart
+    SME_INIT
+.sme_bfmopa2_vv_f32bf16bf16L1:
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    subs x0, x0, #1
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    BFMOPA za0.S, p0/M, p1/M, z8.H, z9.H
+    bne .sme_bfmopa2_vv_f32bf16bf16L1
+    smstop
+    restore_caller_vec
     ret
 ############
     PROLOGUE sme_fmopa_vv_f32f32f32
@@ -100,8 +143,8 @@
     FMOPA za2.S, p0/M, p1/M, z28.S, z29.S
     FMOPA za3.S, p0/M, p1/M, z30.S, z31.S
     bne .sme_fmopa_vv_f32f32f32L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret
 ############
     PROLOGUE sme_fmopa2_vv_f32f32f32
@@ -135,8 +178,8 @@
     FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
     FMOPA za0.S, p0/M, p1/M, z8.S, z9.S
     bne .sme_fmopa2_vv_f32f32f32L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret
 ############
 
@@ -207,8 +250,8 @@
     SMOPA za2.S, p0/M, p1/M, z28.B, z29.B
     SMOPA za3.S, p0/M, p1/M, z30.B, z31.B
     bne .sme_smopa_vv_i32i8i8L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret
 ############
 # UMOPA / USMOPA / SUMOPA for i8 -> i32 (base SME, mixed-sign variants).
@@ -244,8 +287,8 @@
     UMOPA za2.S, p0/M, p1/M, z28.B, z29.B
     UMOPA za3.S, p0/M, p1/M, z30.B, z31.B
     bne .sme_umopa_vv_u32u8u8L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret
 ############
     PROLOGUE sme_usmopa_vv_s32u8s8
@@ -279,8 +322,8 @@
     USMOPA za2.S, p0/M, p1/M, z28.B, z29.B
     USMOPA za3.S, p0/M, p1/M, z30.B, z31.B
     bne .sme_usmopa_vv_s32u8s8L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret
 ############
     PROLOGUE sme_sumopa_vv_s32s8u8
@@ -314,8 +357,8 @@
     SUMOPA za2.S, p0/M, p1/M, z28.B, z29.B
     SUMOPA za3.S, p0/M, p1/M, z30.B, z31.B
     bne .sme_sumopa_vv_s32s8u8L1
-    restore_caller_vec
     smstop
+    restore_caller_vec
     ret
 ############
     PROLOGUE sme_ldr_kernel
@@ -378,50 +421,31 @@
     add x23, x19, x7, lsl #2 
     mov x4, x2
     smstart
+    ptrue p0.S
     2:
     mov x3, x1
     mov x5, x0
     mov x24, x0 
     1: 
     add x24, x5, x6, lsl #3
-    LD1w ZA0V.S[W12, #0], P0/Z, [x5]
-    LD1w ZA1V.S[W12, #0], P0/Z, [x5, x7, LSL #2]
-    LD1w ZA2V.S[W12, #0], P0/Z, [x5, x18, LSL #2]
-    LD1w ZA3V.S[W12, #0], P0/Z, [x5, x19, LSL #2]
-    LD1w ZA0V.S[W12, #1], P0/Z, [x5, x20, LSL #2]
-    LD1w ZA1V.S[W12, #1], P0/Z, [x5, x21, LSL #2]
-    LD1w ZA2V.S[W12, #1], P0/Z, [x5, x22, LSL #2]
-    LD1w ZA3V.S[W12, #1], P0/Z, [x5, x23, LSL #2]
+    LD1w {ZA0V.S[W12, #0]}, P0/Z, [x5]
+    LD1w {ZA1V.S[W12, #0]}, P0/Z, [x5, x7, LSL #2]
+    LD1w {ZA2V.S[W12, #0]}, P0/Z, [x5, x18, LSL #2]
+    LD1w {ZA3V.S[W12, #0]}, P0/Z, [x5, x19, LSL #2]
+    LD1w {ZA0V.S[W12, #1]}, P0/Z, [x5, x20, LSL #2]
+    LD1w {ZA1V.S[W12, #1]}, P0/Z, [x5, x21, LSL #2]
+    LD1w {ZA2V.S[W12, #1]}, P0/Z, [x5, x22, LSL #2]
+    LD1w {ZA3V.S[W12, #1]}, P0/Z, [x5, x23, LSL #2]
     add x5, x5, x6, lsl #4
-    LD1w ZA0V.S[W12, #0], P0/Z, [x24]
-    LD1w ZA1V.S[W12, #0], P0/Z, [x24, x7, LSL #2]
-    LD1w ZA2V.S[W12, #0], P0/Z, [x24, x18, LSL #2]
-    LD1w ZA3V.S[W12, #0], P0/Z, [x24, x19, LSL #2]
-    LD1w ZA0V.S[W12, #1], P0/Z, [x24, x20, LSL #2]
-    LD1w ZA1V.S[W12, #1], P0/Z, [x24, x21, LSL #2]
-    LD1w ZA2V.S[W12, #1], P0/Z, [x24, x22, LSL #2]
-    LD1w ZA3V.S[W12, #1], P0/Z, [x24, x23, LSL #2]
+    LD1w {ZA0V.S[W12, #0]}, P0/Z, [x24]
+    LD1w {ZA1V.S[W12, #0]}, P0/Z, [x24, x7, LSL #2]
+    LD1w {ZA2V.S[W12, #0]}, P0/Z, [x24, x18, LSL #2]
+    LD1w {ZA3V.S[W12, #0]}, P0/Z, [x24, x19, LSL #2]
+    LD1w {ZA0V.S[W12, #1]}, P0/Z, [x24, x20, LSL #2]
+    LD1w {ZA1V.S[W12, #1]}, P0/Z, [x24, x21, LSL #2]
+    LD1w {ZA2V.S[W12, #1]}, P0/Z, [x24, x22, LSL #2]
+    LD1w {ZA3V.S[W12, #1]}, P0/Z, [x24, x23, LSL #2]
     
-    ldp q0, q1,[x5]
-    ldp q2, q3,[x5]
-    ldp q4, q5,[x5]
-    ldp q6, q7,[x5]
-    ldp q8, q9,[x5]
-    ldp q10, q11,[x5]
-    ldp q12, q13,[x5]
-    ldp q14, q15,[x5]
-    ldp q16, q17,[x5]
-    ldp q18, q19,[x5]
-    ldp q20, q21,[x5]
-    ldp q22, q23,[x5]
-    ldp q24, q25,[x5]
-    ldp q26, q27,[x5]
-    ldp q28, q29,[x5]
-    ldp q30, q31,[x5]
-
-
-
-
     subs x3, x3, x6, lsl #2
     bne 1b
 
@@ -450,29 +474,30 @@
     add x23, x19, x7, lsl #2
     mov x4, x2
     smstart
+    ptrue p0.S
     2:
     mov x3, x1
     mov x5, x0
     mov x24, x0
     1:
     add x24, x5, x6, lsl #3
-    LD1w ZA0H.S[W12, #0], P0/Z, [x5]
-    LD1w ZA1H.S[W12, #0], P0/Z, [x5, x7, LSL #2]
-    LD1w ZA2H.S[W12, #0], P0/Z, [x5, x18, LSL #2]
-    LD1w ZA3H.S[W12, #0], P0/Z, [x5, x19, LSL #2]
-    LD1w ZA0H.S[W12, #1], P0/Z, [x5, x20, LSL #2]
-    LD1w ZA1H.S[W12, #1], P0/Z, [x5, x21, LSL #2]
-    LD1w ZA2H.S[W12, #1], P0/Z, [x5, x22, LSL #2]
-    LD1w ZA3H.S[W12, #1], P0/Z, [x5, x23, LSL #2]
+    LD1w {ZA0H.S[W12, #0]}, P0/Z, [x5]
+    LD1w {ZA1H.S[W12, #0]}, P0/Z, [x5, x7, LSL #2]
+    LD1w {ZA2H.S[W12, #0]}, P0/Z, [x5, x18, LSL #2]
+    LD1w {ZA3H.S[W12, #0]}, P0/Z, [x5, x19, LSL #2]
+    LD1w {ZA0H.S[W12, #1]}, P0/Z, [x5, x20, LSL #2]
+    LD1w {ZA1H.S[W12, #1]}, P0/Z, [x5, x21, LSL #2]
+    LD1w {ZA2H.S[W12, #1]}, P0/Z, [x5, x22, LSL #2]
+    LD1w {ZA3H.S[W12, #1]}, P0/Z, [x5, x23, LSL #2]
     add x5, x5, x6, lsl #4
-    LD1w ZA0H.S[W12, #0], P0/Z, [x24]
-    LD1w ZA1H.S[W12, #0], P0/Z, [x24, x7, LSL #2]
-    LD1w ZA2H.S[W12, #0], P0/Z, [x24, x18, LSL #2]
-    LD1w ZA3H.S[W12, #0], P0/Z, [x24, x19, LSL #2]
-    LD1w ZA0H.S[W12, #1], P0/Z, [x24, x20, LSL #2]
-    LD1w ZA1H.S[W12, #1], P0/Z, [x24, x21, LSL #2]
-    LD1w ZA2H.S[W12, #1], P0/Z, [x24, x22, LSL #2]
-    LD1w ZA3H.S[W12, #1], P0/Z, [x24, x23, LSL #2]
+    LD1w {ZA0H.S[W12, #0]}, P0/Z, [x24]
+    LD1w {ZA1H.S[W12, #0]}, P0/Z, [x24, x7, LSL #2]
+    LD1w {ZA2H.S[W12, #0]}, P0/Z, [x24, x18, LSL #2]
+    LD1w {ZA3H.S[W12, #0]}, P0/Z, [x24, x19, LSL #2]
+    LD1w {ZA0H.S[W12, #1]}, P0/Z, [x24, x20, LSL #2]
+    LD1w {ZA1H.S[W12, #1]}, P0/Z, [x24, x21, LSL #2]
+    LD1w {ZA2H.S[W12, #1]}, P0/Z, [x24, x22, LSL #2]
+    LD1w {ZA3H.S[W12, #1]}, P0/Z, [x24, x23, LSL #2]
     
     subs x3, x3, x6, lsl #2
     bne 1b

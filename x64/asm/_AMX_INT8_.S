@@ -2,6 +2,7 @@
 .globl amx_int8_mm_s32s8u8
 .globl amx_int8_mm_s32u8s8
 .globl amx_int8_mm_s32u8u8
+.globl amx_int8_mm_s32s8s8_latency
 
 amx_int8_mm_s32s8s8:
     ldtilecfg (%rsi)
@@ -18,6 +19,19 @@ amx_int8_mm_s32s8s8:
     tdpbssd %tmm4, %tmm5, %tmm3
     sub $0x1, %rdi
     jne .amx.int8.mm.s32s8s8
+    ret
+
+amx_int8_mm_s32s8s8_latency:
+    ldtilecfg (%rsi)
+    tilezero %tmm0
+    tilezero %tmm4
+    tilezero %tmm5
+.Lamx_int8_latency:
+    .rept 4
+        tdpbssd %tmm4, %tmm5, %tmm0
+    .endr
+    dec %rdi
+    jne .Lamx_int8_latency
     ret
 
 amx_int8_mm_s32s8u8:
@@ -70,4 +84,3 @@ amx_int8_mm_s32u8u8:
     sub $0x1, %rdi
     jne .amx.int8.mm.s32u8u8
     ret
-

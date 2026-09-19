@@ -96,7 +96,7 @@ The output binary is at `build/<preset>/cpufb`.
 | ---------------- | -------------------------------------------------------- |
 | `native-release` | Build for the host arch (Linux x64, arm64, riscv64; macOS arm64). |
 | `native-debug`   | Same, with `CMAKE_BUILD_TYPE=Debug`.                     |
-| `macos-arm64`    | Apple Silicon, matches legacy `build_arm64.sh` quirks.   |
+| `macos-arm64`    | Apple Silicon native build.                              |
 | `aarch64-cross`  | Cross-compile to `aarch64-linux-gnu` (Android deploy).   |
 | `riscv64-cross`  | Cross-compile to `riscv64-linux-gnu`.                    |
 
@@ -128,11 +128,12 @@ cmake --build --preset aarch64-cross --target run_android_core0
 
 You must ensure that the device can be reached via `adb shell` during build.
 
-### Legacy shell scripts (deprecated)
+### Legacy shell scripts
 
-The old `build_x64.sh`, `build_arm64.sh`, `build_android.sh`, `build_riscv64.sh`
-and `clean.sh` are kept for reference only and will print a `[DEPRECATED]`
-notice. New code should use the CMake build above.
+The old `build_x64.sh`, `build_arm64.sh`, `build_android.sh`,
+`build_riscv64.sh` and `clean.sh` have been removed; they no longer listed the
+shared sources and could not link. `QUICK_START.md` maps each one to its CMake
+preset.
 
 ## How to benchmark
 

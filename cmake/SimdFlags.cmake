@@ -83,8 +83,8 @@ function(cpufb_simd_asm_flags arch feature out_var)
 endfunction()
 
 # Highest-priority "umbrella" -march flag that the main cpufb.cpp TU needs to
-# compile against the union of detected SIMD features. Mirrors the "case" block
-# in build_arm64.sh - later matches override earlier ones in priority order.
+# compile against the union of detected SIMD features; later matches override
+# earlier ones in priority order.
 function(cpufb_compute_march_flag arch features_list out_var)
     set(march "")
     if(arch STREQUAL "arm64" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -95,8 +95,8 @@ function(cpufb_compute_march_flag arch features_list out_var)
         # them, which SIGILLs on ARMv8.0 cores before any feature check runs.
         set(march "-march=armv8-a")
     elseif(arch STREQUAL "arm64")
-        # Priority order matches build_arm64.sh's case-statement order: later
-        # cases (SME family) override earlier (SVE family) override base SVE.
+        # Later cases (SME family) override earlier (SVE family) override base
+        # SVE.
         foreach(feat IN LISTS features_list)
             if(feat STREQUAL "_SVE_")
                 if(march STREQUAL "")

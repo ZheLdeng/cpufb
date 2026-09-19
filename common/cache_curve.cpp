@@ -1,7 +1,6 @@
 #include "cache_curve.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -183,15 +182,15 @@ std::vector<CacheLevelEstimate> estimate_cache_levels(
             continue;
 
         // A cyclic ring re-references every line after exactly one lap, so
-        // the ideal curve is a step at the capacity; sharing and replacement
-        // noise only soften it.  The geometric midpoint splits the step
-        // without favouring either plateau's latency scale.
-        const double threshold = std::sqrt(below.latency_ns * above.latency_ns);
-        size_t capacity_index = below.last;
-        for (size_t j = below.last; j < above.first; ++j) {
-            if (points[j].latency_ns < threshold) capacity_index = j;
-            else break;
-        }
+        // the ideal curve is a step: all hits up to the capacity, all misses
+        // from the first larger working set, where the next plateau starts.
+        // Real curves soften only below the step, because a ring that fills
+        // the level completely competes with every other resident line
+        // (stack, code, an SMT sibling).  The capacity is therefore the last
+        // working set before the upper plateau begins, not the start or the
+        // midpoint of the ramp, which would under-report by a grid step.
+        size_t capacity_index = above.first > below.last
+            ? above.first - 1 : below.last;
         CacheLevelEstimate level;
         level.level = "L" + std::to_string(levels.size() + 1);
         level.capacity_bytes = points[capacity_index].working_set_bytes;

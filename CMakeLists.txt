@@ -168,24 +168,12 @@ if(CPUFB_ARCH STREQUAL "arm64" AND CMAKE_SYSTEM_NAME STREQUAL "Darwin"
     set(_amx_target cpufb_amx)
 endif()
 
-# Per-source overrides matching the legacy scripts' optimization choices.
-if(CPUFB_ARCH STREQUAL "x64")
-    set_source_files_properties("${CPUFB_KERNEL_DIR}/frequency.cpp"
-        PROPERTIES COMPILE_FLAGS "-g -O0")
-    set_source_files_properties("${CPUFB_KERNEL_DIR}/load.cpp"
-        PROPERTIES COMPILE_FLAGS "-g -O0")
-elseif(CPUFB_ARCH STREQUAL "arm64")
-    set_source_files_properties("${CPUFB_KERNEL_DIR}/frequency.cpp"
-        PROPERTIES COMPILE_FLAGS "-O2 -g -w")
-    # Match legacy build_arm64.sh: load.cpp is compiled with no explicit -O
-    # (i.e. -O0). The benchmarked work is in the asm load_ptr() loop, but the
-    # Fisher-Yates init and other setup code in this TU is sensitive to the
-    # optimization level and we want runtime to match the legacy script.
-    # The trailing -O0 here overrides the target-level -O2 because GCC/Clang
-    # honor the last -O flag on the command line.
-    set_source_files_properties("${CPUFB_KERNEL_DIR}/load.cpp"
-        PROPERTIES COMPILE_FLAGS "-O0 -g -w")
-endif()
+# No per-source -O0 overrides: every timed region is either an assembly kernel
+# or a dependent-load loop that needs optimization to stay register-resident
+# (at -O0 each pointer-chase step round-trips through the stack and adds
+# store-forwarding latency to the measured access).  The legacy scripts built
+# load.cpp and frequency.cpp unoptimized only by omission; that also masked
+# assembly kernels which clobbered callee-saved d8-d15, since fixed.
 
 # ---------------------------------------------------------------------------
 # Main executable
@@ -208,12 +196,7 @@ elseif(CPUFB_ARCH STREQUAL "riscv64")
     target_compile_options(cpufb PRIVATE -O3 -march=rv64gcv_zfh)
     target_link_options(cpufb PRIVATE -z noexecstack)
 elseif(CPUFB_ARCH STREQUAL "arm64")
-    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-        # macOS Apple Silicon: legacy build_arm64.sh used -O0 here on purpose.
-        target_compile_options(cpufb PRIVATE -O0 -g -w)
-    else()
-        target_compile_options(cpufb PRIVATE -O2 -g -w)
-    endif()
+    target_compile_options(cpufb PRIVATE -O2 -g -w)
     if(CPUFB_MARCH_FLAG)
         target_compile_options(cpufb PRIVATE ${CPUFB_MARCH_FLAG})
     endif()

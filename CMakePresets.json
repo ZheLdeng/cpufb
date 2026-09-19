@@ -32,7 +32,7 @@
     {
       "name": "macos-arm64",
       "displayName": "macOS Apple Silicon",
-      "description": "Native build on macOS arm64; matches the legacy build_arm64.sh quirks (-O0 main TU).",
+      "description": "Native build on macOS arm64.",
       "inherits": "_base",
       "condition": {
         "type": "equals",

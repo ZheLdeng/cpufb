@@ -88,20 +88,12 @@ endfunction()
 function(cpufb_compute_march_flag arch features_list out_var)
     set(march "")
     if(arch STREQUAL "arm64" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-        # SME registration uses rdsvl in the main C++ translation unit; other
-        # optional instructions remain confined to their assembly objects.
+        # Every optional instruction, including rdsvl, lives in a per-feature
+        # assembly object that is only reached after a runtime HWCAP check.
+        # The C++ translation units must therefore stay at the baseline: with
+        # -march=armv9-a the compiler may inline LSE atomics or SVE code into
+        # them, which SIGILLs on ARMv8.0 cores before any feature check runs.
         set(march "-march=armv8-a")
-        foreach(feat IN LISTS features_list)
-            if(feat STREQUAL "_SME_"
-                    OR feat STREQUAL "_SME2_"
-                    OR feat STREQUAL "_SMEf64_"
-                    OR feat STREQUAL "_SME_F16F16_"
-                    OR feat STREQUAL "_SME_B16B16_"
-                    OR feat STREQUAL "_SME_I16I32_")
-                set(march "-march=armv9-a+sme")
-                break()
-            endif()
-        endforeach()
     elseif(arch STREQUAL "arm64")
         # Priority order matches build_arm64.sh's case-statement order: later
         # cases (SME family) override earlier (SVE family) override base SVE.

@@ -106,20 +106,6 @@ static ComputeResult cpubm_run_compute(tpool_t *tm, cpubm_t &item)
     return result;
 }
 
-static string format_perf_value(double perf, const string &dim)
-{
-    char perf_unit = 'G';
-    if (perf > 1e12) {
-        perf_unit = 'T';
-        perf /= 1e12;
-    } else {
-        perf /= 1e9;
-    }
-    stringstream stream;
-    stream << setprecision(5) << perf << " " << perf_unit << dim;
-    return stream.str();
-}
-
 static int64_t cpubm_riscv64_latency(tpool_t *tm, cpubm_t &item)
 {
     ComputeResult result = cpubm_run_compute(tm, item);

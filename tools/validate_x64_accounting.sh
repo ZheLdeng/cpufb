@@ -83,6 +83,12 @@ check_count sse2_add_f64 addpd 16
 check_count sse2_add_f64_latency addpd 16
 check_count avx_add_f32 vaddps 16
 check_count avx_add_f32_latency vaddps 16
+check_count avx_add_mul_f32f32_f32 vmulps 8
+check_count avx_add_mul_f32f32_f32 vaddps 8
+check_count avx_add_mul_f32f32_f32_latency vmulps 8
+check_count avx_add_mul_f32f32_f32_latency vaddps 8
+check_count avx_add_mul_f64f64_f64_latency vmulpd 8
+check_count avx_add_mul_f64f64_f64_latency vaddpd 8
 check_count fma_f32f32f32 vfmadd231ps 16
 check_count fma_f32f32f32_latency vfmadd231ps 16
 check_count avx2_add_s32 vpaddd 16

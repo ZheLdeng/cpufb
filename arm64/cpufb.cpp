@@ -123,7 +123,7 @@ static void cache_thread_func(void *params)
     bm->bench(bm->cache_data, bm->inner_loop, bm->loop_time);
 }
 
-static void cpubm_standalone_warmup(vector<int> &set_of_threads)
+static bool cpubm_standalone_warmup(vector<int> &set_of_threads)
 {
     for (const cpubm_t &item : bm_list) {
         if (get_benchmark_test_type(item.dim) != "compute") continue;
@@ -132,13 +132,18 @@ static void cpubm_standalone_warmup(vector<int> &set_of_threads)
         warmup_item.loop_time = min<int64_t>(warmup_item.loop_time, 0x4000LL);
 
         tpool_t *tm = tpool_create(set_of_threads);
+        if (tm == NULL) {
+            cerr << "Error: failed to create benchmark thread pool." << endl;
+            return false;
+        }
         for (int i = 0; i < tm->thread_num; i++) {
             tpool_add_work(tm, thread_func, (void*)&warmup_item);
         }
         tpool_wait(tm);
         tpool_destroy(tm);
-        return;
+        return true;
     }
+    return true;
 }
 
 static double cpubm_measure_compute_time(tpool_t *tm, cpubm_t &item)
@@ -730,8 +735,9 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
         vector<Table*> tables;
         init_table(tables);
         // cout << "start benchmark" << endl;
-        if (should_run_standalone_warmup(filter)) {
-            cpubm_standalone_warmup(set_of_threads);
+        if (should_run_standalone_warmup(filter) &&
+            !cpubm_standalone_warmup(set_of_threads)) {
+            return false;
         }
         if (benchmark_needs_freq(filter)) {
             get_cpu_freq(set_of_threads, *tables[3]);
@@ -747,6 +753,10 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);
+        if (tm == NULL) {
+            cerr << "Error: failed to create benchmark thread pool." << endl;
+            return false;
+        }
         BenchmarkCatalog catalog = build_benchmark_catalog();
 
         // traverse task list
@@ -1241,13 +1251,13 @@ static void cpufb_register_isa()
     reg_new_isa("SME", "sme_fmopa.vv(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme_fmopa_vv_f32f16f16);
     require_feature("_SME_I8I32_");
-    reg_new_isa("SME", "sme_smopa.vv(i32,i8,i8)", "FLOPS",
+    reg_new_isa("SME", "sme_smopa.vv(i32,i8,i8)", "OPS",
         kComputeLoopTime, 192LL, (void*)sme_smopa_vv_i32i8i8);
-    reg_new_isa("SME", "sme_umopa.vv(u32,u8,u8)", "FLOPS",
+    reg_new_isa("SME", "sme_umopa.vv(u32,u8,u8)", "OPS",
         kComputeLoopTime, 192LL, (void*)sme_umopa_vv_u32u8u8);
-    reg_new_isa("SME", "sme_usmopa.vv(s32,u8,s8)", "FLOPS",
+    reg_new_isa("SME", "sme_usmopa.vv(s32,u8,s8)", "OPS",
         kComputeLoopTime, 192LL, (void*)sme_usmopa_vv_s32u8s8);
-    reg_new_isa("SME", "sme_sumopa.vv(s32,s8,u8)", "FLOPS",
+    reg_new_isa("SME", "sme_sumopa.vv(s32,s8,u8)", "OPS",
         kComputeLoopTime, 192LL, (void*)sme_sumopa_vv_s32s8u8);
     require_feature("_SME_F32F32_");
     reg_new_isa("SME_MULTI_ISSUE", "ldr/fmopa", "IPC",
@@ -1354,8 +1364,8 @@ static void cpufb_register_isa()
         kComputeLoopTime, 24LL, (void*)sme2_fdot_vs_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot4.vs(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme2_fdot4_vs_f32f16f16);
-    reg_new_isa("SME2", "sme2_fdot.vv(f32,f16,f16)", "FLOPS",
-        kComputeLoopTime, 24LL, (void*)sme2_fdot_vv_f32f16f16);
+    reg_new_isa("SME2", "sme2_fdot.mvv(f32,f16,f16)", "FLOPS",
+        kComputeLoopTime, 24LL, (void*)sme2_fdot_mvv_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot4.vv(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme2_fdot4_vv_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot.vv(f32,f16,f16)", "FLOPS",

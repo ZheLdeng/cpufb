@@ -76,6 +76,7 @@ struct CliOptions
     SaveOptions save;
     bool thread_pool_set;
     BenchMode mode;
+    bool mode_explicit;
     bool include_test_explicit;
     std::uint32_t loop_scale;
     std::uint32_t bench_limit;

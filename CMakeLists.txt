@@ -299,6 +299,7 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND
             invalid_filters
             instruction_matching
             filters_txt
+            mode_all_override
             csv_output
             sweep_output
         )

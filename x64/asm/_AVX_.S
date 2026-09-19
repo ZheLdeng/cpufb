@@ -1,5 +1,7 @@
 .globl avx_add_mul_f32f32_f32
 .globl avx_add_mul_f64f64_f64
+.globl avx_add_mul_f32f32_f32_latency
+.globl avx_add_mul_f64f64_f64_latency
 .globl avx_add_f32
 .globl avx_add_f32_latency
 .globl avx_mul_f32
@@ -83,6 +85,30 @@ avx_add_mul_f64f64_f64:
     vaddpd %ymm15, %ymm15, %ymm15
     sub $0x1, %rdi
     jne .avx.add.mul.f64f64.f64.L1
+    ret
+
+avx_add_mul_f32f32_f32_latency:
+    vxorps %ymm0, %ymm0, %ymm0
+.avx.add.mul.f32f32.f32.latency.L1:
+    .rept 8
+        vmulps %ymm0, %ymm0, %ymm0
+        vaddps %ymm0, %ymm0, %ymm0
+    .endr
+    dec %rdi
+    jne .avx.add.mul.f32f32.f32.latency.L1
+    vzeroupper
+    ret
+
+avx_add_mul_f64f64_f64_latency:
+    vxorpd %ymm0, %ymm0, %ymm0
+.avx.add.mul.f64f64.f64.latency.L1:
+    .rept 8
+        vmulpd %ymm0, %ymm0, %ymm0
+        vaddpd %ymm0, %ymm0, %ymm0
+    .endr
+    dec %rdi
+    jne .avx.add.mul.f64f64.f64.latency.L1
+    vzeroupper
     ret
 
 .macro AVX16 op

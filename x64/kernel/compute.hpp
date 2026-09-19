@@ -42,6 +42,8 @@ extern "C"
 #ifdef _AVX_
     void avx_add_mul_f32f32_f32(int64_t, void *params);
     void avx_add_mul_f64f64_f64(int64_t, void *params);
+    void avx_add_mul_f32f32_f32_latency(int64_t, void *params);
+    void avx_add_mul_f64f64_f64_latency(int64_t, void *params);
     void avx_add_f32(int64_t, void *); void avx_add_f32_latency(int64_t, void *);
     void avx_mul_f32(int64_t, void *); void avx_mul_f32_latency(int64_t, void *);
     void avx_add_f64(int64_t, void *); void avx_add_f64_latency(int64_t, void *);

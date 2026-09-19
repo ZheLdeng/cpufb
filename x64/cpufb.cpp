@@ -22,6 +22,7 @@
 #include <iomanip>
 #include <fstream>
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cmath>
 #include <utility>
@@ -102,6 +103,10 @@ typedef struct
     int64_t inst_pl; // Benchmarked instructions per outer asm loop.
     void *params;
     void (*bench)(int64_t, void*);
+#ifdef __linux__
+    std::atomic<uint64_t> *cycle_count;
+    std::atomic<int> *cycle_samples;
+#endif
 } cpubm_t;
 typedef struct
 {
@@ -126,6 +131,7 @@ typedef struct
 {
     double perf;
     double ipc;
+    bool hardware_cycles;
 } ComputeResult;
 
 // static double get_time(struct timespec *start,
@@ -153,6 +159,10 @@ static void reg_new_isa(std::string isa,
     new_one.inst_pl = inst_pl;
     new_one.params = params;
     new_one.bench = bench;
+#ifdef __linux__
+    new_one.cycle_count = NULL;
+    new_one.cycle_samples = NULL;
+#endif
 
     bm_list.push_back(new_one);
 }
@@ -160,6 +170,23 @@ static void reg_new_isa(std::string isa,
 static void thread_func(void *params)
 {
     cpubm_t *bm = (cpubm_t*)params;
+#ifdef __linux__
+    if (bm->cycle_count != NULL && bm->cycle_samples != NULL) {
+        PerfEventCycle cycle_counter(0, false);
+        if (cycle_counter.available()) {
+            cycle_counter.start();
+            bm->bench(bm->loop_time, bm->params);
+            cycle_counter.stop();
+            const long long cycles = cycle_counter.get_cycle();
+            if (cycles > 0) {
+                bm->cycle_count->fetch_add(
+                    static_cast<uint64_t>(cycles), std::memory_order_relaxed);
+                bm->cycle_samples->fetch_add(1, std::memory_order_relaxed);
+            }
+            return;
+        }
+    }
+#endif
     if (bm->params)
     {
         bm->bench(bm->loop_time, bm->params);
@@ -182,13 +209,27 @@ static ComputeResult cpubm_run_compute(tpool_t *tm, cpubm_t &item)
     warmup.loop_time = max<int64_t>(1, item.loop_time / LOOP_DECREASE);
     tpool_run_all(tm, thread_func, (void*)&warmup, &start, &end);
 
-    ComputeResult result = {0.0, 0.0};
-    if (!tpool_run_all(tm, thread_func, (void*)&item, &start, &end)) return result;
+    ComputeResult result = {0.0, 0.0, false};
+    cpubm_t measured_item = item;
+#ifdef __linux__
+    std::atomic<uint64_t> cycle_count(0);
+    std::atomic<int> cycle_samples(0);
+    measured_item.cycle_count = &cycle_count;
+    measured_item.cycle_samples = &cycle_samples;
+#endif
+    if (!tpool_run_all(tm, thread_func, (void*)&measured_item, &start, &end))
+        return result;
     double time_used = get_time(&start, &end);
     if (time_used <= 0.0) return result;
     result.perf = item.loop_time * item.comp_pl * tm->thread_num / time_used;
-    if (!freq.empty() && freq[0] > 0.0)
-        result.ipc = item.loop_time * item.inst_pl / time_used / freq[0] / 1e9;
+#ifdef __linux__
+    const uint64_t cycles = cycle_count.load(std::memory_order_relaxed);
+    if (cycles > 0 && cycle_samples.load(std::memory_order_relaxed) == tm->thread_num) {
+        result.ipc = static_cast<double>(item.loop_time) * item.inst_pl *
+            tm->thread_num / cycles;
+        result.hardware_cycles = true;
+    }
+#endif
     return result;
 }
 
@@ -216,7 +257,7 @@ static void cpubm_x64_one(tpool_t *tm,
     cont[0] = item.isa;
     cont[1] = item.type;
     cont[2] = format_perf_value(result.perf, item.dim);
-    cont[3] = to_string(result.ipc);
+    cont[3] = result.hardware_cycles ? to_string(result.ipc) : "-";
     cont[4] = latency > 0.0 ? format_latency_cycles(latency) : "-";
     table.addOneItem(cont);
 }
@@ -373,8 +414,8 @@ static void init_table(vector<Table*> &tables)
     ti[0] = "Instruction Set";
     ti[1] = "Core Computation";
     ti[2] = "Peak Performance";
-    ti[3] = "Instr/TSC Cycle";
-    ti[4] = "Latency(TSC cyc)";
+    ti[3] = "IPC";
+    ti[4] = "Latency (cycles)";
     tables[0]->setColumnNum(ti.size());
     tables[0]->addOneItem(ti);
 
@@ -464,8 +505,8 @@ static bool cpubm_do_instruction_sweep(vector<int> &set_of_threads,
     uint32_t idle_time, const string &instruction, const SaveOptions &save_options)
 {
     SweepConfig config;
-    config.ipc_column = "Instr/TSC Cycle";
-    config.latency_column = "Latency(TSC cyc)";
+    config.ipc_column = "IPC";
+    config.latency_column = "Latency (cycles)";
     return run_instruction_sweep(set_of_threads,
         idle_time,
         instruction,
@@ -497,6 +538,11 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
         get_theory_cache(&cache_size, set_of_threads[0]);
 
     tpool_t *tm = tpool_create(set_of_threads);
+    if (tm == NULL) {
+        cerr << "Error: failed to create benchmark thread pool." << endl;
+        for (size_t i = 0; i < tables.size(); ++i) delete tables[i];
+        return false;
+    }
     BenchmarkCatalog catalog = build_benchmark_catalog();
     for (size_t i = 0; i < bm_list.size(); ++i) {
         if (catalog[i].is_latency) continue;
@@ -693,8 +739,12 @@ static void cpufb_register_isa()
     reg_new_isa("AVX", "ADD(f64,f64)", "FLOPS", 0x4000000LL, 64LL, NULL, avx_add_f64);
     reg_new_isa("AVX", "MUL(f64,f64)_latency", "FLOPS", 0x4000000LL, 64LL, NULL, avx_mul_f64_latency);
     reg_new_isa("AVX", "MUL(f64,f64)", "FLOPS", 0x4000000LL, 64LL, NULL, avx_mul_f64);
+    reg_new_isa("AVX", "ADD(MUL(f32,f32),f32)_latency", "FLOPS",
+        0x4000000LL, 128LL, NULL, avx_add_mul_f32f32_f32_latency);
     reg_new_isa("AVX", "ADD(MUL(f32,f32),f32)", "FLOPS",
         0x20000000LL, 128LL, NULL, avx_add_mul_f32f32_f32);
+    reg_new_isa("AVX", "ADD(MUL(f64,f64),f64)_latency", "FLOPS",
+        0x4000000LL, 64LL, NULL, avx_add_mul_f64f64_f64_latency);
     reg_new_isa("AVX", "ADD(MUL(f64,f64),f64)", "FLOPS",
         0x20000000LL, 64LL, NULL, avx_add_mul_f64f64_f64);
     }

@@ -172,6 +172,11 @@ case "${test_case}" in
         ;;
 
     invalid_filters)
+        for invalid_pool in '[1,]' '[2-1]' '[1x]' '1' \
+            '[999999999999999999999999]' '[0-2147483647]'; do
+            expect_failure "--thread_pool must use syntax" \
+                "${binary}" "--thread_pool=${invalid_pool}" --include-test=freq
+        done
         expect_failure "unknown test category 'not_a_test'" \
             "${binary}" "${thread_arg}" --include-test=not_a_test
         expect_failure "unavailable ISA category 'not_an_isa'" \
@@ -235,6 +240,17 @@ case "${test_case}" in
                 if (rows == 0) exit 3
             }
         ' "${txt_output}" || fail "ISA filter output contained missing or unexpected rows"
+        ;;
+
+    mode_all_override)
+        txt_output="${test_tmp}/mode-all.txt"
+        run_success "${binary}" "${thread_arg}" \
+            --mode=all --include-test=compute \
+            --exclude-test=compute,load,cache,multi_issue \
+            --save="${txt_output}" >/dev/null
+        if ! grep -Fxq "[freq]" "${txt_output}"; then
+            fail "explicit --mode=all did not restore the frequency category"
+        fi
         ;;
 
     csv_output)

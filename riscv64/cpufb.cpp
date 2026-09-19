@@ -253,6 +253,11 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);
+        if (tm == NULL) {
+            cerr << "Error: failed to create benchmark thread pool." << endl;
+            for (Table *table : tables) delete table;
+            return;
+        }
         BenchmarkCatalog catalog = build_benchmark_catalog();
 
         get_cpu_freq(set_of_threads, *tables[3]);
@@ -351,7 +356,11 @@ int main(int argc, char *argv[])
     {
         if (strncmp(argv[i], "--thread_pool=", 14) == 0)
         {
-            parse_thread_pool(argv[i] + 14, set_of_threads);
+            if (!parse_thread_pool(argv[i] + 14, set_of_threads)) {
+                fprintf(stderr, "Error: --thread_pool must use syntax "
+                    "[N,N-M,...] with non-negative CPU IDs.\n");
+                return 1;
+            }
             params_enough = true;
         }
         else if (strncmp(argv[i], "--idle_time=", 12) == 0)

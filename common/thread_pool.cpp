@@ -9,6 +9,7 @@
 #include "thread_pool.hpp"
 #include <algorithm>
 #include <iostream>
+#include <limits>
 #ifdef __linux__
 #include<sys/syscall.h>
 #endif
@@ -321,70 +322,59 @@ void tpool_destroy(tpool_t *tm)
     free(tm);
 }
 
-void parse_thread_pool(char *sets,
+bool parse_thread_pool(const char *sets,
     vector<int> &set_of_threads)
 {
-    if (sets[0] != '[')
-    {
-        return;
-    }
-    int pos = 1;
-    int left = 0, right = 0;
-    int state = 0;
-    while (sets[pos] != ']' && sets[pos] != '\0')
-    {
-        if (state == 0)
-        {
-            if (sets[pos] >= '0' && sets[pos] <= '9')
-            {
-                left *= 10;
-                left += (int)(sets[pos] - '0');
-            }
-            else if (sets[pos] == ',')
-            {
-                set_of_threads.push_back(left);
-                left = 0;
-            }
-            else if (sets[pos] == '-')
-            {
-                right = 0;
-                state = 1;
-            }
+    static const size_t kMaxThreadPoolEntries = 65536;
+    if (sets == NULL || sets[0] != '[') return false;
+
+    vector<int> parsed;
+    size_t pos = 1;
+    if (sets[pos] == ']') return false;
+
+    while (sets[pos] != '\0') {
+        if (!isdigit(static_cast<unsigned char>(sets[pos]))) return false;
+
+        uint64_t left = 0;
+        do {
+            const uint64_t digit = static_cast<uint64_t>(sets[pos] - '0');
+            if (left > (static_cast<uint64_t>(numeric_limits<int>::max()) -
+                    digit) / 10)
+                return false;
+            left = left * 10 + digit;
+            ++pos;
+        } while (isdigit(static_cast<unsigned char>(sets[pos])));
+
+        uint64_t right = left;
+        if (sets[pos] == '-') {
+            ++pos;
+            if (!isdigit(static_cast<unsigned char>(sets[pos]))) return false;
+            right = 0;
+            do {
+                const uint64_t digit = static_cast<uint64_t>(sets[pos] - '0');
+                if (right >
+                    (static_cast<uint64_t>(numeric_limits<int>::max()) -
+                        digit) / 10)
+                    return false;
+                right = right * 10 + digit;
+                ++pos;
+            } while (isdigit(static_cast<unsigned char>(sets[pos])));
+            if (right < left) return false;
         }
-        else if (state == 1)
-        {
-            if (sets[pos] >= '0' && sets[pos] <= '9')
-            {
-                right *= 10;
-                right += (int)(sets[pos] - '0');
-            }
-            else if (sets[pos] == ',')
-            {
-                int i;
-                for (i = left; i <= right; i++)
-                {
-                    set_of_threads.push_back(i);
-                }
-                left = 0;
-                state = 0;
-            }
+
+        const uint64_t range_size = right - left + 1;
+        if (range_size > kMaxThreadPoolEntries - parsed.size()) return false;
+        for (uint64_t cpu = left; cpu <= right; ++cpu)
+            parsed.push_back(static_cast<int>(cpu));
+
+        if (sets[pos] == ']') {
+            if (sets[pos + 1] != '\0') return false;
+            set_of_threads.swap(parsed);
+            return true;
         }
-        pos++;
+        if (sets[pos] != ',') return false;
+        ++pos;
     }
-    if (sets[pos] != ']')
-    {
-        return;
-    }
-    if (state == 0)
-    {
-        set_of_threads.push_back(left);
-    }
-    else if (state == 1)
-    {
-        int i;
-        for (i = left; i <= right; i++)
-        {
-            set_of_threads.push_back(i);
-        }
-    }
+
+    return false;
 }

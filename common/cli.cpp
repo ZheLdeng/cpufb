@@ -203,6 +203,7 @@ CliOptions::CliOptions() :
     memory_repetitions_set(false),
     thread_pool_set(false),
     mode(BENCH_MODE_ALL),
+    mode_explicit(false),
     include_test_explicit(false),
     loop_scale(1),
     bench_limit(0)
@@ -213,7 +214,11 @@ bool parse_cli_options(int argc, char *argv[], CliOptions &options)
 {
     for (int i = 1; i < argc; ++i) {
         if (strncmp(argv[i], "--thread_pool=", 14) == 0) {
-            parse_thread_pool(argv[i] + 14, options.thread_pool);
+            if (!parse_thread_pool(argv[i] + 14, options.thread_pool)) {
+                cerr << "Error: --thread_pool must use syntax "
+                     << "[N,N-M,...] with non-negative CPU IDs." << endl;
+                return false;
+            }
             options.thread_pool_set = true;
         } else if (strncmp(argv[i], "--idle_time=", 12) == 0) {
             options.idle_time = static_cast<uint32_t>(atoi(argv[i] + 12));
@@ -224,6 +229,7 @@ bool parse_cli_options(int argc, char *argv[], CliOptions &options)
         } else if (strncmp(argv[i], "--bench_limit=", 14) == 0) {
             options.bench_limit = static_cast<uint32_t>(atoi(argv[i] + 14));
         } else if (strncmp(argv[i], "--mode=", 7) == 0) {
+            options.mode_explicit = true;
             const string requested_mode = argv[i] + 7;
             if (requested_mode == "cache") {
                 options.mode = BENCH_MODE_CACHE;
@@ -298,9 +304,12 @@ bool parse_cli_options(int argc, char *argv[], CliOptions &options)
         }
     }
 
-    // --mode is shorthand for the test-type filter. An explicit
-    // --include-test is more specific and therefore wins.
-    if (!options.include_test_explicit && options.mode != BENCH_MODE_ALL) {
+    // An explicit all mode restores every category even if a reused command
+    // line still contains a narrower include-test filter.
+    if (options.mode_explicit && options.mode == BENCH_MODE_ALL) {
+        options.filter.include_test.clear();
+        options.include_test_explicit = false;
+    } else if (!options.include_test_explicit && options.mode != BENCH_MODE_ALL) {
         if (options.mode == BENCH_MODE_CACHE) {
             options.filter.include_test.insert("cache");
         } else {

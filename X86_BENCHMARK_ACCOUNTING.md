@@ -9,27 +9,34 @@ iteration.
 
 ```text
 performance = loop_time * comp_pl * threads / elapsed_seconds
-instr_per_tsc_cycle = loop_time * inst_pl / elapsed_seconds / tsc_hz
-latency_tsc_cycles = 1 / dependency_chain_instr_per_tsc_cycle
+IPC = loop_time * inst_pl * threads / sum(per-thread hardware core cycles)
+latency_cycles = 1 / dependency_chain_IPC
 ```
 
-The x86 cycle source is the invariant TSC, not `PERF_COUNT_HW_CPU_CYCLES`.
-Consequently, the reported instruction rate and latency are explicitly labeled
-as TSC-based. They must not be interpreted as core-clock IPC/cycles when turbo
-frequency differs from the TSC frequency.
+On Linux, each worker reads `PERF_COUNT_HW_CPU_CYCLES` around the assembly
+kernel. The instruction table therefore reports core-clock IPC and latency in
+core cycles, matching the ARM measurement method and remaining valid when the
+processor uses turbo frequencies. If any worker cannot access its hardware
+cycle counter, IPC and latency are reported as unavailable rather than being
+estimated from the invariant TSC. Running with sufficient perf-event
+permissions is required to populate both columns.
 
 Throughput kernels use independent accumulator/register chains. Latency kernels
 use one dependency chain while retaining the listed instruction count per loop.
 Loop-control instructions are not included in `inst_pl` or `comp_pl`.
+For mixed AVX ADD/MUL rows, the latency kernel alternates eight dependent MUL
+and eight dependent ADD instructions, so the reported value is the average
+dependency latency per instruction for that mixed sequence.
 
 ## Frequency-table baseline
 
-The three instruction-rate columns in the x86 frequency table use dedicated,
+The three instruction-rate columns in the separate x86 frequency table use dedicated,
 always-built x86-64 baseline kernels. `FSU32` runs 16 independent packed FP32
 `addps` instructions per loop, `FSU64` runs 16 independent packed FP64 `addpd`
 instructions, and `LSU ldr` runs 16 independent 128-bit `movups` loads. Their
-rates are instructions per invariant-TSC cycle, not mathematical operations or
-core-clock IPC.
+rates remain instructions per invariant-TSC cycle, not mathematical operations
+or core-clock IPC. They are frequency diagnostics and are not used to compute
+the instruction table's IPC or latency.
 
 These kernels intentionally use legacy SSE/SSE2 only. Their meaning and
 availability therefore do not change when optional FMA, AVX, AVX-512, or AMX

@@ -26,7 +26,7 @@ private:
     struct perf_event_attr pe;
     long long count;
     public:
-    PerfEventCycle(int mode = 0) : fd(-1), count(0) {
+    PerfEventCycle(int mode = 0, bool report_errors = true) : fd(-1), count(0) {
         // 初始化性能事件属性结构
         memset(&pe, 0, sizeof(struct perf_event_attr));
         pe.type = PERF_TYPE_HARDWARE;
@@ -44,12 +44,20 @@ private:
 
         // 打开性能计数器文件描述符
         fd = syscall(__NR_perf_event_open, &pe, 0, -1, -1, 0);
-        if (fd == -1) {
+        if (fd == -1 && report_errors) {
             perror("perf_event_open");
             std::cerr << "Warning: hardware cycle counter unavailable; "
                          "falling back to the reported CPU frequency"
                       << std::endl;
         }
+    }
+
+    ~PerfEventCycle() {
+        if (fd != -1) close(fd);
+    }
+
+    bool available() const {
+        return fd != -1;
     }
 
     void start() {

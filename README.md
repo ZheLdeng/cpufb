@@ -212,7 +212,9 @@ default is 0 for all.
 
   --mode: `cache` measures the dependent-load latency curve and infers L1/L2
   capacity and latency; `compute` runs compute/IPC benchmarks; `all` runs both
-  groups and the existing cache-bandwidth kernels. The default is `all`.
+  groups and the existing cache-bandwidth kernels. The default is `all`. An
+  explicit `--mode=all` clears any `--include-test` restriction so all five
+  output tables are restored; `--exclude-test` is still applied.
 
   --include-test / --exclude-test: comma-separated arm64 or x86-64 benchmark types. Supported types are compute, load, cache, freq, multi_issue.
 

@@ -93,6 +93,8 @@ static bool request_tile_data_permission()
 }
 #endif
 
+typedef void (*CacheKernel)(float*, int, int64_t);
+
 typedef struct
 {
     std::string isa;
@@ -103,6 +105,11 @@ typedef struct
     int64_t inst_pl; // Benchmarked instructions per outer asm loop.
     void *params;
     void (*bench)(int64_t, void*);
+    BenchmarkKind kind;
+    // Load and multi-issue rows: the kernel itself, and for load rows the
+    // cache level (1 or 2) whose capacity sizes the workset.
+    CacheKernel cache_kernel;
+    int cache_level;
 #ifdef __linux__
     std::atomic<uint64_t> *cycle_count;
     std::atomic<int> *cycle_samples;
@@ -163,12 +170,38 @@ static void reg_new_isa(std::string isa,
     new_one.inst_pl = inst_pl;
     new_one.params = params;
     new_one.bench = bench;
+    new_one.kind = benchmark_kind_from_metric(dim);
+    new_one.cache_kernel = NULL;
+    new_one.cache_level = 0;
 #ifdef __linux__
     new_one.cycle_count = NULL;
     new_one.cycle_samples = NULL;
 #endif
 
     bm_list.push_back(new_one);
+}
+
+// An L1/L2-resident load row.  label is "L1 Cache"/"L2 Cache" for the first
+// row of a level and "--------" for the rest; the level is explicit.
+static void reg_load_kernel(const std::string &label,
+    const std::string &type,
+    int cache_level,
+    CacheKernel kernel)
+{
+    reg_new_isa(label, type, "Byte/Cycle", 0x186A00LL, 0, NULL, NULL);
+    bm_list.back().cache_kernel = kernel;
+    bm_list.back().cache_level = cache_level;
+}
+
+// instructions_per_loop counts the inner loop including its loop control.
+static void reg_multi_issue(const std::string &name,
+    const std::string &type,
+    int64_t instructions_per_loop,
+    CacheKernel kernel)
+{
+    reg_new_isa(name, type, "IPC", 0x40000LL, 0, NULL, NULL,
+        instructions_per_loop);
+    bm_list.back().cache_kernel = kernel;
 }
 
 static void warn_estimated_cycles_once()
@@ -322,10 +355,7 @@ static void cpubm_x64_load(cpubm_t &item, Table &table)
     cont.resize(table.getCol());
 
     double data_size = 0.0;
-    bool is_l1 = item.isa == "L1 Cache" ||
-        (item.isa == "--------" && item.comp_pl == 32LL);
-
-    if (is_l1){
+    if (item.cache_level == 1) {
         data_size = load_capacity_kb(cache_size.theory_L1, cache_size.test_L1);
         cont[3] = format_reported_value(cache_size.theory_L1, " KB");
         cont[4] = format_reported_value(cache_size.test_L1, " KB");
@@ -336,7 +366,7 @@ static void cpubm_x64_load(cpubm_t &item, Table &table)
     }
 
     const LoadBandwidth bandwidth =
-        get_bandwith(item.loop_time, data_size, item.type);
+        get_bandwith(item.loop_time, data_size, item.cache_kernel);
 
     stringstream per_cycle, per_second;
     if (bandwidth.bytes_per_cycle > 0.0)
@@ -424,9 +454,7 @@ static void cpubm_x64_multiple_issue(tpool_t *tm,
         cache_data[i] = i;
     }
     int inner_loop = 1024;
-    bm.bench = multiple_issue;
-    if (item.type.find("ymm") != string::npos) bm.bench = multiple_issue_avx;
-    else if (item.type.find("zmm") != string::npos) bm.bench = multiple_issue_avx512;
+    bm.bench = item.cache_kernel;
     bm.cache_data = cache_data;
     bm.inner_loop = inner_loop;
     bm.loop_time = item.loop_time;
@@ -447,7 +475,7 @@ static void cpubm_x64_multiple_issue(tpool_t *tm,
 #endif
     double perf = 0.0;
     const double instructions = (double)item.loop_time *
-        ((double)inner_loop * item.comp_pl + 4);
+        ((double)inner_loop * item.inst_pl + 4);
     if (tpool_run_all(tm, cache_thread_func, (void*)&bm, &start, &end)) {
         const double time_used = get_time(&start, &end);
 #ifdef __linux__
@@ -640,7 +668,8 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
         if (!should_run_benchmark(filter, bm_list[i].isa, bm_list[i].dim))
             continue;
         ++benches_run;
-        if (bm_list[i].dim.find("OPS") != string::npos) {
+        switch (bm_list[i].kind) {
+        case BENCHMARK_COMPUTE: {
             double latency = 0.0;
             if (catalog[i].pair_index >= 0) {
                 sleep(idle_time);
@@ -650,12 +679,16 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
             }
             sleep(idle_time);
             cpubm_x64_one(tm, bm_list[i], latency, *tables[0]);
-        } else if (bm_list[i].dim.find("Byte/") != string::npos) {
+            break;
+        }
+        case BENCHMARK_LOAD:
             sleep(idle_time);
             cpubm_x64_load(bm_list[i], *tables[1]);
-        } else if (bm_list[i].dim.find("IPC") != string::npos) {
+            break;
+        case BENCHMARK_MULTI_ISSUE:
             sleep(idle_time);
             cpubm_x64_multiple_issue(tm, bm_list[i], *tables[4]);
+            break;
         }
     }
 
@@ -864,51 +897,38 @@ static void cpufb_register_isa()
     }
 #endif
 
-    if (runtime_features.avx) {
-    reg_new_isa("L1 Cache", "vmovups.ymm(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, NULL, NULL);
-    }
-    reg_new_isa(runtime_features.avx ? "--------" : "L1 Cache",
-        "movss.scalar(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, NULL, NULL);
-    reg_new_isa("--------", "movups.xmm(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, NULL, NULL);
+    for (int level = 1; level <= 2; ++level) {
+        // Only the first row of a level carries its label.
+        string label = level == 1 ? "L1 Cache" : "L2 Cache";
+        if (runtime_features.avx) {
+            reg_load_kernel(label, "vmovups.ymm(f32)", level,
+                load_vmovups_kernel);
+            label = "--------";
+        }
+        reg_load_kernel(label, "movss.scalar(f32)", level,
+            load_movss_stream_kernel);
+        reg_load_kernel("--------", "movups.xmm(f32)", level,
+            load_movups_xmm_kernel);
 #ifdef _AVX512F_
-    if (runtime_features.avx512f) {
-    reg_new_isa("--------", "vmovups.zmm(f32)", "Byte/Cycle",
-        0x186A00LL, 32LL, NULL, NULL);
-    }
+        if (runtime_features.avx512f)
+            reg_load_kernel("--------", "vmovups.zmm(f32)", level,
+                load_vmovups_zmm_kernel);
 #endif
-    if (runtime_features.avx) {
-    reg_new_isa("L2 Cache", "vmovups.ymm(f32)", "Byte/Cycle",
-        0x186A00LL, 128LL, NULL, NULL);
     }
-    reg_new_isa(runtime_features.avx ? "--------" : "L2 Cache",
-        "movss.scalar(f32)", "Byte/Cycle",
-        0x186A00LL, 128LL, NULL, NULL);
-    reg_new_isa("--------", "movups.xmm(f32)", "Byte/Cycle",
-        0x186A00LL, 128LL, NULL, NULL);
-#ifdef _AVX512F_
-    if (runtime_features.avx512f) {
-    reg_new_isa("--------", "vmovups.zmm(f32)", "Byte/Cycle",
-        0x186A00LL, 128LL, NULL, NULL);
-    }
-#endif
-    if (runtime_features.sse) {
-    reg_new_isa("MULTI_ISSUE", "movups/mulps.xmm", "IPC",
-        0x40000LL, 34LL, NULL, NULL);
-    }
+
+    // 32 benchmarked instructions plus the two loop-control instructions.
+    if (runtime_features.sse)
+        reg_multi_issue("MULTI_ISSUE", "movups/mulps.xmm", 34,
+            multiple_issue);
 #ifdef _FMA_
-    if (runtime_features.fma) {
-    reg_new_isa("MULTI_ISSUE_AVX", "vmovups/vfmadd.ymm", "IPC",
-        0x40000LL, 34LL, NULL, NULL);
-    }
+    if (runtime_features.fma)
+        reg_multi_issue("MULTI_ISSUE_AVX", "vmovups/vfmadd.ymm", 34,
+            multiple_issue_avx);
 #endif
 #ifdef _AVX512F_
-    if (runtime_features.avx512f && runtime_features.fma) {
-    reg_new_isa("MULTI_ISSUE_AVX512", "vmovups/vfmadd.zmm", "IPC",
-        0x40000LL, 34LL, NULL, NULL);
-    }
+    if (runtime_features.avx512f && runtime_features.fma)
+        reg_multi_issue("MULTI_ISSUE_AVX512", "vmovups/vfmadd.zmm", 34,
+            multiple_issue_avx512);
 #endif
 }
 

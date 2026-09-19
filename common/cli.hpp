@@ -91,6 +91,15 @@ bool validate_memory_bandwidth_options(const CliOptions &options,
 
 std::string trim_arg_value(const std::string &value);
 std::string normalize_filter_value(std::string value);
+// What a registered row measures.  The metric string is only a display unit;
+// it is mapped to a kind once, at registration, and everything else switches
+// on the kind.
+enum BenchmarkKind {
+    BENCHMARK_COMPUTE,
+    BENCHMARK_LOAD,
+    BENCHMARK_MULTI_ISSUE
+};
+BenchmarkKind benchmark_kind_from_metric(const std::string &metric);
 std::string get_benchmark_test_type(const std::string &metric);
 bool should_run_test(const BenchmarkFilter &filter,
     const std::string &test_type);

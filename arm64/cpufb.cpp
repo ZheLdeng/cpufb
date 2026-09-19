@@ -44,20 +44,35 @@ using namespace std;
 using namespace cpufb_cli;
 extern vector<double> freq;
 static struct CacheData cache_size;
-static int64_t load_pl = 0;
-static string load_capacity_source;
 static constexpr int kFallbackL1CacheKiB = 64;
 static constexpr int kFallbackL2CacheKiB = 1024;
+// How a row's registered operation count scales with the streaming vector
+// length.
+enum SmeScale {
+    SME_SCALE_NONE,
+    SME_SCALE_VECTOR_BYTES,
+    SME_SCALE_OUTER_PRODUCT
+};
+
 typedef struct
 {
     string isa;
     string type;
     string dim;
     int64_t loop_time;
-    int64_t comp_pl;
+    int64_t comp_pl; // Mathematical/element operations per outer asm loop.
+    int64_t inst_pl; // Benchmarked instructions per outer asm loop.
+    BenchmarkKind kind;
+    int cache_level; // 1 or 2 for BENCHMARK_LOAD rows, otherwise 0.
+    bool scales_with_sve_bytes;
+    SmeScale sme_scale;
+    int sme_element_bytes; // Accumulator element size for outer products.
     void*  bench;
     const char* required_feature;
 } cpubm_t;
+
+// Every ARM64 compute kernel unrolls 24 benchmarked instructions per loop.
+static constexpr int64_t kComputeInstructionsPerLoop = 24;
 
 typedef struct
 {
@@ -65,6 +80,7 @@ typedef struct
     int inner_loop;
     int loop_time;
     void (*bench)(float*, int, int64_t);
+    bool count_cycles;
 } cache_bm_t;
 
 static vector<cpubm_t> bm_list;
@@ -91,12 +107,43 @@ typedef struct
     double ipc;
 } ComputeResult;
 
+// Derives the vector-length scaling of a row from its instruction name, once,
+// at registration: "sve*" rows scale with the SVE vector bytes, "*opa.vv(T,..."
+// rows with the square of SVL / sizeof(T), and other "sme*" rows with SVL.
+static void classify_vector_scale(cpubm_t &item)
+{
+    const string &type = item.type;
+    item.scales_with_sve_bytes = type.find("sve") != string::npos;
+    item.sme_scale = SME_SCALE_NONE;
+    item.sme_element_bytes = 0;
+
+    const size_t open = type.find('(');
+    const size_t comma = type.find(',');
+    if (type.find("opa.vv") != string::npos && open != string::npos &&
+        comma != string::npos && comma > open) {
+        const string accumulator = type.substr(open, comma - open);
+        if (accumulator.find("32") != string::npos) item.sme_element_bytes = 4;
+        else if (accumulator.find("64") != string::npos) item.sme_element_bytes = 8;
+        else if (accumulator.find("16") != string::npos) item.sme_element_bytes = 2;
+    }
+    if (item.sme_element_bytes > 0)
+        item.sme_scale = SME_SCALE_OUTER_PRODUCT;
+    else if (type.find("sme") != string::npos)
+        item.sme_scale = SME_SCALE_VECTOR_BYTES;
+}
+
+// Load rows are registered as one "L1 Cache" / "L2 Cache" header row followed
+// by "--------" continuation rows; remember the level of the current group
+// so that each row carries it instead of depending on execution order.
+static int registration_cache_level = 0;
+
 static void reg_new_isa(string isa,
     string type,
     string dim,
     int64_t loop_time,
     int64_t comp_pl,
-    void* bench)
+    void* bench,
+    int64_t inst_pl = kComputeInstructionsPerLoop)
 {
     cpubm_t new_one;
     new_one.isa = isa;
@@ -104,6 +151,15 @@ static void reg_new_isa(string isa,
     new_one.dim = dim;
     new_one.loop_time = loop_time;
     new_one.comp_pl = comp_pl;
+    new_one.inst_pl = inst_pl;
+    new_one.kind = benchmark_kind_from_metric(dim);
+    new_one.cache_level = 0;
+    if (new_one.kind == BENCHMARK_LOAD) {
+        if (isa == "L1 Cache") registration_cache_level = 1;
+        else if (isa == "L2 Cache") registration_cache_level = 2;
+        new_one.cache_level = registration_cache_level;
+    }
+    classify_vector_scale(new_one);
     new_one.bench = (void *)bench;
     new_one.required_feature = registration_required_feature;
 
@@ -145,6 +201,21 @@ static void thread_func(void *params)
 static void cache_thread_func(void *params)
 {
     cache_bm_t *bm = (cache_bm_t*)params;
+#ifdef __linux__
+    PerfEventCycle cycle_counter(0, false);
+    if (bm->count_cycles && cycle_counter.available()) {
+        cycle_counter.start();
+        bm->bench(bm->cache_data, bm->inner_loop, bm->loop_time);
+        cycle_counter.stop();
+        const long long cycles = cycle_counter.get_cycle();
+        if (cycles > 0) {
+            compute_cycle_sum.fetch_add(static_cast<uint64_t>(cycles),
+                std::memory_order_relaxed);
+            compute_cycle_samples.fetch_add(1, std::memory_order_relaxed);
+        }
+        return;
+    }
+#endif
     bm->bench(bm->cache_data, bm->inner_loop, bm->loop_time);
 }
 
@@ -252,34 +323,26 @@ static double cpubm_measure_compute_time(tpool_t *tm, cpubm_t &item,
     return best_time;
 }
 
+// Registered operation counts are per byte of vector length for scalable
+// ISAs.  The scale is resolved lazily because reading the vector length
+// executes SVE/SME instructions, which is only legal once the row has passed
+// its runtime feature check.
 static int64_t cpubm_scaled_comp_pl(const cpubm_t &item)
 {
     int64_t comp_pl = item.comp_pl;
 #ifdef _SVE_
-    if (item.type.find("sve") != string::npos) {
+    if (item.scales_with_sve_bytes)
         comp_pl = comp_pl * load_sve_vector_bytes();
-    }
 #endif
 #ifdef _SME_
-    const string &type = item.type;
-    bool has_opa = type.find("opa.vv") != string::npos;
-    string first_param = has_opa ? type.substr(type.find('('), type.find(',')) : "";
-
-    if (has_opa && first_param.find("32") != string::npos) {
-        comp_pl = comp_pl * rdsvl() * rdsvl() / 4 / 4;
-        //cout << type << " op = " << item.comp_pl << endl;
-    } else if (has_opa && first_param.find("64") != string::npos) {
-        comp_pl = comp_pl * rdsvl() * rdsvl() / 8 / 8;
-        //cout << type << " op = " << item.comp_pl << endl;
-    } else if (has_opa && first_param.find("16") != string::npos) {
-        // 16-bit accumulator (SME_F16F16 / SME_B16B16): rows=cols=SVL/2.
-        comp_pl = comp_pl * rdsvl() * rdsvl() / 2 / 2;
-    } else if (type.find("sme") != string::npos) {
+    if (item.sme_scale == SME_SCALE_OUTER_PRODUCT) {
+        // rows = cols = SVL / element size of the accumulator.
+        const int64_t dimension = rdsvl() / item.sme_element_bytes;
+        comp_pl = comp_pl * dimension * dimension;
+    } else if (item.sme_scale == SME_SCALE_VECTOR_BYTES) {
         comp_pl = comp_pl * rdsvl();
-        //cout << type << " is sme " << item.comp_pl <<endl;
     }
 #endif
-
     return comp_pl;
 }
 
@@ -295,11 +358,13 @@ static ComputeResult cpubm_run_compute(tpool_t *tm, cpubm_t &item)
     // Report estimated IPC per core rather than summing all cores into an
     // aggregate value that grows with the thread count.
     bool frequency_available = !freq.empty() && freq[0] > 0;
+    const double instructions =
+        static_cast<double>(item.loop_time) * item.inst_pl;
     if (cycles_per_core > 0.0)
-        result.ipc = item.loop_time * 24 / cycles_per_core;
+        result.ipc = instructions / cycles_per_core;
     else
         result.ipc = frequency_available
-            ? item.loop_time * 24 / time_used / freq[0] / 1e9 : 0;
+            ? instructions / time_used / freq[0] / 1e9 : 0;
     return result;
 }
 
@@ -343,24 +408,17 @@ static void cpubm_arm_load(tpool_t *tm, cpubm_t &item, Table &table)
     cont.resize(table.getCol());
     //cout << "test load begin" << endl;
 
-    int empirical_capacity = 0;
-    if (item.isa == "L1 Cache"){
-        load_pl = cache_size.theory_L1 > 0 ?
-            cache_size.theory_L1 : cache_size.test_L1;
-        empirical_capacity = cache_size.test_L1;
-        load_capacity_source = cache_size.theory_L1 > 0 ?
-            (cache_size.theory_L1_source.empty() ? "OS topology" :
-                cache_size.theory_L1_source) :
-            (empirical_capacity > 0 ? "cache probe" : "fallback");
-    } else if (item.isa == "L2 Cache"){
-        load_pl = cache_size.theory_L2 > 0 ?
-            cache_size.theory_L2 : cache_size.test_L2;
-        empirical_capacity = cache_size.test_L2;
-        load_capacity_source = cache_size.theory_L2 > 0 ?
-            (cache_size.theory_L2_source.empty() ? "OS topology" :
-                cache_size.theory_L2_source) :
-            (empirical_capacity > 0 ? "cache probe" : "fallback");
-    }
+    // The level travels with the row; it used to be inferred from the header
+    // row's label and carried to the "--------" rows through a global.
+    const bool is_l1 = item.cache_level == 1;
+    const int reported = is_l1 ? cache_size.theory_L1 : cache_size.theory_L2;
+    const int measured = is_l1 ? cache_size.test_L1 : cache_size.test_L2;
+    const string &reported_source = is_l1 ? cache_size.theory_L1_source :
+        cache_size.theory_L2_source;
+    const int64_t load_pl = reported > 0 ? reported : measured;
+    const string load_capacity_source = reported > 0 ?
+        (reported_source.empty() ? "OS topology" : reported_source) :
+        (measured > 0 ? "cache probe" : "fallback");
 
     const int64_t workset_kib = min<int64_t>(load_pl / 2, 32 * 1024);
     cont[3] = to_string(load_pl) + " KiB";
@@ -544,44 +602,54 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
     cpubm_t &item,
     Table &table)
 {
-    //cout << "test multi issue start" << endl;
     struct timespec start, end;
-    double time_used, perf;
     cache_bm_t bm;
-    int num_threads = tm->thread_num;
-    int size = 2048;
-    float* cache_data = (float*)malloc(size);
+    const size_t size = 2048;
+    // Line-aligned so that wide loads never straddle two lines.
+    void *allocation = nullptr;
+    if (posix_memalign(&allocation, 64, size) != 0) return;
+    float *cache_data = static_cast<float*>(allocation);
     //Preventing Compiler Optimization
-    for (int i = 0;i < size / sizeof(float); i++){
+    for (size_t i = 0; i < size / sizeof(float); i++){
         cache_data[i] = i;
     }
-    int inner_loop = 1024;
-    // if (item.type.find("sme")) {
+    const int inner_loop = 1024;
     bm.bench = reinterpret_cast<void (*)(float *, int, int64_t)>(item.bench);
-    // } else {
-    //     bm.bench = multiple_issue;
-    // }   
     bm.cache_data = cache_data;
     bm.inner_loop = inner_loop;
     bm.loop_time = item.loop_time;
+    bm.count_cycles = false;
 
-	// warm up
-    tpool_add_work(tm, cache_thread_func, (void*)&bm);
-    tpool_wait(tm);
+    // Every pinned worker runs the kernel once and the result is the
+    // per-core rate.  tpool_add_work() would hand one job to an arbitrary
+    // worker while the rate was normalized by core 0's clock.
+    tpool_run_all(tm, cache_thread_func, (void*)&bm, &start, &end);
 
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    tpool_add_work(tm, cache_thread_func, (void*)&bm);
-    tpool_wait(tm);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    time_used = get_time(&start, &end);
-    bool frequency_available = !freq.empty() && freq[0] > 0;
-    perf = frequency_available
-        ? (double)item.loop_time * (inner_loop * item.comp_pl + 4) /
-            (time_used * freq[0] * 1e9)
-        : 0;
+    double perf = 0.0;
+    // item.comp_pl is the instruction count of the inner loop including its
+    // loop control; the outer loop adds four more.
+    const double instructions = (double)item.loop_time *
+        ((double)inner_loop * item.comp_pl + 4);
+    bm.count_cycles = true;
+#ifdef __linux__
+    compute_cycle_sum.store(0, std::memory_order_relaxed);
+    compute_cycle_samples.store(0, std::memory_order_relaxed);
+#endif
+    if (tpool_run_all(tm, cache_thread_func, (void*)&bm, &start, &end)) {
+        const double time_used = get_time(&start, &end);
+#ifdef __linux__
+        const uint64_t cycles =
+            compute_cycle_sum.load(std::memory_order_relaxed);
+        if (cycles > 0 && compute_cycle_samples.load(
+                std::memory_order_relaxed) == static_cast<int>(tm->thread_num))
+            perf = instructions * tm->thread_num / cycles;
+#endif
+        if (perf <= 0.0 && time_used > 0.0 && !freq.empty() && freq[0] > 0)
+            perf = instructions / (time_used * freq[0] * 1e9);
+    }
+
     stringstream ss;
-
-    if (frequency_available)
+    if (perf > 0.0)
         ss << setprecision(5) << perf << " " << item.dim;
     else
         ss << "-";
@@ -593,7 +661,6 @@ static void cpubm_arm_multiple_issue(tpool_t *tm,
     cont[2] = ss.str();
     table.addOneItem(cont);
     free(cache_data);
-    //cout << "test multi issue end" << endl;
 }
 // compute: instruction throughput/IPC; load: cache-resident load bandwidth;
 // cache: capacity, associativity, and cache-line probes; freq: core frequency.
@@ -841,7 +908,8 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
             if (!should_run_benchmark(filter, bm_list[i].isa, bm_list[i].dim))
                 continue;
 
-            if (bm_list[i].dim.find("OPS") != string::npos) {
+            switch (bm_list[i].kind) {
+            case BENCHMARK_COMPUTE: {
                 double latency = 0;
                 if (catalog[i].pair_index >= 0) {
                     sleep(idle_time);
@@ -851,14 +919,15 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
                 }
                 sleep(idle_time);
                 cpubm_arm64_one(tm, bm_list[i], latency, *tables[0]);
-            } else if (bm_list[i].dim.find("Byte/Cycle") != string::npos) {
+                break;
+            }
+            case BENCHMARK_LOAD:
                 sleep(idle_time);
                 cpubm_arm_load(tm, bm_list[i], *tables[1]);
-            } else if (bm_list[i].dim.find("IPC") != string::npos) {
+                break;
+            case BENCHMARK_MULTI_ISSUE:
                 sleep(idle_time);
                 cpubm_arm_multiple_issue(tm, bm_list[i], *tables[4]);
-            } else {
-                cout << "Wrong dimension !" << endl;
                 break;
             }
             benches_run++;
@@ -867,6 +936,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
             save_options,
             tables);
         tpool_destroy(tm);
+        for (size_t t = 0; t < tables.size(); ++t) delete tables[t];
         return save_ok;
     }
     else
@@ -1331,8 +1401,9 @@ static void cpufb_register_isa()
     reg_new_isa("SME", "sme_sumopa.vv(s32,s8,u8)", "OPS",
         kComputeLoopTime, 192LL, (void*)sme_sumopa_vv_s32s8u8);
     require_feature("_SME_F32F32_");
+    // 24 FMOPA + 16 LDR + loop control, counted like the other issue rows.
     reg_new_isa("SME_MULTI_ISSUE", "ldr/fmopa", "IPC",
-        0x186A0LL, 40LL, (void*)sme_multiple_issue);
+        0x186A0LL, 42LL, (void*)sme_multiple_issue);
 #endif
 
 #ifdef _SME_F16F16_

@@ -159,10 +159,12 @@ bool bind_current_thread(int cpu_id)
     return true;
 }
 
-LoadBandwidth get_bandwith(uint64_t looptime, double data_size, string type)
+LoadBandwidth get_bandwith(uint64_t looptime, double data_size,
+    LoadKernel kernel)
 {
     struct timespec start, end;
     LoadBandwidth result;
+    if (kernel == NULL) return result;
 
     data_size /= 2.0;
     if (data_size > 2 * 1024) {
@@ -189,10 +191,6 @@ LoadBandwidth get_bandwith(uint64_t looptime, double data_size, string type)
     for (uint64_t i = 0; i < bytes_per_loop / sizeof(float); i++) {
         cache_data[i] = i;
     }
-    void (*kernel)(float*, int, int64_t) = load_vmovups_kernel;
-    if (type.find("movss") != string::npos) kernel = load_movss_stream_kernel;
-    else if (type.find("xmm") != string::npos) kernel = load_movups_xmm_kernel;
-    else if (type.find("zmm") != string::npos) kernel = load_vmovups_zmm_kernel;
 
     kernel(cache_data, inner_loop, effective_looptime);
     double best_time = 0.0;

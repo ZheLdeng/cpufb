@@ -446,10 +446,20 @@ string normalize_filter_value(string value)
     return value;
 }
 
+BenchmarkKind benchmark_kind_from_metric(const string &metric)
+{
+    if (metric.find("Byte/") != string::npos) return BENCHMARK_LOAD;
+    if (metric.find("IPC") != string::npos) return BENCHMARK_MULTI_ISSUE;
+    return BENCHMARK_COMPUTE;
+}
+
 string get_benchmark_test_type(const string &metric)
 {
-    if (metric.find("Byte/") != string::npos) return "load";
-    if (metric.find("IPC") != string::npos) return "multi_issue";
+    switch (benchmark_kind_from_metric(metric)) {
+    case BENCHMARK_LOAD: return "load";
+    case BENCHMARK_MULTI_ISSUE: return "multi_issue";
+    case BENCHMARK_COMPUTE: break;
+    }
     return "compute";
 }
 

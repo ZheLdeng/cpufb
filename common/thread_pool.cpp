@@ -8,6 +8,8 @@
 #include <unistd.h>
 #include "thread_pool.hpp"
 #include <algorithm>
+#include <cctype>
+#include <cstdint>
 #include <iostream>
 #include <limits>
 #ifdef __linux__
@@ -59,26 +61,39 @@ static tpool_work_t *tpool_work_get(tpool_t *tm)
     return work;
 }
 
+static thread_local size_t current_worker_index = SIZE_MAX;
+
+size_t tpool_worker_index(void)
+{
+    return current_worker_index;
+}
+
 static void *tpool_worker(void *arg)
 {
     struct tpool_args* targs = (struct tpool_args*)arg;
     tpool_t      *tm = targs->tm;
     size_t cpu_id=targs->cpuid;
+    current_worker_index = targs->index;
     free(targs);
+    bool affinity_failed = false;
 #ifdef __linux__
     pid_t pid = syscall(SYS_gettid);
     cpu_set_t mask;
     CPU_ZERO(&mask);
-    CPU_SET(cpu_id, &mask);
-    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
-        printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
-        printf("Warning: performance may be impacted \n");
+    // CPU_SET silently ignores IDs beyond the fixed-size mask.
+    if (cpu_id < CPU_SETSIZE) CPU_SET(cpu_id, &mask);
+    if (cpu_id >= CPU_SETSIZE ||
+        sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
+        fprintf(stderr, "Error: cannot bind a worker to cpu %zu "
+            "(offline, outside the cpuset, or nonexistent).\n", cpu_id);
+        affinity_failed = true;
     }
 #endif
     tpool_work_t *work;
     uint64_t observed_parallel_generation = 0;
 
     pthread_mutex_lock(&(tm->work_mutex));
+    if (affinity_failed) tm->affinity_failure_cnt++;
     tm->startup_ready_cnt++;
     pthread_cond_signal(&(tm->parallel_ready_cond));
 
@@ -175,6 +190,7 @@ tpool_t *tpool_create(vector<int> set_of_threads)
         tpool_args *args = (tpool_args *)malloc(sizeof(tpool_args));
         args->tm = tm;
         args->cpuid = set_of_threads[i];
+        args->index = i;
         if (pthread_create(&(tm->threads[i]), NULL, tpool_worker, (void *)args) != 0) {
             free(args);
             tm->stop = true;
@@ -195,8 +211,15 @@ tpool_t *tpool_create(vector<int> set_of_threads)
 
     while (tm->startup_ready_cnt != num)
         pthread_cond_wait(&(tm->parallel_ready_cond), &(tm->work_mutex));
+    const bool affinity_failed = tm->affinity_failure_cnt != 0;
     pthread_mutex_unlock(&(tm->work_mutex));
 
+    // Every result is attributed to the requested CPU IDs, so an unpinned
+    // worker invalidates the run instead of merely slowing it down.
+    if (affinity_failed) {
+        tpool_destroy(tm);
+        return NULL;
+    }
     return tm;
 }
 

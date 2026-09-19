@@ -253,6 +253,17 @@ struct ParallelStreamTask
     }
 };
 
+// Slices are owned by pool position, not arrival order: the worker that first
+// touches a slice (and so decides its NUMA node and its L3 domain) is the one
+// that streams it in every later phase.
+std::size_t parallel_worker_index(ParallelStreamTask &task)
+{
+    const std::size_t pool_index = tpool_worker_index();
+    if (pool_index < task.worker_cycles.size()) return pool_index;
+    return task.next_worker.fetch_add(1, std::memory_order_relaxed) %
+        task.worker_cycles.size();
+}
+
 float *parallel_worker_data(ParallelStreamTask &task,
     std::size_t worker_index)
 {
@@ -264,8 +275,7 @@ void parallel_stream_initialize(void *params)
 {
     ParallelStreamTask *task =
         reinterpret_cast<ParallelStreamTask *>(params);
-    const std::size_t worker_index = task->next_worker.fetch_add(1,
-        std::memory_order_relaxed);
+    const std::size_t worker_index = parallel_worker_index(*task);
     std::memset(parallel_worker_data(*task, worker_index), 1,
         task->stream_bytes);
 }
@@ -274,8 +284,7 @@ void parallel_stream_warmup(void *params)
 {
     ParallelStreamTask *task =
         reinterpret_cast<ParallelStreamTask *>(params);
-    const std::size_t worker_index = task->next_worker.fetch_add(1,
-        std::memory_order_relaxed);
+    const std::size_t worker_index = parallel_worker_index(*task);
     task->kernel.function(parallel_worker_data(*task, worker_index),
         task->inner_loop, 1);
 }
@@ -284,8 +293,7 @@ void parallel_stream_measure(void *params)
 {
     ParallelStreamTask *task =
         reinterpret_cast<ParallelStreamTask *>(params);
-    const std::size_t worker_index = task->next_worker.fetch_add(1,
-        std::memory_order_relaxed);
+    const std::size_t worker_index = parallel_worker_index(*task);
     CycleCounter counter;
     const bool counter_started = counter.start();
     clock_gettime(CLOCK_MONOTONIC_RAW, &task->worker_start[worker_index]);
@@ -379,8 +387,25 @@ BandwidthSample measure_once(const KernelSpec &kernel,
     return sample;
 }
 
+// Memory that the automatic workset may claim: half of what is currently
+// available, so first-touching the buffers cannot push the host into the OOM
+// killer.  Returns 0 when the platform does not expose the figure.
+std::uint64_t auto_workset_budget_bytes()
+{
+#if defined(_SC_AVPHYS_PAGES) && defined(_SC_PAGESIZE)
+    const long pages = sysconf(_SC_AVPHYS_PAGES);
+    const long page_bytes = sysconf(_SC_PAGESIZE);
+    if (pages > 0 && page_bytes > 0)
+        return static_cast<std::uint64_t>(pages) *
+            static_cast<std::uint64_t>(page_bytes) / 2;
+#endif
+    return 0;
+}
+
 bool select_memory_workset(const CliOptions &options,
     int cpu,
+    std::size_t stream_count,
+    std::uint64_t bytes_per_block,
     std::uint64_t &requested_bytes,
     string &workset_source)
 {
@@ -406,6 +431,31 @@ bool select_memory_workset(const CliOptions &options,
         workset_source = "auto: max(256 MiB, 4 x " +
             cpufb::format_cache_capacity(cache.bytes) + ") from " +
             cache.source;
+    }
+
+    // The recommendation is per stream, so a many-core pool multiplies it
+    // into tens of GiB.  Only the aggregate has to dwarf the last-level
+    // cache; shrink the per-stream share to fit the memory budget, but never
+    // below a floor that still spans many pages and prefetch streams.
+    const std::uint64_t kMinimumAutoStreamBytes = 32ULL << 20;
+    const std::uint64_t budget = auto_workset_budget_bytes();
+    if (budget > 0 && stream_count > 0 &&
+        requested_bytes > budget / stream_count) {
+        std::uint64_t capped = budget / stream_count;
+        if (capped < kMinimumAutoStreamBytes) {
+            std::cerr << "Warning: only "
+                      << cpufb::format_cache_capacity(budget)
+                      << " is available for " << stream_count
+                      << " memory streams; skipping the automatic memory "
+                      << "bandwidth run. Use --memory-size-mib to force a size."
+                      << std::endl;
+            return false;
+        }
+        if (bytes_per_block > 0) capped -= capped % bytes_per_block;
+        requested_bytes = capped;
+        workset_source += "; capped to " +
+            cpufb::format_cache_capacity(capped) +
+            "/stream by available memory";
     }
     return true;
 }
@@ -822,6 +872,15 @@ void append_cache_bandwidth_row(Table &table,
     table.addOneItem(row);
 }
 
+void append_cache_bandwidth_failure_row(Table &table, const string &item)
+{
+    vector<string> row(table.getCol());
+    row[0] = item;
+    for (std::size_t i = 1; i < row.size(); ++i) row[i] = "-";
+    row[row.size() - 1] = "not measured (see stderr)";
+    table.addOneItem(row);
+}
+
 } // namespace
 
 bool append_x64_cache_memory_bandwidth(const CliOptions &options,
@@ -846,15 +905,21 @@ bool append_x64_cache_memory_bandwidth(const CliOptions &options,
                 options.idle_time,
                 kL3StreamPasses,
                 report)) {
-            return false;
+            // A failed stream (typically an allocation failure) must not
+            // discard the probes already collected or the remaining
+            // compute/load categories; record it and carry on.
+            append_cache_bandwidth_failure_row(table,
+                "L3 sequential read bandwidth");
+        } else {
+            append_cache_bandwidth_row(table,
+                cpus.size() == 1 ? "L3 sequential read bandwidth" :
+                    "L3 aggregate sequential read bandwidth",
+                cpus, report);
         }
-        append_cache_bandwidth_row(table,
-            cpus.size() == 1 ? "L3 sequential read bandwidth" :
-                "L3 aggregate sequential read bandwidth",
-            cpus, report);
     }
 
-    if (!select_memory_workset(options, cpu, requested_bytes, workset_source) ||
+    if (!select_memory_workset(options, cpu, cpus.size(),
+            kernel.bytes_per_block, requested_bytes, workset_source) ||
         !measure_parallel_stream_bandwidth(cpus,
             kernel,
             requested_bytes,
@@ -863,7 +928,9 @@ bool append_x64_cache_memory_bandwidth(const CliOptions &options,
             options.idle_time,
             1,
             report)) {
-        return false;
+        append_cache_bandwidth_failure_row(table,
+            "Memory sequential read bandwidth");
+        return true;
     }
     append_cache_bandwidth_row(table,
         cpus.size() == 1 ? "Memory sequential read bandwidth" :
@@ -880,7 +947,8 @@ bool run_x64_memory_bandwidth(const CliOptions &options)
     std::uint64_t requested_bytes = 0;
     string workset_source;
     BandwidthReport report;
-    if (!select_memory_workset(options, cpu, requested_bytes, workset_source) ||
+    if (!select_memory_workset(options, cpu, cpus.size(),
+            kernel.bytes_per_block, requested_bytes, workset_source) ||
         !measure_parallel_stream_bandwidth(cpus,
             kernel,
             requested_bytes,

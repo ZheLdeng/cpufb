@@ -56,6 +56,10 @@ private:
         if (fd != -1) close(fd);
     }
 
+    // Owns a file descriptor: a copy would close it twice.
+    PerfEventCycle(const PerfEventCycle &) = delete;
+    PerfEventCycle &operator=(const PerfEventCycle &) = delete;
+
     bool available() const {
         return fd != -1;
     }

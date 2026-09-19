@@ -1470,22 +1470,16 @@ static void cpufb_register_isa()
         kComputeLoopTime, 96LL, (void*)sme2_bfdot4_mvv_f32bf16bf16);
     
     // FMLA/FDOT into ZA have no single-vector form: a four-register list
-    // assembles to the VGx4 encoding whether or not VGx4 is spelled out, so
-    // the rows without the "4" suffix execute four vectors per instruction
-    // and are counted as such.  They differ from the fmla4/fdot4 rows only in
-    // their overlapping ZA slice selection.
-    reg_new_isa("SME2", "sme2_fmla.vs(f32,f32,f32)", "FLOPS",
-        kComputeLoopTime, 48LL, (void*)sme2_fmla_vs_f32f32f32);
+    // assembles to the VGx4 encoding whether or not VGx4 is spelled out.  The
+    // former rows without the "4" suffix were therefore the same instruction
+    // as these, registered with a quarter of the operation count, and have
+    // been removed; their dependency-chain kernels pair with the "4" rows.
     reg_new_isa("SME2", "sme2_fmla4.vs(f32,f32,f32)", "FLOPS",
         kComputeLoopTime, 48LL, (void*)sme2_fmla4_vs_f32f32f32);
-    reg_new_isa("SME2", "sme2_fmla.vv(f32,f32,f32)", "FLOPS",
-        kComputeLoopTime, 48LL, (void*)sme2_fmla_vv_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla4.vv(f32,f32,f32)", "FLOPS",
         kComputeLoopTime, 48LL, (void*)sme2_fmla4_vv_f32f32f32);
-    reg_new_isa("SME2", "sme2_fmla.mvv(f32,f32,f32)_latency", "FLOPS",
+    reg_new_isa("SME2", "sme2_fmla4.mvv(f32,f32,f32)_latency", "FLOPS",
         kLatencyLoopTime, 12LL, (void*)sme2_fmla2_mvv_f32f32f32);
-    reg_new_isa("SME2", "sme2_fmla.mvv(f32,f32,f32)", "FLOPS",
-        kComputeLoopTime, 48LL, (void*)sme2_fmla_mvv_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla4.mvv(f32,f32,f32)", "FLOPS",
         kComputeLoopTime, 48LL, (void*)sme2_fmla4_mvv_f32f32f32);
 
@@ -1497,8 +1491,6 @@ static void cpufb_register_isa()
         kComputeLoopTime, 24LL, (void*)sme2_fmlal_vv_f32f16f16);
     reg_new_isa("SME2", "sme2_fmlal4.vv(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme2_fmlal4_vv_f32f16f16);
-    reg_new_isa("SME2", "sme2_fmlal.mvv(f32,f16,f16)", "FLOPS",
-        kComputeLoopTime, 96LL, (void*)sme2_fmlal_mvv_f32f16f16);
     reg_new_isa("SME2", "sme2_fmlal4.mvv(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme2_fmlal4_mvv_f32f16f16);
     
@@ -1507,16 +1499,10 @@ static void cpufb_register_isa()
     reg_new_isa("SME2", "sme2_fvdot2.vs(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 72LL, (void*)sme2_fvdot2_vs_f32f16f16);
     
-    reg_new_isa("SME2", "sme2_fdot.vs(f32,f16,f16)", "FLOPS",
-        kComputeLoopTime, 96LL, (void*)sme2_fdot_vs_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot4.vs(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme2_fdot4_vs_f32f16f16);
-    reg_new_isa("SME2", "sme2_fdot.mvv(f32,f16,f16)", "FLOPS",
-        kComputeLoopTime, 96LL, (void*)sme2_fdot_mvv_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot4.vv(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme2_fdot4_vv_f32f16f16);
-    reg_new_isa("SME2", "sme2_fdot.vv(f32,f16,f16)", "FLOPS",
-        kComputeLoopTime, 96LL, (void*)sme2_fdot_vv_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot4.mvv(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme2_fdot4_mvv_f32f16f16);
 #endif
@@ -1532,22 +1518,16 @@ static void cpufb_register_isa()
 
 #if defined(_SMEf64_) && defined(_SME2_)
     require_feature("_SME2_F64F64_");
-    reg_new_isa("SMEf64", "sme2_fmla.vs(f64,f64,f64)_latency", "FLOPS",
+    reg_new_isa("SMEf64", "sme2_fmla4.vs(f64,f64,f64)_latency", "FLOPS",
         kComputeLoopTime, 6LL, (void*)sme2_fmla2_vs_f64f64f64);
-    reg_new_isa("SMEf64", "sme2_fmla.vs(f64,f64,f64)", "FLOPS",
-        kComputeLoopTime, 24LL, (void*)sme2_fmla_vs_f64f64f64);
     
     reg_new_isa("SMEf64", "sme2_fmla4.vs(f64,f64,f64)", "FLOPS",
 
         kComputeLoopTime, 24LL, (void*)sme2_fmla4_vs_f64f64f64);
-    reg_new_isa("SMEf64", "sme2_fmla.vv(f64,f64,f64)_latency", "FLOPS",
+    reg_new_isa("SMEf64", "sme2_fmla4.vv(f64,f64,f64)_latency", "FLOPS",
         kComputeLoopTime, 6LL, (void*)sme2_fmla2_vv_f64f64f64);
-    reg_new_isa("SMEf64", "sme2_fmla.vv(f64,f64,f64)", "FLOPS",
-        kComputeLoopTime, 24LL, (void*)sme2_fmla_vv_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla4.vv(f64,f64,f64)", "FLOPS",
         kComputeLoopTime, 24LL, (void*)sme2_fmla4_vv_f64f64f64);
-    reg_new_isa("SMEf64", "sme2_fmla.mvv(f64,f64,f64)", "FLOPS",
-        kComputeLoopTime, 24LL, (void*)sme2_fmla_mvv_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla4.mvv(f64,f64,f64)", "FLOPS",
         kComputeLoopTime, 24LL, (void*)sme2_fmla4_mvv_f64f64f64);
 #endif

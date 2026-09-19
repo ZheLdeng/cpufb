@@ -466,42 +466,6 @@
     restore_caller_vec
     ret
 ####
-    PROLOGUE sme2_fmla_vs_f32f32f32
-    preserve_caller_vec
-    smstart
-    SME_INIT
-
-.sme2_fmla_vs_f32bf32f32L1:
-    FMLA ZA.S[w8, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w9, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w10, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w11, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w8, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w9, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w10, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w11, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w8, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w9, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w10, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w11, 0], { z0.S-z3.S }, z4.S[0]
-    subs x0, x0, #1
-    FMLA ZA.S[w8, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w9, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w10, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w11, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w8, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w9, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w10, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w11, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w8, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w9, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w10, 0], { z0.S-z3.S }, z4.S[0]
-    FMLA ZA.S[w11, 0], { z0.S-z3.S }, z4.S[0]
-    bne .sme2_fmla_vs_f32bf32f32L1
-    smstop
-    restore_caller_vec
-    ret
-####
     PROLOGUE sme2_fmla4_vs_f32f32f32
     preserve_caller_vec
     smstart
@@ -538,42 +502,6 @@
     restore_caller_vec
     ret
 ####
-    PROLOGUE sme2_fmla_vv_f32f32f32
-    preserve_caller_vec
-    smstart
-    SME_INIT
-
-.sme2_fmla_vv_f32f32f32L1:
-    FMLA ZA.S[w8, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w9, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w10, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w11, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w8, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w9, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w10, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w11, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w8, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w9, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w10, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w11, 0], { z0.S-z3.S }, z4.S
-    subs x0, x0, #1
-    FMLA ZA.S[w8, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w9, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w10, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w11, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w8, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w9, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w10, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w11, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w8, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w9, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w10, 0], { z0.S-z3.S }, z4.S
-    FMLA ZA.S[w11, 0], { z0.S-z3.S }, z4.S
-    bne .sme2_fmla_vv_f32f32f32L1
-    smstop
-    restore_caller_vec
-    ret
-####
     PROLOGUE sme2_fmla4_vv_f32f32f32
     preserve_caller_vec
     smstart
@@ -606,42 +534,6 @@
     FMLA ZA.S[w10, 4, VGx4], { z0.S-z3.S }, z4.S
     FMLA ZA.S[w11, 4, VGx4], { z0.S-z3.S }, z4.S
     bne .sme2_fmla4_vv_f32f32f32L1
-    smstop
-    restore_caller_vec
-    ret
-####
-    PROLOGUE sme2_fmla_mvv_f32f32f32
-    preserve_caller_vec
-    smstart
-    SME_INIT
-
-.sme2_fmla_mvv_f32f32f32L1:
-    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w9, 0], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w10, 0], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w11, 0], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w8, 4], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w9, 4], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w10, 4], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w11, 4], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w9, 0], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w10, 0], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w11, 0], {z0.s-z3.s}, {z0.s-z3.s}
-    subs x0, x0, #1
-    FMLA ZA.S[w8, 4], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w9, 4], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w10, 4], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w11, 4], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w8, 0], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w9, 0], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w10, 0], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w11, 0], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w8, 4], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w9, 4], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w10, 4], {z0.s-z3.s}, {z0.s-z3.s}
-    FMLA ZA.S[w11, 4], {z0.s-z3.s}, {z0.s-z3.s}
-    bne .sme2_fmla_mvv_f32f32f32L1
     smstop
     restore_caller_vec
     ret
@@ -864,42 +756,6 @@
 
 
 ####
-    PROLOGUE sme2_fmlal_mvv_f32f16f16
-    preserve_caller_vec
-    smstart
-    SME_INIT
-
-.sme2_fmlal_mvv_f32f16f16L1:
-    FMLAL ZA.S[w8, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w9, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w10, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w11, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w8, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w9, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w10, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w11, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w8, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w9, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w10, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w11, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    subs x0, x0, #1
-    FMLAL ZA.S[w8, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w9, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w10, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w11, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w8, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w9, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w10, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w11, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w8, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w9, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w10, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    FMLAL ZA.S[w11, 0:1], {z0.h-z3.h}, {z0.h-z3.h}
-    bne .sme2_fmlal_mvv_f32f16f16L1
-    smstop
-    restore_caller_vec
-    ret
-####
     PROLOGUE sme2_fmlal4_mvv_f32f16f16
     preserve_caller_vec
     smstart
@@ -1009,42 +865,6 @@
     restore_caller_vec
     ret
 ####
-    PROLOGUE sme2_fdot_vs_f32f16f16
-    preserve_caller_vec
-    smstart
-    SME_INIT
-
-.sme2_fdot_vs_f32f16f16L1:
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, z5.h[0]
-    subs x0, x0, #1
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, z5.h[0]
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, z5.h[0]
-    bne .sme2_fdot_vs_f32f16f16L1
-    smstop
-    restore_caller_vec
-    ret
-####
     PROLOGUE sme2_fdot4_vs_f32f16f16
     preserve_caller_vec
     smstart
@@ -1081,42 +901,6 @@
     restore_caller_vec
     ret
 ####
-    PROLOGUE sme2_fdot_vv_f32f16f16
-    preserve_caller_vec
-    smstart
-    SME_INIT
-
-.sme2_fdot_vv_f32f16f16L1:
-    FDOT ZA.S[W8, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, Z5.H
-    subs x0, x0, #1
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, Z5.H
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, Z5.H
-    bne .sme2_fdot_vv_f32f16f16L1
-    smstop
-    restore_caller_vec
-    ret
-####
     PROLOGUE sme2_fdot4_vv_f32f16f16
     preserve_caller_vec
     smstart
@@ -1149,42 +933,6 @@
     FDOT ZA.S[w10, 0, VGx4], {z0.h-z3.h}, z5.h
     FDOT ZA.S[w11, 0, VGx4], {z0.h-z3.h}, z5.h
     bne .sme2_fdot4_vv_f32f16f16L1
-    smstop
-    restore_caller_vec
-    ret
-####
-    PROLOGUE sme2_fdot_mvv_f32f16f16
-    preserve_caller_vec
-    smstart
-    SME_INIT
-
-.sme2_fdot_mvv_f32f16f16L1:
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    subs x0, x0, #1
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w8, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w9, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w10, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    FDOT ZA.S[w11, 0], {z0.h-z3.h}, {z0.h-z3.h}
-    bne .sme2_fdot_mvv_f32f16f16L1
     smstop
     restore_caller_vec
     ret

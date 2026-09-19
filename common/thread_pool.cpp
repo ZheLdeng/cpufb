@@ -22,19 +22,19 @@ static tpool_work_t *tpool_work_create(thread_func_t func, void *arg)
 {
     tpool_work_t *work;
 
-    if (func == NULL)
-        return NULL;
+    if (func == nullptr)
+        return nullptr;
 
     work = (tpool_work_t*)malloc(sizeof(*work));
     work->func = func;
     work->arg  = arg;
-    work->next = NULL;
+    work->next = nullptr;
     return work;
 }
 
 static void tpool_work_destroy(tpool_work_t *work)
 {
-    if (work == NULL)
+    if (work == nullptr)
         return;
     free(work);
 }
@@ -44,16 +44,16 @@ static tpool_work_t *tpool_work_get(tpool_t *tm)
 {
     tpool_work_t *work;
 
-    if (tm == NULL)
-        return NULL;
+    if (tm == nullptr)
+        return nullptr;
 
     work = tm->work_first;
-    if (work == NULL)
-        return NULL;
+    if (work == nullptr)
+        return nullptr;
 
-    if (work->next == NULL) {
-        tm->work_first = NULL;
-        tm->work_last  = NULL;
+    if (work->next == nullptr) {
+        tm->work_first = nullptr;
+        tm->work_last  = nullptr;
     } else {
         tm->work_first = work->next;
     }
@@ -98,7 +98,7 @@ static void *tpool_worker(void *arg)
     pthread_cond_signal(&(tm->parallel_ready_cond));
 
     while (1) {
-        while (tm->work_first == NULL &&
+        while (tm->work_first == nullptr &&
                tm->parallel_generation == observed_parallel_generation &&
                !tm->stop)
             pthread_cond_wait(&(tm->work_cond), &(tm->work_mutex));
@@ -136,21 +136,21 @@ static void *tpool_worker(void *arg)
         tm->working_cnt++;
         pthread_mutex_unlock(&(tm->work_mutex));
 
-        if (work != NULL) {
+        if (work != nullptr) {
             work->func(work->arg);
             tpool_work_destroy(work);
         }
 
         pthread_mutex_lock(&(tm->work_mutex));
         tm->working_cnt--;
-        if (!tm->stop && tm->working_cnt == 0 && tm->work_first == NULL)
+        if (!tm->stop && tm->working_cnt == 0 && tm->work_first == nullptr)
             pthread_cond_signal(&(tm->working_cond));
     }
 
     tm->thread_cnt--;
     pthread_cond_signal(&(tm->working_cond));
     pthread_mutex_unlock(&(tm->work_mutex));
-    return NULL;
+    return nullptr;
 }
 
 tpool_t *tpool_create(vector<int> set_of_threads)
@@ -170,19 +170,19 @@ tpool_t *tpool_create(vector<int> set_of_threads)
     dispatch_queue_attr_t attr = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_CONCURRENT, qos_class, 0);
     tm->queue = dispatch_queue_create("benchmark", attr);
 
-    // 使用任务组来等待所有线程完成
+    // A dispatch group waits for all workers to finish
     tm->group = dispatch_group_create();
 #endif
 
-    pthread_mutex_init(&(tm->work_mutex), NULL);
-    pthread_cond_init(&(tm->work_cond), NULL);
-    pthread_cond_init(&(tm->working_cond), NULL);
-    pthread_cond_init(&(tm->parallel_ready_cond), NULL);
-    pthread_cond_init(&(tm->parallel_start_cond), NULL);
-    pthread_cond_init(&(tm->parallel_done_cond), NULL);
+    pthread_mutex_init(&(tm->work_mutex), nullptr);
+    pthread_cond_init(&(tm->work_cond), nullptr);
+    pthread_cond_init(&(tm->working_cond), nullptr);
+    pthread_cond_init(&(tm->parallel_ready_cond), nullptr);
+    pthread_cond_init(&(tm->parallel_start_cond), nullptr);
+    pthread_cond_init(&(tm->parallel_done_cond), nullptr);
 
-    tm->work_first = NULL;
-    tm->work_last  = NULL;
+    tm->work_first = nullptr;
+    tm->work_last  = nullptr;
     tm->threads = (pthread_t *)calloc(num, sizeof(*tm->threads));
 
     pthread_mutex_lock(&(tm->work_mutex));
@@ -191,12 +191,12 @@ tpool_t *tpool_create(vector<int> set_of_threads)
         args->tm = tm;
         args->cpuid = set_of_threads[i];
         args->index = i;
-        if (pthread_create(&(tm->threads[i]), NULL, tpool_worker, (void *)args) != 0) {
+        if (pthread_create(&(tm->threads[i]), nullptr, tpool_worker, (void *)args) != 0) {
             free(args);
             tm->stop = true;
             pthread_cond_broadcast(&(tm->work_cond));
             pthread_mutex_unlock(&(tm->work_mutex));
-            for (size_t j = 0; j < i; j++) pthread_join(tm->threads[j], NULL);
+            for (size_t j = 0; j < i; j++) pthread_join(tm->threads[j], nullptr);
             free(tm->threads);
             pthread_mutex_destroy(&(tm->work_mutex));
             pthread_cond_destroy(&(tm->work_cond));
@@ -205,7 +205,7 @@ tpool_t *tpool_create(vector<int> set_of_threads)
             pthread_cond_destroy(&(tm->parallel_start_cond));
             pthread_cond_destroy(&(tm->parallel_done_cond));
             free(tm);
-            return NULL;
+            return nullptr;
         }
     }
 
@@ -218,7 +218,7 @@ tpool_t *tpool_create(vector<int> set_of_threads)
     // worker invalidates the run instead of merely slowing it down.
     if (affinity_failed) {
         tpool_destroy(tm);
-        return NULL;
+        return nullptr;
     }
     return tm;
 }
@@ -227,15 +227,15 @@ bool tpool_add_work(tpool_t *tm, thread_func_t func, void *arg)
 {
     tpool_work_t *work;
 
-    if (tm == NULL)
+    if (tm == nullptr)
         return false;
 
     work = tpool_work_create(func, arg);
-    if (work == NULL)
+    if (work == nullptr)
         return false;
 
     pthread_mutex_lock(&(tm->work_mutex));
-    if (tm->work_first == NULL) {
+    if (tm->work_first == nullptr) {
         tm->work_first = work;
         tm->work_last  = tm->work_first;
     } else {
@@ -251,12 +251,12 @@ bool tpool_add_work(tpool_t *tm, thread_func_t func, void *arg)
 
 void tpool_wait(tpool_t *tm)
 {
-    if (tm == NULL)
+    if (tm == nullptr)
         return;
 
     pthread_mutex_lock(&(tm->work_mutex));
     while (1) {
-        if (tm->work_first != NULL || (!tm->stop && tm->working_cnt != 0) || (tm->stop && tm->thread_cnt != 0)) {
+        if (tm->work_first != nullptr || (!tm->stop && tm->working_cnt != 0) || (tm->stop && tm->thread_cnt != 0)) {
             pthread_cond_wait(&(tm->working_cond), &(tm->work_mutex));
         } else {
             break;
@@ -268,7 +268,7 @@ void tpool_wait(tpool_t *tm)
 bool tpool_run_all(tpool_t *tm, thread_func_t func, void *arg,
     struct timespec *start, struct timespec *end)
 {
-    if (tm == NULL || func == NULL || start == NULL || end == NULL)
+    if (tm == nullptr || func == nullptr || start == nullptr || end == nullptr)
         return false;
 
     // The parallel generation and the ordinary work queue are deliberately
@@ -315,24 +315,24 @@ void tpool_destroy(tpool_t *tm)
     tpool_work_t *work;
     tpool_work_t *work2;
 
-    if (tm == NULL)
+    if (tm == nullptr)
         return;
 
     pthread_mutex_lock(&(tm->work_mutex));
     work = tm->work_first;
-    while (work != NULL) {
+    while (work != nullptr) {
         work2 = work->next;
         tpool_work_destroy(work);
         work = work2;
     }
-    tm->work_first = NULL;
+    tm->work_first = nullptr;
     tm->stop = true;
     pthread_cond_broadcast(&(tm->work_cond));
     pthread_cond_broadcast(&(tm->parallel_start_cond));
     pthread_mutex_unlock(&(tm->work_mutex));
 
     for (size_t i = 0; i < tm->thread_num; i++)
-        pthread_join(tm->threads[i], NULL);
+        pthread_join(tm->threads[i], nullptr);
 
     pthread_mutex_destroy(&(tm->work_mutex));
     pthread_cond_destroy(&(tm->work_cond));
@@ -349,7 +349,7 @@ bool parse_thread_pool(const char *sets,
     vector<int> &set_of_threads)
 {
     static const size_t kMaxThreadPoolEntries = 65536;
-    if (sets == NULL || sets[0] != '[') return false;
+    if (sets == nullptr || sets[0] != '[') return false;
 
     vector<int> parsed;
     size_t pos = 1;

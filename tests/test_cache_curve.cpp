@@ -5,6 +5,11 @@
 #include <string>
 #include <vector>
 
+using cpufb::CacheLatencyPoint;
+using cpufb::CacheLevelEstimate;
+using cpufb::build_cache_curve_sizes;
+using cpufb::estimate_cache_levels;
+
 namespace {
 
 constexpr uint64_t kKiB = 1024;

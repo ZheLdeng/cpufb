@@ -27,10 +27,10 @@ StreamKernelSpec select_stream_kernel();
 } // namespace cpufb
 
 // --memory-bandwidth: one sequential-read stream per selected CPU.
-bool run_memory_bandwidth(const cpufb_cli::CliOptions &options);
+bool run_memory_bandwidth(const cpufb::cli::CliOptions &options);
 
 // L3 and DRAM stream rows of the cache table.
-bool append_cache_memory_bandwidth(const cpufb_cli::CliOptions &options,
+bool append_cache_memory_bandwidth(const cpufb::cli::CliOptions &options,
     Table &table);
 
 #endif

@@ -10,7 +10,7 @@
 #include <utility>
 #include <vector>
 
-namespace cpufb_cli {
+namespace cpufb::cli {
 
 struct BenchmarkInfo
 {
@@ -167,6 +167,6 @@ bool run_instruction_sweep(const std::vector<int> &threads,
     SweepMeasureCallback measure,
     void *context);
 
-} // namespace cpufb_cli
+} // namespace cpufb::cli
 
 #endif

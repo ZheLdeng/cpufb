@@ -1,5 +1,5 @@
-#ifndef _TABLE_HPP
-#define _TABLE_HPP
+#ifndef CPUFB_TABLE_HPP
+#define CPUFB_TABLE_HPP
 
 #include <ostream>
 #include <string>

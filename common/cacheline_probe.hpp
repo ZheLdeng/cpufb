@@ -1,6 +1,8 @@
 #ifndef CPUFB_CACHELINE_PROBE_HPP
 #define CPUFB_CACHELINE_PROBE_HPP
 
+namespace cpufb {
+
 typedef void (*cacheline_flush_fn)(void *address);
 typedef void (*cacheline_fence_fn)();
 
@@ -15,5 +17,7 @@ int probe_cacheline_size(int theory_cacheline,
 // the measurement, then the architecture fallback.
 int effective_cacheline_size(int theory_cacheline, int measured_cacheline,
     int fallback_cacheline);
+
+} // namespace cpufb
 
 #endif

@@ -1,5 +1,5 @@
-#ifndef __TPOOL_H__
-#define __TPOOL_H__
+#ifndef CPUFB_THREAD_POOL_HPP
+#define CPUFB_THREAD_POOL_HPP
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -78,4 +78,4 @@ void tpool_wait(tpool_t *tm);
 bool tpool_run_all(tpool_t *tm, thread_func_t func, void *arg,
     struct timespec *start, struct timespec *end);
 
-#endif /* __TPOOL_H__ */
+#endif // CPUFB_THREAD_POOL_HPP

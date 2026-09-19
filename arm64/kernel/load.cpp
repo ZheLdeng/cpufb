@@ -33,12 +33,12 @@
 #include<sys/syscall.h>
 #include <sys/mman.h>
 #endif
-//cacheline长度
-#define CACHE_LINE 64
+// Assumed line size when neither the OS nor the probe provides one.
+static constexpr int kDefaultCacheLineBytes = 64;
 
 using namespace std;
 
-double cacheline = CACHE_LINE;
+double cacheline = kDefaultCacheLineBytes;
 typedef void (*load_bench)(float*, int, int64_t);
 
 struct load_bench_result {
@@ -213,7 +213,7 @@ static bool read_sysctl_u64(const char *name, uint64_t &value)
 {
     uint64_t sysctl_value = 0;
     size_t size = sizeof(sysctl_value);
-    if (sysctlbyname(name, &sysctl_value, &size, NULL, 0) == 0 && sysctl_value > 0) {
+    if (sysctlbyname(name, &sysctl_value, &size, nullptr, 0) == 0 && sysctl_value > 0) {
         value = sysctl_value;
         return true;
     }
@@ -309,13 +309,13 @@ void get_reported_cache_info(struct CacheData *cache_data, int cpu_id)
     // Leave theory_cacheline at 0 when the OS exposes nothing (Android):
     // writing the 64-byte default into it would present an assumption as a
     // reported value.  Only the working line size falls back.
-    cacheline = effective_cacheline_size(cache_data->theory_cacheline,
-        cache_data->test_cacheline, CACHE_LINE);
+    cacheline = cpufb::effective_cacheline_size(cache_data->theory_cacheline,
+        cache_data->test_cacheline, kDefaultCacheLineBytes);
 }
 
-CacheCurveResult measure_cache_hierarchy(struct CacheData *cache_data, int cpu_id)
+cpufb::CacheCurveResult measure_cache_hierarchy(struct CacheData *cache_data, int cpu_id)
 {
-    CacheCurveResult result;
+    cpufb::CacheCurveResult result;
     if (cache_data == nullptr) return result;
     get_reported_cache_info(cache_data, cpu_id);
 #ifdef __linux__
@@ -332,9 +332,9 @@ CacheCurveResult measure_cache_hierarchy(struct CacheData *cache_data, int cpu_i
     // agree with the OS by construction and left it empty without topology
     // data (Android).
     const uint64_t max_bytes = 64ULL * 1024 * 1024;
-    const int line_size = effective_cacheline_size(
+    const int line_size = cpufb::effective_cacheline_size(
         cache_data->theory_cacheline, cache_data->test_cacheline, 64);
-    result = measure_cache_curve(load_ptr, line_size, max_bytes);
+    result = cpufb::measure_cache_curve(load_ptr, line_size, max_bytes);
     for (const auto &level : result.levels) {
         const int size_kb = static_cast<int>(level.capacity_bytes / 1024);
         if (level.level == "L1") cache_data->test_L1 = size_kb;
@@ -379,7 +379,7 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
 #ifdef __APPLE__
     uint64_t cacheline_bytes = 0;
     size_t size = sizeof(cacheline_bytes);
-    if (sysctlbyname("hw.cachelinesize", &cacheline_bytes, &size, NULL, 0) != 0) {
+    if (sysctlbyname("hw.cachelinesize", &cacheline_bytes, &size, nullptr, 0) != 0) {
         perror("sysctlbyname cachelinesize failed");
     } else if (cacheline_bytes <=
             static_cast<uint64_t>(std::numeric_limits<int>::max())) {
@@ -390,12 +390,12 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
 #ifdef __APPLE__
         128;
 #else
-        CACHE_LINE;
+        kDefaultCacheLineBytes;
 #endif
-    cache_data->test_cacheline = probe_cacheline_size(
+    cache_data->test_cacheline = cpufb::probe_cacheline_size(
         cache_data->theory_cacheline, flush_cache_line,
         finish_cache_line_flush);
-    cacheline = effective_cacheline_size(cache_data->theory_cacheline,
+    cacheline = cpufb::effective_cacheline_size(cache_data->theory_cacheline,
         cache_data->test_cacheline, fallback_cacheline);
 }
 
@@ -438,7 +438,7 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
     // was the DTLB associativity on cores without a fully associative L1
     // DTLB.  The shared probe cancels translation cost against a control ring
     // and needs no OS-reported geometry.
-    cache_size->test_way = probe_l1_associativity(static_cast<int>(cacheline));
+    cache_size->test_way = cpufb::probe_l1_associativity(static_cast<int>(cacheline));
 }
 
 LoadBandwidth get_bandwith(uint64_t looptime, double data_size, string type, void* bench, tpool_t* tm)

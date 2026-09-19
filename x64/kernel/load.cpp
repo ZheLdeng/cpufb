@@ -24,13 +24,13 @@
 #ifdef __linux__
 #include<sys/syscall.h>
 #endif
-//cacheline长度
-#define CACHE_LINE 64
+// Assumed line size when neither the OS nor the probe provides one.
+static constexpr int kDefaultCacheLineBytes = 64;
 
 using namespace std;
 
 static void flush_cache_line(void* addr) {
-    _mm_clflush(addr);  // 使用 CLFLUSH
+    _mm_clflush(addr);  // CLFLUSH
 }
 
 static void finish_cache_line_flush()
@@ -51,7 +51,7 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
     }
     read_data(cpu_id, &cache_size->theory_cacheline, "/cache/index0/coherency_line_size");
 #endif
-    cache_size->test_cacheline = probe_cacheline_size(
+    cache_size->test_cacheline = cpufb::probe_cacheline_size(
         cache_size->theory_cacheline, flush_cache_line,
         finish_cache_line_flush);
 }
@@ -94,20 +94,20 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
 #endif
 
     // Same OS-independent latency curve as ARM64 (common/cache_curve.cpp).
-    const CacheCurveResult curve = measure_cache_curve(chase_ring,
-        effective_cacheline_size(cache_size->theory_cacheline,
-            cache_size->test_cacheline, CACHE_LINE),
+    const cpufb::CacheCurveResult curve = cpufb::measure_cache_curve(chase_ring,
+        cpufb::effective_cacheline_size(cache_size->theory_cacheline,
+            cache_size->test_cacheline, kDefaultCacheLineBytes),
         64ULL * 1024 * 1024);
     cache_size->test_L1 = 0;
     cache_size->test_L2 = 0;
-    for (const CacheLevelEstimate &level : curve.levels) {
+    for (const cpufb::CacheLevelEstimate &level : curve.levels) {
         const int size_kb = static_cast<int>(level.capacity_bytes / 1024);
         if (level.level == "L1") cache_size->test_L1 = size_kb;
         else if (level.level == "L2") cache_size->test_L2 = size_kb;
     }
-    if (getenv("CPUFB_DEBUG_CACHE_CURVE") != NULL) {
+    if (getenv("CPUFB_DEBUG_CACHE_CURVE") != nullptr) {
         fprintf(stderr, "cache curve (%s):\n", curve.translation_mode.c_str());
-        for (const CacheLatencyPoint &point : curve.points)
+        for (const cpufb::CacheLatencyPoint &point : curve.points)
             fprintf(stderr, "  %8llu KB %8.3f ns/load\n",
                 static_cast<unsigned long long>(point.working_set_bytes / 1024),
                 point.latency_ns);
@@ -135,8 +135,8 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
 
     // The shared probe takes no OS-reported cache geometry, so the result is
     // an independent measurement rather than a confirmation of sysfs.
-    detected_way = probe_l1_associativity(effective_cacheline_size(
-        cache_size->theory_cacheline, cache_size->test_cacheline, CACHE_LINE));
+    detected_way = cpufb::probe_l1_associativity(cpufb::effective_cacheline_size(
+        cache_size->theory_cacheline, cache_size->test_cacheline, kDefaultCacheLineBytes));
     cache_size->test_way = detected_way;
 }
 
@@ -164,7 +164,7 @@ LoadBandwidth get_bandwith(uint64_t looptime, double data_size,
 {
     struct timespec start, end;
     LoadBandwidth result;
-    if (kernel == NULL) return result;
+    if (kernel == nullptr) return result;
 
     data_size /= 2.0;
     if (data_size > 2 * 1024) {
@@ -183,7 +183,7 @@ LoadBandwidth get_bandwith(uint64_t looptime, double data_size,
     // malloc() returns 16-mod-64 addresses for large blocks, so every zmm
     // load and every other ymm load would split a cache line and roughly
     // halve the reported bandwidth.
-    void *allocation = NULL;
+    void *allocation = nullptr;
     if (posix_memalign(&allocation, 64, bytes_per_loop) != 0) return result;
     float *cache_data = static_cast<float*>(allocation);
 

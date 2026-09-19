@@ -272,18 +272,18 @@
 
  ###############################
 #void asimd_hybrid_fp32_mla_6x16(int64_t);
-# 仿照 ACL a64_hybrid_fp32_mla_6x16 主循环的寄存器使用：
-#   v0-v5  : A 矩阵 6 行（每行 4 个 fp32，使用 .s[0..3] 作为 lane 广播源）
-#   v6, v7 : B 矩阵 2 个 q 寄存器交替持有 8 列 fp32
-#   v8-v31 : 6x4 = 24 个累加器（M=6, N=16, 每行 4 个 .4s 累加器）
-#       行0: v8 ,v9 ,v10,v11
-#       行1: v12,v13,v14,v15
-#       行2: v16,v17,v18,v19
-#       行3: v20,v21,v22,v23
-#       行4: v24,v25,v26,v27
-#       行5: v28,v29,v30,v31
-# 每次循环 K=4 全展开 -> 共 96 条 4s fmla
-# 单条 4s fmla = 4 lane * 2 ops = 8 FLOPS  ==> 每次循环 768 FLOPS
+# Register use follows the ACL a64_hybrid_fp32_mla_6x16 main loop:
+#   v0-v5  : 6 rows of matrix A (4 fp32 each; .s[0..3] are the lane broadcast sources)
+#   v6, v7 : two q registers alternately holding 8 fp32 columns of matrix B
+#   v8-v31 : 6x4 = 24 accumulators (M=6, N=16, four .4s accumulators per row)
+#       row 0: v8 ,v9 ,v10,v11
+#       row 1: v12,v13,v14,v15
+#       row 2: v16,v17,v18,v19
+#       row 3: v20,v21,v22,v23
+#       row 4: v24,v25,v26,v27
+#       row 5: v28,v29,v30,v31
+# Each iteration fully unrolls K=4 -> 96 4s fmla instructions
+# One 4s fmla = 4 lanes * 2 ops = 8 FLOPS  ==> 768 FLOPS per iteration
     PROLOGUE asimd_hybrid_fp32_mla_6x16
     preserve_caller_vec
     INIT

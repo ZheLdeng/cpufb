@@ -14,6 +14,8 @@
 #include <sys/mman.h>
 #endif
 
+namespace cpufb {
+
 namespace {
 
 // Points of one plateau stay within this max/min band.
@@ -205,7 +207,7 @@ CacheCurveResult measure_cache_curve(CacheChaseKernel chase, int line_size,
     uint64_t max_bytes)
 {
     CacheCurveResult result;
-    if (chase == NULL || max_bytes < 8 * 1024) return result;
+    if (chase == nullptr || max_bytes < 8 * 1024) return result;
     const size_t line = line_size > 0 ? static_cast<size_t>(line_size) : 64;
 
     const bool huge_pages = transparent_huge_pages_available();
@@ -216,11 +218,11 @@ CacheCurveResult measure_cache_curve(CacheChaseKernel chase, int line_size,
         : std::max<size_t>(1, page_bytes / line);
     result.translation_mode = huge_pages ? "huge pages" : "page-grouped order";
 
-    void *allocation = NULL;
+    void *allocation = nullptr;
 #ifdef __linux__
     const size_t huge_page_size = 2ULL * 1024 * 1024;
     const size_t mapping_bytes = static_cast<size_t>(max_bytes) + huge_page_size;
-    void *mapping = mmap(NULL, mapping_bytes, PROT_READ | PROT_WRITE,
+    void *mapping = mmap(nullptr, mapping_bytes, PROT_READ | PROT_WRITE,
         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (mapping == MAP_FAILED) return result;
     const uintptr_t aligned = (reinterpret_cast<uintptr_t>(mapping) +
@@ -252,3 +254,5 @@ CacheCurveResult measure_cache_curve(CacheChaseKernel chase, int line_size,
     result.levels = estimate_cache_levels(result.points);
     return result;
 }
+
+} // namespace cpufb

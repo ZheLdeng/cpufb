@@ -16,10 +16,10 @@
 #include<compute.hpp>
 #include <cmath>
 using namespace std;
-using namespace cpufb_cli;
+using namespace cpufb::cli;
 static struct CacheData cache_size;
 
-typedef struct
+struct cpubm_t
 {
     std::string isa;
     std::string type;
@@ -27,7 +27,7 @@ typedef struct
     int64_t loop_time;
     int64_t comp_pl;
     void (*bench)(int64_t);
-} cpubm_t;
+};
 static vector<cpubm_t> bm_list;
 
 static BenchmarkCatalog build_benchmark_catalog()
@@ -197,7 +197,6 @@ static void cpubm_riskv64_cache(std::vector<int> &set_of_threads,Table &table)
     
     cont.resize(table.getCol());
     cout << "cpubm_riskv64_cache" << endl;
-    // get_cacheline(&cache_size, set_of_threads[0]);
     cout << "get cacheline" << endl;
     get_multiway(&cache_size, set_of_threads[0]);
     cout << "get multiway" << endl;
@@ -239,7 +238,7 @@ static bool cpubm_do_bench(std::vector<int> &set_of_threads,
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);
-        if (tm == NULL) {
+        if (tm == nullptr) {
             cerr << "Error: failed to create benchmark thread pool." << endl;
             for (Table *table : tables) delete table;
             return false;

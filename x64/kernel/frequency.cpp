@@ -75,9 +75,9 @@ static double add_chain_frequency()
 static double cpu_freq_override_ghz()
 {
     const char *value = getenv("CPUFB_FREQ_GHZ");
-    if (value == NULL || *value == '\0') return 0.0;
+    if (value == nullptr || *value == '\0') return 0.0;
 
-    char *end = NULL;
+    char *end = nullptr;
     const double ghz = strtod(value, &end);
     if (end == value || *end != '\0' || !std::isfinite(ghz) || ghz <= 0.0)
         return 0.0;
@@ -95,7 +95,7 @@ static void* thread_function_freq(void* arg)
     // Intel Macs publish the nominal maximum; nothing is assumed per model.
     uint64_t max_frequency_hz = 0;
     size_t size = sizeof(max_frequency_hz);
-    if (sysctlbyname("hw.cpufrequency_max", &max_frequency_hz, &size, NULL,
+    if (sysctlbyname("hw.cpufrequency_max", &max_frequency_hz, &size, nullptr,
             0) == 0)
         data->theory_freq = static_cast<double>(max_frequency_hz) * 1e-9;
 #endif
@@ -205,11 +205,11 @@ void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
     vector<pthread_t> threads(num_threads);
 
     for (size_t i = 0; i < num_threads; ++i)
-        pthread_create(&threads[i], NULL, thread_function_freq,
+        pthread_create(&threads[i], nullptr, thread_function_freq,
             static_cast<void*>(&set_of_threads[i]));
 
     for (size_t i = 0; i < num_threads; ++i) {
-        void* thread_result = NULL;
+        void* thread_result = nullptr;
         pthread_join(threads[i], &thread_result);
         FrequencyData* result = static_cast<FrequencyData*>(thread_result);
 

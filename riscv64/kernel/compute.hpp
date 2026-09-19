@@ -1,5 +1,5 @@
-#ifndef _COMPUTE_HPP
-#define _COMPUTE_HPP
+#ifndef CPUFB_RISCV64_COMPUTE_HPP
+#define CPUFB_RISCV64_COMPUTE_HPP
 
 extern "C"
 {

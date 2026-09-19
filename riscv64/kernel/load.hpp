@@ -1,5 +1,5 @@
-#ifndef _LOAD_HPP
-#define _LOAD_HPP
+#ifndef CPUFB_RISCV64_LOAD_HPP
+#define CPUFB_RISCV64_LOAD_HPP
 
 #include <cstdint>
 #include <vector>

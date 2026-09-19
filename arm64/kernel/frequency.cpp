@@ -194,7 +194,7 @@ static void* thread_function_freq(void* arg)
     data->IPC_fp32 = instruction_rate(looptime,
         time_kernel(asimd_fmla_vv_f32f32f32, looptime), clock_hz);
 
-    float* cache_data = NULL;
+    float* cache_data = nullptr;
     if (posix_memalign((void**)&cache_data, 64, 1024) == 0) {
         memset(cache_data, 0, 1024);
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
@@ -252,14 +252,14 @@ void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
 
     vector<pthread_t> threads(num_thread);
     for (size_t i = 0; i < num_thread; i++)
-        pthread_create(&threads[i], NULL, thread_function_freq,
+        pthread_create(&threads[i], nullptr, thread_function_freq,
             (void*)&set_of_threads[i]);
 
     for (size_t t = 0; t < num_thread; t++) {
-        void *thread_result = NULL;
+        void *thread_result = nullptr;
         pthread_join(threads[t], &thread_result);
         FrequencyData *result = static_cast<FrequencyData *>(thread_result);
-        if (result == NULL) continue;
+        if (result == nullptr) continue;
 #ifdef __APPLE__
         // macOS cannot pin threads, so the workers are interchangeable
         // performance-core samples: report one row and share its clock.

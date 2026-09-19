@@ -19,23 +19,20 @@
 #ifdef __linux__
 #include<sys/syscall.h>
 #endif
-//cacheline长度
-#define CACHE_LINE 64
-//测试WINDOW的数量上限
-#define WINDOW_NUM 2048
-//WINDOW 大小 4MB
+namespace {
+
+// Typed constants instead of macros: the old `#define WINDOW_SIZE 4 * 1024 *
+// 1024` was unparenthesized and only correct by accident of where it was used.
 #ifndef __APPLE__
-#define WINDOW_SIZE 4 * 1024 * 1024
+constexpr int kWindowBytes = 4 * 1024 * 1024;
 #else
-#define WINDOW_SIZE 32 * 1024 * 1024
+constexpr int kWindowBytes = 32 * 1024 * 1024;
 #endif
-#define LOOP_TIME 100000
+constexpr int kLoopTime = 100000;
+constexpr int kBufferCount = 16;
+constexpr int kBufferBytes = 4 * 1024 * 1024;
 
-#define PTR_BITS 3
-#define MAX_RAND 100000
-
-#define BUFFER_NUM 16
-#define BUFFER_SIZE 4 * 1024 * 1024
+} // namespace
 
 using namespace std;
 
@@ -54,13 +51,13 @@ static inline void load_ptr(int looptime, int64_t *ptr)
 }
 
 static inline void shuffleVector(std::vector<int64_t>& vec) {
-    // 使用当前时间作为随机数种子
+    // Seed the generator with the current time
     std::srand(static_cast<unsigned>(std::time(0)));
 
-    // Fisher-Yates 洗牌算法
+    // Fisher-Yates shuffle
     for (size_t i = vec.size() - 1; i > 0; --i) {
-        int j = rand() % (i + 1); // 生成范围 [0, i] 的随机索引
-        std::swap(vec[i], vec[j]);    // 交换当前元素与随机索引元素
+        int j = rand() % (i + 1); // random index in [0, i]
+        std::swap(vec[i], vec[j]);    // swap the current element with the random one
     }
 }
 
@@ -84,19 +81,19 @@ static inline void shuffleGroups(std::vector<int64_t>& vec, int sub) {
         std::cerr << "Error: sub must be greater than 0." << std::endl;
         return;
     }
-    // 初始化随机数种子
+    // Seed the random generator
     std::srand(std::time(0));
 
-    // 遍历 vector，将其分为大小为 sub 的组
+    // Walk the vector in groups of `sub` elements
     for (size_t i = 0; i < vec.size(); i += sub) {
-        // 计算当前组的结束位置
+        // End of the current group
         size_t end = std::min(i + sub, vec.size());
 
-        // 对当前组进行洗牌
+        // Shuffle the current group
         for (size_t j = i; j < end; ++j) {
-            // 生成范围内的随机索引
+            // Random index within the group
             size_t randomIndex = i + (std::rand() % (end - i));
-            // 交换当前元素和随机索引处的元素
+            // Swap the current element with the random one
             std::swap(vec[j], vec[randomIndex]);
         }
     }
@@ -104,21 +101,17 @@ static inline void shuffleGroups(std::vector<int64_t>& vec, int sub) {
 
 static inline void init(int64_t *ptr, vector<int64_t> ptr_index, int64_t group)
 {
-    // cout << "start init" << endl;
     volatile int64_t index = 0;
     volatile int64_t group_size = ptr_index.size() / group;
     if (group > 1) {
         vector<int64_t> group_index(group - 1);
-        //group 最后返回0
+        // the last group links back to 0
         for (int64_t m = 0; m < group - 1; ++m) {
             group_index[m] = m + 1;
         }
-        // cout << "start shuffle vector" << endl;
         shuffleVector(group_index);
-        // cout << "start shuffle groups" << endl;
         shuffleGroups(ptr_index, group_size);
-        // cout << "finish shuffle" << endl;
-        // 每次,从0开始,按照shuffle的顺序访问子块,最后返回0
+        // Start at 0, visit the sub-blocks in shuffled order, and return to 0
         index = ptr_index[0];
         for (int64_t m = 0; m < group_size - 1; ++m) {
             for (int64_t n = 0; n < group - 1; ++n) {
@@ -147,7 +140,6 @@ static inline void init(int64_t *ptr, vector<int64_t> ptr_index, int64_t group)
         }
         ptr[index] = ptr_index[indexs[0]];
     }
-    // cout << "finish init" << endl;
 }
 
 static inline double inloop(int group, int win_size)
@@ -157,21 +149,20 @@ static inline double inloop(int group, int win_size)
     double sum_time_used = 0;
     int64_t *ptr = (int64_t*)malloc(win_size);
     int read_stride = int(log(cacheline) / log(2));
-    int total_num = (win_size) >> read_stride; //每cacheline byte 1个数
+    int total_num = (win_size) >> read_stride; // one value per cache line
     int test_time = 100; 
 
     vector<int64_t> ptr_index(total_num) ;
     for (i = 0; i < test_time; i++) {
-        // cout << "main loop start " << i << endl;
         int64_t index = 0;
         for (int64_t m = 0; m < total_num; ++m) {
             ptr_index[m] = m << (read_stride - 3);
         }
         init(ptr, ptr_index, group);
         //warm up
-        load_ptr(LOOP_TIME, ptr);
+        load_ptr(kLoopTime, ptr);
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        load_ptr(LOOP_TIME, ptr);
+        load_ptr(kLoopTime, ptr);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
         sum_time_used += get_time(&start, &end);
         usleep(1000);
@@ -186,7 +177,6 @@ static inline void get_slope(vector<double>& data, vector<double>& slope)
 {
     for (int i = 1; i < data.size(); i++) {
         slope.push_back((data[i] - data[i - 1]) / data[i - 1]);
-        // cout << "slope is" << i << " is " << abs(data[i] - data[i - 1]) << endl;
     }
 }
 
@@ -194,25 +184,23 @@ static inline void get_validation(vector<double>& data, vector<double>& validati
 {
     for (int i = 1; i < data.size(); i++) {
         validation.push_back(abs(data[i] - data[i - 1]));
-        // cout << scientific << "validation " << i << " is " << abs(data[i] - data[i - 1]) << endl;
     }
 }
 
-// 检查点是否是极大值点
+// Whether the point is a local maximum
 static inline bool isMaximum(const vector<double>& values, int index)
 {
     int n = values.size();
     if (index == 0 || index == n - 1) {
-        return false; // 如果点是边界点，则不是极大值点
+        return false; // a boundary point is never a local maximum
     }
     return values[index] > values[index - 1] && values[index] > values[index + 1];
 }
 
-// 找到给定范围内的所有极大值点
+// Find the local maxima in the given range
 static inline int find_L2_point(const vector<double>& values, int start, int end)
 {
     int size = 0;
-    // cout << "start end " << start << " " << end << " " << values[start] << endl;
     for (int i = start + 1; i < end; i++) {
 
         if (isMaximum(values, i) && values[i] > values [start]) {
@@ -220,7 +208,6 @@ static inline int find_L2_point(const vector<double>& values, int start, int end
             break;
         }
     }
-    // cout << "size = " << size << endl;
     size = pow(2, size / 2 + 1) * (1 + 0.5 * (size % 2));
     return size;
 }
@@ -236,8 +223,7 @@ static inline int find_L1_point(const vector<double>& values)
 }
 
 static inline void random_access(vector<double>& time_used) {
-    for (int win_size = 2 * 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
-        // cout << "win_size = " << win_size << " " << int(win_size * 1.5 / 1024 / 64) << endl;
+    for (int win_size = 2 * 1024; win_size <= kWindowBytes; win_size *= 2) {
         time_used.push_back(inloop(max(1, win_size / 1024 / 64), win_size));
         time_used.push_back(inloop(max(1, int(win_size * 1.5 / 1024 / 64)), win_size * 1.5));
     }
@@ -300,12 +286,9 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
             second_time += (get_time(&start, &end) / w);
         }
         time_used.push_back(second_time);
-        // cout << "ss: " << buf << " first: " << first_time << " second_time: " << second_time << " ratio: "
-            // << second_time / first_time << endl;
     }
     for (size_t i = 1; i < time_used.size() - 1; ++i) {
         if (time_used[i] / time_used[i - 1] > 1.3) {
-            // cout << i << " " << 16 * pow(2, i) << endl;
             cache_data->test_cacheline = 16 * pow(2, i - 1);
             break;
         }
@@ -334,10 +317,10 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
 #endif
 #ifdef __APPLE__ 
     size_t size = sizeof(int);
-    if (sysctlbyname("hw.perflevel0.l1dcachesize", &cache_size->theory_L1, &size, NULL, 0) != 0) {
+    if (sysctlbyname("hw.perflevel0.l1dcachesize", &cache_size->theory_L1, &size, nullptr, 0) != 0) {
         perror("sysctlbyname l1dcachesize failed");
     }
-    if (sysctlbyname("hw.perflevel0.l2cachesize", &cache_size->theory_L2, &size, NULL, 0) != 0) {
+    if (sysctlbyname("hw.perflevel0.l2cachesize", &cache_size->theory_L2, &size, nullptr, 0) != 0) {
         perror("sysctlbyname l2cachesize failed");
     }
     cache_size->theory_L1 /= 1024;
@@ -373,14 +356,14 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
     }
     read_data(cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
 #endif
-    for (w = 0; w < BUFFER_NUM; w++) {
-        uint64_t *index = (uint64_t*)malloc(BUFFER_SIZE * (w + 1));
+    for (w = 0; w < kBufferCount; w++) {
+        uint64_t *index = (uint64_t*)malloc(kBufferBytes * (w + 1));
         uint64_t next = 0;
         //init
         for ( j = 0; j < w; j++) {
-            index[(j * BUFFER_SIZE) >> 3 ] = ((j + 1) * BUFFER_SIZE) >> 3;
+            index[(j * kBufferBytes) >> 3 ] = ((j + 1) * kBufferBytes) >> 3;
         }
-        index[(j * BUFFER_SIZE) >> 3] = 0;
+        index[(j * kBufferBytes) >> 3] = 0;
         //warm up
         next = 0;
         for (k = 0; k < loop_time; k++) {

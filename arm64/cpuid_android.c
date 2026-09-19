@@ -25,19 +25,19 @@ int getCPUFeatures(char (*features)[MAX_FEATURE_LENGTH], int max_features) {
         return -1;
     }
 
-    // 读取命令输出并存储到数组中
+    // Read the command output into the feature array
     while (fgets(features[count], MAX_FEATURE_LENGTH, pipe)) {
-        // 移除换行符
+        // Strip the trailing newline
         features[count][strlen(features[count]) - 1] = '\0';
 
-        // 使用冒号进行分割
+        // Split on the colon
         char *feature = strtok(features[count], ":");
-        feature = strtok(NULL, ":"); // 忽略冒号前的部分
+        feature = strtok(NULL, ":"); // skip the part before the colon
 
-        // 使用空格进行分割
+        // Split on spaces
         char *token = strtok(feature, " ");
         while (token != NULL) {
-            // 存储特性项到数组中
+            // Store the feature name
             strcpy(features[count], token);
             count++;
             if (count >= max_features) {

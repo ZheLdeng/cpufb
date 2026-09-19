@@ -3,7 +3,7 @@
 #include <iostream>
 #include <string>
 
-using namespace cpufb_cli;
+using namespace cpufb::cli;
 
 namespace {
 

@@ -11,6 +11,8 @@
 #include <random>
 #include <vector>
 
+namespace cpufb {
+
 namespace {
 
 const int kFallbackCacheline = 64;
@@ -190,3 +192,5 @@ int effective_cacheline_size(int theory_cacheline, int measured_cacheline,
     if (measured_cacheline > 0) return measured_cacheline;
     return fallback_cacheline > 0 ? fallback_cacheline : kFallbackCacheline;
 }
+
+} // namespace cpufb

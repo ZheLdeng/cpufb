@@ -36,8 +36,8 @@
 #include <sys/sysctl.h>
 #endif
 
-using cpufb_cli::CliOptions;
-using cpufb_cli::save_table_sections;
+using cpufb::cli::CliOptions;
+using cpufb::cli::save_table_sections;
 using std::string;
 using std::vector;
 
@@ -133,8 +133,8 @@ double read_fallback_cpu_frequency_hz(int cpu)
     // Same user-supplied clock as the frequency probe, for hosts that expose
     // neither PMU cycles nor cpufreq data.
     const char *override_text = std::getenv("CPUFB_FREQ_GHZ");
-    if (override_text != NULL && *override_text != '\0') {
-        char *end = NULL;
+    if (override_text != nullptr && *override_text != '\0') {
+        char *end = nullptr;
         const double ghz = std::strtod(override_text, &end);
         if (end != override_text && *end == '\0' && std::isfinite(ghz) &&
             ghz > 0.0)
@@ -147,7 +147,7 @@ double read_fallback_cpu_frequency_hz(int cpu)
     if (sysctlbyname("hw.cpufrequency",
             &sysctl_frequency,
             &size,
-            NULL,
+            nullptr,
             0) == 0)
         frequency = static_cast<double>(sysctl_frequency);
 #endif
@@ -535,7 +535,7 @@ bool measure_stream_bandwidth(int cpu,
     }
     const int inner_loop = static_cast<int>(inner_loop_u64);
 
-    void *allocation = NULL;
+    void *allocation = nullptr;
     const int allocation_status = posix_memalign(&allocation, 4096, bytes);
     if (allocation_status != 0) {
         std::cerr << "Error: failed to allocate "
@@ -663,7 +663,7 @@ bool measure_parallel_stream_bandwidth(const vector<int> &cpus,
         return false;
     }
 
-    void *allocation = NULL;
+    void *allocation = nullptr;
     const int allocation_status = posix_memalign(&allocation, 4096, total_bytes);
     if (allocation_status != 0) {
         std::cerr << "Error: failed to allocate "
@@ -676,7 +676,7 @@ bool measure_parallel_stream_bandwidth(const vector<int> &cpus,
 #endif
 
     tpool_t *thread_pool = tpool_create(cpus);
-    if (thread_pool == NULL) {
+    if (thread_pool == nullptr) {
         std::free(allocation);
         std::cerr << "Error: failed to create stream benchmark workers."
                   << std::endl;

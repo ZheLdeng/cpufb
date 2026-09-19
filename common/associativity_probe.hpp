@@ -1,6 +1,8 @@
 #ifndef CPUFB_ASSOCIATIVITY_PROBE_HPP
 #define CPUFB_ASSOCIATIVITY_PROBE_HPP
 
+namespace cpufb {
+
 // Empirical L1 data-cache associativity, or 0 when no conflict transition was
 // observed.  The probe uses no OS-reported cache parameter except the line
 // size (pass the effective value; 64 is assumed for values <= 0).
@@ -14,5 +16,7 @@
 // translation cost cancels in the test/control ratio and only the cache
 // conflict remains.
 int probe_l1_associativity(int cacheline_bytes);
+
+} // namespace cpufb
 
 #endif

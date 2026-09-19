@@ -13,6 +13,8 @@
 #include <sys/mman.h>
 #endif
 
+namespace cpufb {
+
 namespace {
 
 // A power of two that is a multiple of every practical L1 way size
@@ -69,7 +71,7 @@ double median_ring_time(const uint64_t *base, uint64_t first)
 bool debug_enabled()
 {
     const char *value = std::getenv("CPUFB_DEBUG_ASSOCIATIVITY");
-    return value != NULL && value[0] != '\0' && std::strcmp(value, "0") != 0;
+    return value != nullptr && value[0] != '\0' && std::strcmp(value, "0") != 0;
 }
 
 } // namespace
@@ -79,7 +81,7 @@ int probe_l1_associativity(int cacheline_bytes)
     const size_t line = cacheline_bytes > 0 ? cacheline_bytes : 64;
     const size_t bytes = kConflictStride * kMaxLines + line * kMaxLines;
 
-    void *allocation = NULL;
+    void *allocation = nullptr;
     if (posix_memalign(&allocation, kConflictStride, bytes) != 0) return 0;
 #if defined(__linux__) && defined(MADV_NOHUGEPAGE)
     // Only kMaxLines pages are touched; huge pages would commit 2 MiB each.
@@ -118,3 +120,5 @@ int probe_l1_associativity(int cacheline_bytes)
     std::free(allocation);
     return detected;
 }
+
+} // namespace cpufb

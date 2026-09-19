@@ -112,11 +112,11 @@ double macos_reported_max_frequency_ghz()
                 std::snprintf(key, sizeof(key), "voltage-states%d-sram", index);
                 CFStringRef cf_key = CFStringCreateWithCString(
                     kCFAllocatorDefault, key, kCFStringEncodingUTF8);
-                if (cf_key == NULL) continue;
+                if (cf_key == nullptr) continue;
                 CFTypeRef property = IORegistryEntryCreateCFProperty(entry,
                     cf_key, kCFAllocatorDefault, 0);
                 CFRelease(cf_key);
-                if (property == NULL) continue;
+                if (property == nullptr) continue;
                 if (CFGetTypeID(property) == CFDataGetTypeID()) {
                     CFDataRef table = static_cast<CFDataRef>(property);
                     const UInt8 *bytes = CFDataGetBytePtr(table);

@@ -1,5 +1,5 @@
-#ifndef _MACOS_COUNTERS_HPP
-#define _MACOS_COUNTERS_HPP
+#ifndef CPUFB_ARM64_MACOS_COUNTERS_HPP
+#define CPUFB_ARM64_MACOS_COUNTERS_HPP
 
 #include <cstdint>
 #include <string>

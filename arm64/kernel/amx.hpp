@@ -1,4 +1,5 @@
-#pragma once
+#ifndef CPUFB_ARM64_AMX_HPP
+#define CPUFB_ARM64_AMX_HPP
 #include <cstdint>
 
 #ifdef __cplusplus
@@ -731,8 +732,8 @@ struct matint : operand<matint> {
 };
 #include <iostream>
 
-#include <iomanip> // 用于设置输出格式
-#include <cstdint> // 包含 uint64_t 类型定义
+#include <iomanip> // output formatting
+#include <cstdint> // uint64_t
 #include <chrono>
 void load_benchmark_1(long long looptime);
 void load_benchmark_2(long long looptime);
@@ -746,3 +747,5 @@ void fmla64_benchmark_vec(long long looptime);
 void matint_i8i8_benchmark(long long looptime);
 void matint_i8i16_benchmark(long long looptime);
 void matint_i16i16_benchmark(long long looptime);
+
+#endif // CPUFB_ARM64_AMX_HPP

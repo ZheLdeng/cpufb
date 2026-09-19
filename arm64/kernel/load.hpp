@@ -1,5 +1,5 @@
-#ifndef _LOAD_HPP
-#define _LOAD_HPP
+#ifndef CPUFB_ARM64_LOAD_HPP
+#define CPUFB_ARM64_LOAD_HPP
 
 #include <cstdint>
 #include <string>
@@ -52,7 +52,7 @@ struct CacheData {
 };
 
 void get_reported_cache_info(struct CacheData *cache_size, int cpu_id);
-CacheCurveResult measure_cache_hierarchy(struct CacheData *cache_size, int cpu_id);
+cpufb::CacheCurveResult measure_cache_hierarchy(struct CacheData *cache_size, int cpu_id);
 void get_cache_capacities(struct CacheData *cache_size, int cpu_id);
 void get_multiway(struct CacheData *cache_size,int cpu_id);
 void get_cacheline(struct CacheData *cache_size, int cpu_id);

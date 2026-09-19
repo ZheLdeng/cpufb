@@ -41,7 +41,7 @@
 #endif
 
 using namespace std;
-using namespace cpufb_cli;
+using namespace cpufb::cli;
 extern vector<double> freq;
 static struct CacheData cache_size;
 static constexpr int kFallbackL1CacheKiB = 64;
@@ -54,7 +54,7 @@ enum SmeScale {
     SME_SCALE_OUTER_PRODUCT
 };
 
-typedef struct
+struct cpubm_t
 {
     string isa;
     string type;
@@ -69,19 +69,19 @@ typedef struct
     int sme_element_bytes; // Accumulator element size for outer products.
     void*  bench;
     const char* required_feature;
-} cpubm_t;
+};
 
 // Every ARM64 compute kernel unrolls 24 benchmarked instructions per loop.
 static constexpr int64_t kComputeInstructionsPerLoop = 24;
 
-typedef struct
+struct cache_bm_t
 {
     float* cache_data;
     int inner_loop;
     int loop_time;
     void (*bench)(float*, int, int64_t);
     bool count_cycles;
-} cache_bm_t;
+};
 
 static vector<cpubm_t> bm_list;
 static const char* registration_required_feature = "_ASIMD_";
@@ -101,11 +101,11 @@ static void require_feature(const char* feature)
     registration_required_feature = feature;
 }
 
-typedef struct
+struct ComputeResult
 {
     double perf;
     double ipc;
-} ComputeResult;
+};
 
 // Derives the vector-length scaling of a row from its instruction name, once,
 // at registration: "sve*" rows scale with the SVE vector bytes, "*opa.vv(T,..."
@@ -228,7 +228,7 @@ static bool cpubm_standalone_warmup(vector<int> &set_of_threads)
         warmup_item.loop_time = min<int64_t>(warmup_item.loop_time, 0x4000LL);
 
         tpool_t *tm = tpool_create(set_of_threads);
-        if (tm == NULL) {
+        if (tm == nullptr) {
             cerr << "Error: failed to create benchmark thread pool." << endl;
             return false;
         }
@@ -301,7 +301,6 @@ static double cpubm_measure_compute_time(tpool_t *tm, cpubm_t &item,
     }
 #else
      // warm up
-    //pthread_set_qos_class_self_np( QOS_CLASS_UTILITY, 0 );
     for (int i = 0; i < tm->thread_num; ++i) {
         // ((void(*)(int64_t))item.bench)(item.loop_time);
         dispatch_group_async(tm->group, tm->queue, ^{((void(*)(int64_t))item.bench)(item.loop_time);});
@@ -398,7 +397,6 @@ static void cpubm_arm64_one(tpool_t *tm,
     cont[4] = latency > 0 ? format_latency_cycles(latency) : "-";
     table.addOneItem(cont);
 
-    // cout << "test fop end" << endl;
 }
 
 static void cpubm_arm_load(tpool_t *tm, cpubm_t &item, Table &table)
@@ -406,7 +404,6 @@ static void cpubm_arm_load(tpool_t *tm, cpubm_t &item, Table &table)
 
     vector<string> cont;
     cont.resize(table.getCol());
-    //cout << "test load begin" << endl;
 
     // The level travels with the row; it used to be inferred from the header
     // row's label and carried to the "--------" rows through a global.
@@ -452,7 +449,6 @@ static void cpubm_arm_load(tpool_t *tm, cpubm_t &item, Table &table)
     cont[7] = bandwidth.cycle_source.empty() ? "-" : bandwidth.cycle_source;
 
     table.addOneItem(cont);
-    //cout << "test load end" << endl;
 }
 
 static void prepare_arm_load_cache(std::vector<int> &set_of_threads)
@@ -475,9 +471,7 @@ static void probe_arm_cache(std::vector<int> &set_of_threads)
 #endif
 
     get_cacheline(&cache_size, set_of_threads[0]);
-    // cout << "get cacheline" << endl;
     get_multiway(&cache_size, set_of_threads[0]);
-    // cout << "get multiway" << endl;
     // L1/L2 capacity comes from the dependent-load latency curve in
     // cpubm_arm_cache(); running the legacy slope probe as well would print a
     // second, conflicting set of "measured" sizes.
@@ -497,7 +491,7 @@ static bool cpubm_arm_cache(std::vector<int> &set_of_threads,
     // against the OS topology, never replaced by it.
     int cpu_id = set_of_threads[0];
     get_reported_cache_info(&cache_size, cpu_id);
-    CacheCurveResult curve = measure_cache_hierarchy(&cache_size, cpu_id);
+    cpufb::CacheCurveResult curve = measure_cache_hierarchy(&cache_size, cpu_id);
     auto with_agreement = [](const string &source, int reported, int measured,
         double tolerance) {
         const string verdict =
@@ -792,7 +786,7 @@ static bool measure_instruction_sweep(const vector<int> &active_threads,
     void *)
 {
     tpool_t *tm = tpool_create(active_threads);
-    if (tm == NULL) return false;
+    if (tm == nullptr) return false;
     sleep(idle_time);
 
     if (latency_index >= 0) {
@@ -825,7 +819,7 @@ static bool cpubm_do_instruction_sweep(vector<int> &set_of_threads,
         config,
         prepare_instruction_sweep,
         measure_instruction_sweep,
-        NULL);
+        nullptr);
 }
 
 static bool cpubm_do_bench(vector<int> &set_of_threads,
@@ -869,7 +863,6 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
         // set table head
         vector<Table*> tables;
         init_table(tables);
-        // cout << "start benchmark" << endl;
         if (should_run_standalone_warmup(filter) &&
             !cpubm_standalone_warmup(set_of_threads)) {
             for (size_t t = 0; t < tables.size(); ++t) delete tables[t];
@@ -878,8 +871,6 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
         if (benchmark_needs_freq(filter)) {
             get_cpu_freq(set_of_threads, *tables[3]);
         }
-        // exit(0);
-        // cout << "get freq" << endl;
         if (should_run_test(filter, "cache") &&
             !cpubm_arm_cache(set_of_threads, *tables[2], options)) {
             for (size_t t = 0; t < tables.size(); ++t) delete tables[t];
@@ -890,7 +881,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);
-        if (tm == NULL) {
+        if (tm == nullptr) {
             cerr << "Error: failed to create benchmark thread pool." << endl;
             for (size_t t = 0; t < tables.size(); ++t) delete tables[t];
             return false;
@@ -903,7 +894,6 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
             if (bench_limit > 0 && benches_run >= bench_limit) {
                 break;
             }
-            // cout << bm_list[i].type << endl;
             if (catalog[i].is_latency) continue;
             if (!should_run_benchmark(filter, bm_list[i].isa, bm_list[i].dim))
                 continue;
@@ -1612,6 +1602,9 @@ static void cpufb_register_isa()
         kLoadLoopTime, 32LL, (void*)sme_ld1w_kernel);
 #endif
 #ifdef __APPLE__
+    // Apple AMX rows (kernels in kernel/amx_kernel.cpp) are kept here but
+    // disabled: AMX is undocumented and there is no runtime detection for it
+    // yet, so an unconditional row would fault on parts without it.
     // reg_new_isa("Apple amx", "fmla.mat(f16,f16,f16)", "FLOPS",
     //     kComputeLoopTime, 16384LL, (void*)fmla16_benchmark_mat);
     // reg_new_isa("Apple amx", "fmla.mat(f32,f32,f32)", "FLOPS",
@@ -1639,6 +1632,11 @@ static void cpufb_register_isa()
     //     kLoadLoopTime, 32LL, (void*)load_benchmark_2);
     // reg_new_isa("Apple amx", "ldx 4 reg", "Byte/Cycle",
     //     kLoadLoopTime, 32LL, (void*)load_benchmark_4);    
+    
+    
+
+
+
     
     
 #endif

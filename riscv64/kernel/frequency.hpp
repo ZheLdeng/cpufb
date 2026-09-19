@@ -1,5 +1,5 @@
-#ifndef _FREQUENCY_HPP
-#define _FREQUENCY_HPP
+#ifndef CPUFB_RISCV64_FREQUENCY_HPP
+#define CPUFB_RISCV64_FREQUENCY_HPP
 #include <string>  
 #include <vector>
 #include "table.hpp"

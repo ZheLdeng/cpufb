@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+namespace cpufb {
+
 // Dependent-load (pointer-chase) latency versus working-set size, and a
 // capacity estimate for each cache level derived from that curve alone.
 // Nothing here reads or accepts OS-reported cache sizes: the estimate has to
@@ -47,5 +49,7 @@ std::vector<CacheLevelEstimate> estimate_cache_levels(
 // and cannot appear as a spurious level between L1 and L2.
 CacheCurveResult measure_cache_curve(CacheChaseKernel chase, int line_size,
     uint64_t max_bytes);
+
+} // namespace cpufb
 
 #endif

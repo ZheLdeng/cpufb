@@ -1,5 +1,5 @@
-#ifndef MULTIPLE_ISSUE_HPP
-#define MULTIPLE_ISSUE_HPP
+#ifndef CPUFB_ARM64_MULTIPLE_ISSUE_HPP
+#define CPUFB_ARM64_MULTIPLE_ISSUE_HPP
 #include <cstdint>
 extern "C"
 {

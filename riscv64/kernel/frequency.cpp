@@ -51,7 +51,6 @@ static void* thread_function_freq(void* arg){
     if(read_freq == 0){
         read_data(cpuid, &read_freq, "/cpufreq/cpuinfo_max_freq");
     }
-    // cout << read_freq << endl;
     data->theory_freq = double(read_freq) * 1e-6;
     //warm up
     #ifdef _VECTOR_
@@ -76,10 +75,9 @@ static void* thread_function_freq(void* arg){
     }
     
     data->caculate_freq = CPU_freq * 1e-9;
-    // cout << data->caculate_freq  << endl;
 #endif
 
-    //  待补充 注释，warm up
+    //  warm up
     //warm up
     #ifdef _VECTOR_
     vector_vfmacc_vv_f64f64f64(looptime);
@@ -94,7 +92,6 @@ static void* thread_function_freq(void* arg){
     data->IPC_fp64 = looptime * 24 / (time_used * CPU_freq);
 
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    // asimd_fmla_vv_f32f32f32(looptime);
     #ifdef _VECTOR_
     vector_vfmacc_vv_f32f32f32(looptime);
     #endif
@@ -102,17 +99,11 @@ static void* thread_function_freq(void* arg){
     time_used = get_time(&start, &end);
     data->IPC_fp32 = looptime * 24 / (time_used * CPU_freq);
 
-    // float* cache_data = (float*)malloc(1024);
-    // clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    // load_ldr_kernel(cache_data, looptime);
-    // clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    // time_used = get_time(&start, &end);
-    // data->IPC_load = looptime * 24 / (time_used * CPU_freq);
 
     pthread_exit((void *)data);
 }
 
-// 变量名待修改
+// TODO: clearer variable names
 void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
 {
     int num_thread = set_of_threads.size();
@@ -123,7 +114,7 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
     pthread_t threads[num_thread];
     int i = 0;
     for (int i = 0; i<num_thread; i++){
-        pthread_create(&threads[i], NULL, thread_function_freq,  (void*)&set_of_threads[i] );
+        pthread_create(&threads[i], nullptr, thread_function_freq,  (void*)&set_of_threads[i] );
     }
 #ifndef __APPLE__  
     for (int t = 0; t < num_thread; t++) {

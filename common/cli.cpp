@@ -15,7 +15,7 @@
 
 using namespace std;
 
-namespace cpufb_cli {
+namespace cpufb::cli {
 
 namespace {
 
@@ -61,7 +61,7 @@ bool parse_positive_integer(const char *value,
     const char *option,
     uint64_t &parsed)
 {
-    if (value == NULL || *value == '\0') {
+    if (value == nullptr || *value == '\0') {
         cerr << "Error: " << option << " must be a positive integer." << endl;
         return false;
     }
@@ -72,7 +72,7 @@ bool parse_positive_integer(const char *value,
             return false;
         }
     }
-    char *end = NULL;
+    char *end = nullptr;
     errno = 0;
     unsigned long long result = strtoull(value, &end, 10);
     if (errno != 0 || end == value || *end != '\0' || result == 0) {
@@ -216,12 +216,12 @@ static bool parse_uint32_option(const char *value,
     const char *option,
     uint32_t &parsed)
 {
-    bool digits_only = value != NULL && *value != '\0';
+    bool digits_only = value != nullptr && *value != '\0';
     for (const char *cursor = value; digits_only && *cursor != '\0'; ++cursor)
         digits_only = isdigit(static_cast<unsigned char>(*cursor)) != 0;
     errno = 0;
     const unsigned long long result =
-        digits_only ? strtoull(value, NULL, 10) : 0;
+        digits_only ? strtoull(value, nullptr, 10) : 0;
     if (!digits_only || errno != 0 ||
         result > numeric_limits<uint32_t>::max()) {
         cerr << "Error: " << option << " must be a non-negative integer."
@@ -725,7 +725,7 @@ bool run_instruction_sweep(const vector<int> &threads,
         cout << endl;
     }
 
-    if (prepare != NULL && !prepare(threads, benchmark_index, context))
+    if (prepare != nullptr && !prepare(threads, benchmark_index, context))
         return false;
 
     Table table;
@@ -746,7 +746,7 @@ bool run_instruction_sweep(const vector<int> &threads,
         vector<int> active_threads(threads.begin(), threads.begin() + cores);
 
         SweepSample sample;
-        if (measure == NULL || !measure(active_threads,
+        if (measure == nullptr || !measure(active_threads,
                 idle_time,
                 benchmark_index,
                 latency_index,
@@ -797,4 +797,4 @@ bool run_instruction_sweep(const vector<int> &threads,
     return save_table_sections(save_options, sections);
 }
 
-} // namespace cpufb_cli
+} // namespace cpufb::cli

@@ -1,5 +1,5 @@
-#ifndef _PERF_EVENT_HPP
-#define _PERF_EVENT_HPP
+#ifndef CPUFB_COMMON_HPP
+#define CPUFB_COMMON_HPP
 
 #include <iostream>
 #include <fstream>
@@ -27,7 +27,7 @@ private:
     long long count;
     public:
     PerfEventCycle(int mode = 0, bool report_errors = true) : fd(-1), count(0) {
-        // 初始化性能事件属性结构
+        // Initialise the perf_event attribute structure
         memset(&pe, 0, sizeof(struct perf_event_attr));
         pe.type = PERF_TYPE_HARDWARE;
         pe.size = sizeof(struct perf_event_attr);
@@ -36,13 +36,11 @@ private:
         } else {
             pe.config = 0xA00000000;
         }
-        // pe.config = PERF_COUNT_HW_CPU_CYCLES;
-        // pe.config = 0xA00000000;
         pe.disabled = 1;
         pe.exclude_kernel = 1;
         pe.exclude_hv = 1;
 
-        // 打开性能计数器文件描述符
+        // Open the performance-counter file descriptor
         fd = syscall(__NR_perf_event_open, &pe, 0, -1, -1, 0);
         if (fd == -1 && report_errors) {
             perror("perf_event_open");
@@ -66,7 +64,7 @@ private:
 
     void start() {
         if (fd == -1) return;
-        // 启用性能计数器
+        // Reset and enable the counter
         ioctl(fd, PERF_EVENT_IOC_RESET, 0);
         ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
     }
@@ -76,10 +74,10 @@ private:
             count = 0;
             return;
         }
-        // 禁用性能计数器
+        // Disable the counter
         ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
 
-        // 读取 CPU 周期数
+        // Read the CPU cycle count
         const ssize_t bytes_read = read(fd, &count, sizeof(count));
         if (bytes_read != static_cast<ssize_t>(sizeof(count))) {
             count = 0;
@@ -95,7 +93,7 @@ private:
 
 inline void read_data(int cpu_id, int *data, std::string path)
 {
-    FILE *fp = NULL;
+    FILE *fp = nullptr;
     char buf[100] = {0};
     std::string file_path="/sys/devices/system/cpu/cpu"+ std::to_string(cpu_id) + path;
     std::ifstream file(file_path);
@@ -105,7 +103,6 @@ inline void read_data(int cpu_id, int *data, std::string path)
         if (fp) {
             int ret = fread(buf, 1, sizeof(buf)-1, fp);
             if (ret > 0) {
-                // data->theory_freq = std::stod(buf) * 1e-6;
                 *data = std::stod(buf);
             }
             pclose(fp);

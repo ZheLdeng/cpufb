@@ -11,22 +11,23 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 
-static double get_time(struct timespec *start,
-	struct timespec *end)
+static double get_time(struct timespec *start, struct timespec *end)
 {
-	return end->tv_sec - start->tv_sec +
-		(end->tv_nsec - start->tv_nsec) * 1e-9;
+    return end->tv_sec - start->tv_sec + (end->tv_nsec - start->tv_nsec) * 1e-9;
 }
 #ifdef __linux__
 #include <asm/unistd.h>
 #include <linux/perf_event.h>
-class PerfEventCycle {
+class PerfEventCycle
+{
 private:
     int fd;
     struct perf_event_attr pe;
     long long count;
-    public:
-    PerfEventCycle(int mode = 0, bool report_errors = true) : fd(-1), count(0) {
+
+public:
+    PerfEventCycle(int mode = 0, bool report_errors = true) : fd(-1), count(0)
+    {
         // Initialise the perf_event attribute structure
         memset(&pe, 0, sizeof(struct perf_event_attr));
         pe.type = PERF_TYPE_HARDWARE;
@@ -50,7 +51,8 @@ private:
         }
     }
 
-    ~PerfEventCycle() {
+    ~PerfEventCycle()
+    {
         if (fd != -1) close(fd);
     }
 
@@ -58,18 +60,21 @@ private:
     PerfEventCycle(const PerfEventCycle &) = delete;
     PerfEventCycle &operator=(const PerfEventCycle &) = delete;
 
-    bool available() const {
+    bool available() const
+    {
         return fd != -1;
     }
 
-    void start() {
+    void start()
+    {
         if (fd == -1) return;
         // Reset and enable the counter
         ioctl(fd, PERF_EVENT_IOC_RESET, 0);
         ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
     }
 
-    void stop() {
+    void stop()
+    {
         if (fd == -1) {
             count = 0;
             return;
@@ -86,7 +91,8 @@ private:
         close(fd);
         fd = -1;
     }
-    long long get_cycle(){
+    long long get_cycle()
+    {
         return count;
     }
 };
@@ -95,13 +101,14 @@ inline void read_data(int cpu_id, int *data, std::string path)
 {
     FILE *fp = nullptr;
     char buf[100] = {0};
-    std::string file_path="/sys/devices/system/cpu/cpu"+ std::to_string(cpu_id) + path;
+    std::string file_path =
+        "/sys/devices/system/cpu/cpu" + std::to_string(cpu_id) + path;
     std::ifstream file(file_path);
     if (file) {
         std::string read_freq = "cat " + file_path;
         fp = popen(read_freq.c_str(), "r");
         if (fp) {
-            int ret = fread(buf, 1, sizeof(buf)-1, fp);
+            int ret = fread(buf, 1, sizeof(buf) - 1, fp);
             if (ret > 0) {
                 *data = std::stod(buf);
             }
@@ -116,7 +123,7 @@ extern "C" uint64_t load_sme_vector_bytes(void);
 
 static uint64_t rdsvl()
 {
-  return load_sme_vector_bytes();
+    return load_sme_vector_bytes();
 }
 #endif
 

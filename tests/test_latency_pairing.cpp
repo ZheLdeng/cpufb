@@ -16,9 +16,8 @@ void expect(bool condition, const std::string &message)
     ++failures;
 }
 
-BenchmarkInfo benchmark(const char *isa,
-    const char *instruction,
-    const char *metric = "FLOPS")
+BenchmarkInfo benchmark(
+    const char *isa, const char *instruction, const char *metric = "FLOPS")
 {
     return BenchmarkInfo(isa, instruction, metric);
 }
@@ -26,22 +25,14 @@ BenchmarkInfo benchmark(const char *isa,
 void test_order_independent_pairing()
 {
     BenchmarkCatalog catalog;
-    catalog.push_back(benchmark(
-        "i8mm", "mmla(s32,s8,s8)_latency", "OPS"));
-    catalog.push_back(benchmark(
-        "asimd", "fmla.vv(f32,f32,f32)"));
-    catalog.push_back(benchmark(
-        "i8mm", "mmla(s32,s8,s8)", "OPS"));
-    catalog.push_back(benchmark(
-        "sve", "sve_fmla.vv(f32,f32,f32)_latency"));
-    catalog.push_back(benchmark(
-        "ASIMD", "fmla.vv(f32,f32,f32)_latency"));
-    catalog.push_back(benchmark(
-        "SVE", "sve_fmla.vv(f32,f32,f32)"));
-    catalog.push_back(benchmark(
-        "asimd", "sve_fmla.vv(f32,f32,f32)"));
-    catalog.push_back(benchmark(
-        "asimd", "orphan_latency"));
+    catalog.push_back(benchmark("i8mm", "mmla(s32,s8,s8)_latency", "OPS"));
+    catalog.push_back(benchmark("asimd", "fmla.vv(f32,f32,f32)"));
+    catalog.push_back(benchmark("i8mm", "mmla(s32,s8,s8)", "OPS"));
+    catalog.push_back(benchmark("sve", "sve_fmla.vv(f32,f32,f32)_latency"));
+    catalog.push_back(benchmark("ASIMD", "fmla.vv(f32,f32,f32)_latency"));
+    catalog.push_back(benchmark("SVE", "sve_fmla.vv(f32,f32,f32)"));
+    catalog.push_back(benchmark("asimd", "sve_fmla.vv(f32,f32,f32)"));
+    catalog.push_back(benchmark("asimd", "orphan_latency"));
 
     pair_benchmark_latencies(catalog);
 
@@ -55,8 +46,8 @@ void test_order_independent_pairing()
         "ISA matching must be case-insensitive");
     expect(catalog[6].pair_index == -1,
         "a latency from another ISA must not be used as a fallback");
-    expect(catalog[7].pair_index == -1,
-        "an orphan latency must remain unpaired");
+    expect(
+        catalog[7].pair_index == -1, "an orphan latency must remain unpaired");
 
     pair_benchmark_latencies(catalog);
     expect(catalog[0].pair_index == 2 && catalog[2].pair_index == 0,
@@ -67,10 +58,8 @@ void test_ambiguous_and_non_compute_entries()
 {
     BenchmarkCatalog duplicate_latency;
     duplicate_latency.push_back(benchmark("asimd", "duplicate"));
-    duplicate_latency.push_back(benchmark(
-        "asimd", "duplicate_latency"));
-    duplicate_latency.push_back(benchmark(
-        "ASIMD", "duplicate_latency"));
+    duplicate_latency.push_back(benchmark("asimd", "duplicate_latency"));
+    duplicate_latency.push_back(benchmark("ASIMD", "duplicate_latency"));
     pair_benchmark_latencies(duplicate_latency);
 
     expect(duplicate_latency[0].pair_index == -1,
@@ -80,14 +69,11 @@ void test_ambiguous_and_non_compute_entries()
         "ambiguous latency entries must remain unpaired");
 
     BenchmarkCatalog non_compute;
-    non_compute.push_back(benchmark(
-        "L1 Cache", "load", "Byte/Cycle"));
-    non_compute.push_back(benchmark(
-        "L1 Cache", "load_latency", "Byte/Cycle"));
+    non_compute.push_back(benchmark("L1 Cache", "load", "Byte/Cycle"));
+    non_compute.push_back(benchmark("L1 Cache", "load_latency", "Byte/Cycle"));
     pair_benchmark_latencies(non_compute);
 
-    expect(non_compute[0].pair_index == -1 &&
-            non_compute[1].pair_index == -1,
+    expect(non_compute[0].pair_index == -1 && non_compute[1].pair_index == -1,
         "only compute benchmarks may form throughput/latency pairs");
 }
 

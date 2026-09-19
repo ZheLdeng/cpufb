@@ -84,9 +84,9 @@ static double cpu_freq_override_ghz()
     return ghz;
 }
 
-static void* thread_function_freq(void* arg)
+static void *thread_function_freq(void *arg)
 {
-    FrequencyData* data = new FrequencyData();
+    FrequencyData *data = new FrequencyData();
     double tsc_frequency = 0.0;
     double cycle_frequency = 0.0;
 
@@ -95,12 +95,12 @@ static void* thread_function_freq(void* arg)
     // Intel Macs publish the nominal maximum; nothing is assumed per model.
     uint64_t max_frequency_hz = 0;
     size_t size = sizeof(max_frequency_hz);
-    if (sysctlbyname("hw.cpufrequency_max", &max_frequency_hz, &size, nullptr,
-            0) == 0)
+    if (sysctlbyname(
+            "hw.cpufrequency_max", &max_frequency_hz, &size, nullptr, 0) == 0)
         data->theory_freq = static_cast<double>(max_frequency_hz) * 1e-9;
 #endif
 #ifdef __linux__
-    const int cpu_id = *static_cast<int*>(arg);
+    const int cpu_id = *static_cast<int *>(arg);
 
     cpu_set_t cpuset;
     const pid_t pid = syscall(SYS_gettid);
@@ -190,13 +190,13 @@ static void* thread_function_freq(void* arg)
     clock_gettime(CLOCK_MONOTONIC_RAW, &load_start);
     cpufb_x64_frequency_load(cache_data, kFrequencyLoopTime);
     clock_gettime(CLOCK_MONOTONIC_RAW, &load_end);
-    data->IPC_load = instruction_rate(get_time(&load_start, &load_end),
-        cycle_frequency);
+    data->IPC_load =
+        instruction_rate(get_time(&load_start, &load_end), cycle_frequency);
 
     return data;
 }
 
-}  // namespace
+} // namespace
 
 void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
 {
@@ -206,12 +206,12 @@ void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
 
     for (size_t i = 0; i < num_threads; ++i)
         pthread_create(&threads[i], nullptr, thread_function_freq,
-            static_cast<void*>(&set_of_threads[i]));
+            static_cast<void *>(&set_of_threads[i]));
 
     for (size_t i = 0; i < num_threads; ++i) {
-        void* thread_result = nullptr;
+        void *thread_result = nullptr;
         pthread_join(threads[i], &thread_result);
-        FrequencyData* result = static_cast<FrequencyData*>(thread_result);
+        FrequencyData *result = static_cast<FrequencyData *>(thread_result);
 
         stringstream theory_freq, measured_freq, fsu32, fsu64, load;
         if (result->theory_freq > 0.0)
@@ -227,7 +227,9 @@ void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
             fsu64 << setprecision(2) << result->IPC_fp64;
             load << setprecision(2) << result->IPC_load;
         } else {
-            fsu32 << "-"; fsu64 << "-"; load << "-";
+            fsu32 << "-";
+            fsu64 << "-";
+            load << "-";
         }
         freq[i] = result->clock_ghz;
         if (i == 0) freq_counter_source = result->counter_source;

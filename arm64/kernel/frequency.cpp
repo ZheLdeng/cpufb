@@ -83,10 +83,12 @@ static double add_chain_frequency_hz()
     return best > 0.0 ? looptime * 16.0 / best : 0.0;
 }
 
-static double instruction_rate(int64_t looptime, double elapsed, double clock_hz)
+static double instruction_rate(
+    int64_t looptime, double elapsed, double clock_hz)
 {
     return clock_hz > 0.0 && elapsed > 0.0
-        ? looptime * 24 / (elapsed * clock_hz) : 0.0;
+        ? looptime * 24 / (elapsed * clock_hz)
+        : 0.0;
 }
 
 // Clock sources, best first.  Only 1, 3 and 4 are measurements and fill
@@ -98,7 +100,7 @@ static double instruction_rate(int64_t looptime, double elapsed, double clock_hz
 //   3. the ADD dependency chain (always available, no privileges);
 //   4. macOS only: a powermetrics sample (root);
 //   5. the OS-reported maximum frequency (not measured).
-static void* thread_function_freq(void* arg)
+static void *thread_function_freq(void *arg)
 {
     // FrequencyData owns a std::string, so it must be constructed, not
     // malloc'd; get_cpu_freq() deletes it after the join.
@@ -140,7 +142,8 @@ static void* thread_function_freq(void* arg)
     counted = counted && counters.read(end_counters) &&
         end_counters.cycles > start_counters.cycles;
     const double counted_cycles = counted
-        ? static_cast<double>(end_counters.cycles - start_counters.cycles) : 0.0;
+        ? static_cast<double>(end_counters.cycles - start_counters.cycles)
+        : 0.0;
     const char *counted_source = "kperf fixed counters";
 #else
     PerfEventCycle cycle_counter(0, false);
@@ -191,26 +194,26 @@ static void* thread_function_freq(void* arg)
     data->clock_ghz = clock_hz * 1e-9;
 
     data->IPC_fp64 = instruction_rate(looptime, fp64_elapsed, clock_hz);
-    data->IPC_fp32 = instruction_rate(looptime,
-        time_kernel(asimd_fmla_vv_f32f32f32, looptime), clock_hz);
+    data->IPC_fp32 = instruction_rate(
+        looptime, time_kernel(asimd_fmla_vv_f32f32f32, looptime), clock_hz);
 
-    float* cache_data = nullptr;
-    if (posix_memalign((void**)&cache_data, 64, 1024) == 0) {
+    float *cache_data = nullptr;
+    if (posix_memalign((void **)&cache_data, 64, 1024) == 0) {
         memset(cache_data, 0, 1024);
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
         load_ldr_kernel(cache_data, looptime);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-        data->IPC_load = instruction_rate(looptime, get_time(&start, &end),
-            clock_hz);
+        data->IPC_load =
+            instruction_rate(looptime, get_time(&start, &end), clock_hz);
         free(cache_data);
     }
 
 #ifdef _SVE_
     if (arm64_runtime_features().sve) {
-        data->IPC_fp32_sve = instruction_rate(looptime,
-            time_kernel(sve_fmla_vv_f32f32f32, looptime), clock_hz);
-        data->IPC_fp64_sve = instruction_rate(looptime,
-            time_kernel(sve_fmla_vv_f64f64f64, looptime), clock_hz);
+        data->IPC_fp32_sve = instruction_rate(
+            looptime, time_kernel(sve_fmla_vv_f32f32f32, looptime), clock_hz);
+        data->IPC_fp64_sve = instruction_rate(
+            looptime, time_kernel(sve_fmla_vv_f64f64f64, looptime), clock_hz);
     }
 #endif
     pthread_exit((void *)data);
@@ -224,8 +227,8 @@ static std::string format_value(double value, int precision, const char *unit)
     return stream.str();
 }
 
-static void append_frequency_row(Table &table, const std::string &core,
-    const FrequencyData &result)
+static void append_frequency_row(
+    Table &table, const std::string &core, const FrequencyData &result)
 {
     // IPC needs some clock, measured or reported; "Test Freq" only ever shows
     // a measured one.
@@ -253,7 +256,7 @@ void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
     vector<pthread_t> threads(num_thread);
     for (size_t i = 0; i < num_thread; i++)
         pthread_create(&threads[i], nullptr, thread_function_freq,
-            (void*)&set_of_threads[i]);
+            (void *)&set_of_threads[i]);
 
     for (size_t t = 0; t < num_thread; t++) {
         void *thread_result = nullptr;

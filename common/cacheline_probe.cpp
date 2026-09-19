@@ -27,8 +27,7 @@ volatile uintptr_t g_cacheline_probe_sink = 0;
 
 double elapsed_seconds(const timespec &start, const timespec &end)
 {
-    return end.tv_sec - start.tv_sec +
-        (end.tv_nsec - start.tv_nsec) * 1e-9;
+    return end.tv_sec - start.tv_sec + (end.tv_nsec - start.tv_nsec) * 1e-9;
 }
 
 double median(std::vector<double> values)
@@ -46,8 +45,8 @@ double median(std::vector<double> values)
     return result;
 }
 
-uintptr_t *node_at(unsigned char *buffer, size_t window, size_t pitch,
-    size_t offset)
+uintptr_t *node_at(
+    unsigned char *buffer, size_t window, size_t pitch, size_t offset)
 {
     return reinterpret_cast<uintptr_t *>(buffer + window * pitch + offset);
 }
@@ -57,9 +56,8 @@ uintptr_t *make_chain(unsigned char *buffer, const std::vector<size_t> &order,
 {
     for (size_t i = 0; i < order.size(); ++i) {
         const size_t next = (i + 1) % order.size();
-        *node_at(buffer, order[i], pitch, offset) =
-            reinterpret_cast<uintptr_t>(
-                node_at(buffer, order[next], pitch, offset));
+        *node_at(buffer, order[i], pitch, offset) = reinterpret_cast<uintptr_t>(
+            node_at(buffer, order[next], pitch, offset));
     }
     return node_at(buffer, order[0], pitch, offset);
 }
@@ -84,8 +82,7 @@ bool debug_enabled()
 
 } // namespace
 
-int probe_cacheline_size(int theory_cacheline,
-    cacheline_flush_fn flush_line,
+int probe_cacheline_size(int theory_cacheline, cacheline_flush_fn flush_line,
     cacheline_fence_fn finish_flush)
 {
     static const size_t strides[] = {16, 32, 64, 128, 256, 512, 1024};
@@ -106,8 +103,8 @@ int probe_cacheline_size(int theory_cacheline,
         // Windows are spaced four strides apart (and at least four 64-byte
         // lines) so that a forward next-line prefetch triggered by one node
         // can never land on another node.
-        const size_t pitch = stride * 4 > kMinimumWindowPitch
-            ? stride * 4 : kMinimumWindowPitch;
+        const size_t pitch =
+            stride * 4 > kMinimumWindowPitch ? stride * 4 : kMinimumWindowPitch;
         const size_t window_count = kProbeBytes / pitch;
         std::vector<size_t> order(window_count);
         std::iota(order.begin(), order.end(), 0);
@@ -119,15 +116,15 @@ int probe_cacheline_size(int theory_cacheline,
         // prefetcher, which only fetches forward, cannot pull the reuse node
         // in.  With the reuse node above the cold node a 64-byte line plus
         // next-line prefetch is indistinguishable from a 128-byte line.
-        uintptr_t *first = make_chain(buffer, order, pitch,
-            stride + stride / 2);
+        uintptr_t *first =
+            make_chain(buffer, order, pitch, stride + stride / 2);
         uintptr_t *second = make_chain(buffer, order, pitch, stride);
 
         std::vector<double> samples;
         samples.reserve(kProbeRepeats);
         for (int repeat = 0; repeat < kProbeRepeats; ++repeat) {
             for (size_t offset = 0; offset < kProbeBytes;
-                    offset += kFlushGranularity)
+                offset += kFlushGranularity)
                 flush_line(buffer + offset);
             finish_flush();
 
@@ -146,7 +143,7 @@ int probe_cacheline_size(int theory_cacheline,
     double boundary_delta = 0.0;
     for (size_t i = 0; i + 1 < ratios.size(); ++i) {
         if (ratios[i] <= 0.0 || !std::isfinite(ratios[i]) ||
-                !std::isfinite(ratios[i + 1]))
+            !std::isfinite(ratios[i + 1]))
             continue;
         const double gain = ratios[i + 1] / ratios[i];
         const double delta = ratios[i + 1] - ratios[i];
@@ -154,8 +151,7 @@ int probe_cacheline_size(int theory_cacheline,
         // reused line to an untouched line. Later strides contain fewer chain
         // nodes and therefore have noisier timing; they must not override an
         // already valid earlier boundary.
-        if (gain >= kMinimumBoundaryGain &&
-                delta >= kMinimumBoundaryDelta) {
+        if (gain >= kMinimumBoundaryGain && delta >= kMinimumBoundaryDelta) {
             boundary = i;
             boundary_gain = gain;
             boundary_delta = delta;
@@ -163,9 +159,8 @@ int probe_cacheline_size(int theory_cacheline,
         }
     }
 
-    const int measured = boundary_gain > 0.0
-        ? static_cast<int>(strides[boundary])
-        : 0;
+    const int measured =
+        boundary_gain > 0.0 ? static_cast<int>(strides[boundary]) : 0;
 
     // The probe result is reported as measured, even when it disagrees with
     // the OS topology: substituting the reported value here would make the
@@ -185,8 +180,8 @@ int probe_cacheline_size(int theory_cacheline,
     return measured;
 }
 
-int effective_cacheline_size(int theory_cacheline, int measured_cacheline,
-    int fallback_cacheline)
+int effective_cacheline_size(
+    int theory_cacheline, int measured_cacheline, int fallback_cacheline)
 {
     if (theory_cacheline > 0) return theory_cacheline;
     if (measured_cacheline > 0) return measured_cacheline;

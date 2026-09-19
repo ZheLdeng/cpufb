@@ -12,19 +12,22 @@ namespace cpufb {
 // Nothing here reads or accepts OS-reported cache sizes: the estimate has to
 // stand as an independent measurement that can disagree with the topology.
 
-struct CacheLatencyPoint {
+struct CacheLatencyPoint
+{
     uint64_t working_set_bytes = 0;
     double latency_ns = 0;
 };
 
-struct CacheLevelEstimate {
+struct CacheLevelEstimate
+{
     std::string level;
     uint64_t capacity_bytes = 0;
     double latency_ns = 0;
     double jump_ratio = 0;
 };
 
-struct CacheCurveResult {
+struct CacheCurveResult
+{
     std::vector<CacheLatencyPoint> points;
     std::vector<CacheLevelEstimate> levels;
     // "huge pages" or "page-grouped order"; see measure_cache_curve().
@@ -47,8 +50,8 @@ std::vector<CacheLevelEstimate> estimate_cache_levels(
 // transparent huge pages the ring order is one global shuffle; otherwise the
 // order is shuffled page by page so that translation misses stay amortized
 // and cannot appear as a spurious level between L1 and L2.
-CacheCurveResult measure_cache_curve(CacheChaseKernel chase, int line_size,
-    uint64_t max_bytes);
+CacheCurveResult measure_cache_curve(
+    CacheChaseKernel chase, int line_size, uint64_t max_bytes);
 
 } // namespace cpufb
 

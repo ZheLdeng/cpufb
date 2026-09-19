@@ -37,10 +37,11 @@ double median_of(std::vector<double> values)
     std::sort(values.begin(), values.end());
     const size_t middle = values.size() / 2;
     return values.size() % 2 ? values[middle]
-        : (values[middle - 1] + values[middle]) / 2.0;
+                             : (values[middle - 1] + values[middle]) / 2.0;
 }
 
-struct Plateau {
+struct Plateau
+{
     size_t first;
     size_t last;
     double latency_ns;
@@ -91,8 +92,8 @@ bool transparent_huge_pages_available()
 // Ring order over `line_count` lines.  group_lines == 0 shuffles globally;
 // otherwise groups are visited in random order and shuffled internally.  The
 // ring always starts at line 0 because the chase kernels start at word 0.
-std::vector<size_t> build_ring_order(size_t line_count, size_t group_lines,
-    uint64_t seed)
+std::vector<size_t> build_ring_order(
+    size_t line_count, size_t group_lines, uint64_t seed)
 {
     std::mt19937_64 random(seed);
     if (group_lines == 0 || group_lines >= line_count) group_lines = line_count;
@@ -110,8 +111,8 @@ std::vector<size_t> build_ring_order(size_t line_count, size_t group_lines,
         for (size_t line = begin; line < end; ++line) order.push_back(line);
         std::shuffle(order.begin() + offset, order.end(), random);
     }
-    std::rotate(order.begin(), std::find(order.begin(), order.end(), 0),
-        order.end());
+    std::rotate(
+        order.begin(), std::find(order.begin(), order.end(), 0), order.end());
     return order;
 }
 
@@ -125,16 +126,17 @@ double measure_pointer_chase(CacheChaseKernel chase, int64_t *buffer,
     const std::vector<size_t> order =
         build_ring_order(line_count, group_lines, seed);
     for (size_t i = 0; i < line_count; ++i)
-        buffer[order[i] * stride_words] = static_cast<int64_t>(
-            order[(i + 1) % line_count] * stride_words);
+        buffer[order[i] * stride_words] =
+            static_cast<int64_t>(order[(i + 1) % line_count] * stride_words);
 
     const size_t int_max = static_cast<size_t>(std::numeric_limits<int>::max());
     // Two full laps place every line at its steady-state cache level.
-    chase(static_cast<int>(std::min(int_max,
-        std::max<size_t>(10000, line_count * 2))), buffer);
+    chase(static_cast<int>(
+              std::min(int_max, std::max<size_t>(10000, line_count * 2))),
+        buffer);
 
-    const int probe_iterations = static_cast<int>(std::min<size_t>(
-        std::max<size_t>(50000, line_count), 2000000));
+    const int probe_iterations = static_cast<int>(
+        std::min<size_t>(std::max<size_t>(50000, line_count), 2000000));
     timespec start, end;
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     chase(probe_iterations, buffer);
@@ -191,8 +193,8 @@ std::vector<CacheLevelEstimate> estimate_cache_levels(
         // (stack, code, an SMT sibling).  The capacity is therefore the last
         // working set before the upper plateau begins, not the start or the
         // midpoint of the ramp, which would under-report by a grid step.
-        size_t capacity_index = above.first > below.last
-            ? above.first - 1 : below.last;
+        size_t capacity_index =
+            above.first > below.last ? above.first - 1 : below.last;
         CacheLevelEstimate level;
         level.level = "L" + std::to_string(levels.size() + 1);
         level.capacity_bytes = points[capacity_index].working_set_bytes;
@@ -203,8 +205,8 @@ std::vector<CacheLevelEstimate> estimate_cache_levels(
     return levels;
 }
 
-CacheCurveResult measure_cache_curve(CacheChaseKernel chase, int line_size,
-    uint64_t max_bytes)
+CacheCurveResult measure_cache_curve(
+    CacheChaseKernel chase, int line_size, uint64_t max_bytes)
 {
     CacheCurveResult result;
     if (chase == nullptr || max_bytes < 8 * 1024) return result;
@@ -212,24 +214,27 @@ CacheCurveResult measure_cache_curve(CacheChaseKernel chase, int line_size,
 
     const bool huge_pages = transparent_huge_pages_available();
     const long page_size = sysconf(_SC_PAGESIZE);
-    const size_t page_bytes = page_size > 0 ? static_cast<size_t>(page_size)
-        : 4096;
-    const size_t group_lines = huge_pages ? 0
-        : std::max<size_t>(1, page_bytes / line);
+    const size_t page_bytes =
+        page_size > 0 ? static_cast<size_t>(page_size) : 4096;
+    const size_t group_lines =
+        huge_pages ? 0 : std::max<size_t>(1, page_bytes / line);
     result.translation_mode = huge_pages ? "huge pages" : "page-grouped order";
 
     void *allocation = nullptr;
 #ifdef __linux__
     const size_t huge_page_size = 2ULL * 1024 * 1024;
-    const size_t mapping_bytes = static_cast<size_t>(max_bytes) + huge_page_size;
+    const size_t mapping_bytes =
+        static_cast<size_t>(max_bytes) + huge_page_size;
     void *mapping = mmap(nullptr, mapping_bytes, PROT_READ | PROT_WRITE,
         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (mapping == MAP_FAILED) return result;
-    const uintptr_t aligned = (reinterpret_cast<uintptr_t>(mapping) +
-        huge_page_size - 1) & ~(huge_page_size - 1);
+    const uintptr_t aligned =
+        (reinterpret_cast<uintptr_t>(mapping) + huge_page_size - 1) &
+        ~(huge_page_size - 1);
     allocation = reinterpret_cast<void *>(aligned);
     if (huge_pages)
-        (void)madvise(allocation, static_cast<size_t>(max_bytes), MADV_HUGEPAGE);
+        (void)madvise(
+            allocation, static_cast<size_t>(max_bytes), MADV_HUGEPAGE);
 #else
     if (posix_memalign(&allocation, std::max(page_bytes, line),
             static_cast<size_t>(max_bytes)) != 0)

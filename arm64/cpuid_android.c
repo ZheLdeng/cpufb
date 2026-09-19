@@ -1,12 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include<stdbool.h>
+#include <stdbool.h>
 
 #define MAX_FEATURES 100
 #define MAX_FEATURE_LENGTH 1000
 
-bool find(const char *str, char (*features)[MAX_FEATURE_LENGTH], int count) {
+bool find(const char *str, char (*features)[MAX_FEATURE_LENGTH], int count)
+{
     for (int i = 0; i < count; i++) {
         if (strcmp(str, features[i]) == 0) {
             return true;
@@ -15,9 +16,10 @@ bool find(const char *str, char (*features)[MAX_FEATURE_LENGTH], int count) {
     return false;
 }
 
-int getCPUFeatures(char (*features)[MAX_FEATURE_LENGTH], int max_features) {
+int getCPUFeatures(char (*features)[MAX_FEATURE_LENGTH], int max_features)
+{
     char command[] = "cat /proc/cpuinfo | grep Features | head -n1";
-    FILE* pipe = popen(command, "r");
+    FILE *pipe = popen(command, "r");
     int count = 0;
 
     if (!pipe) {
@@ -52,81 +54,86 @@ int getCPUFeatures(char (*features)[MAX_FEATURE_LENGTH], int max_features) {
     return count;
 }
 
-int main() {
+int main()
+{
     char features[MAX_FEATURES][MAX_FEATURE_LENGTH];
 
     int count = getCPUFeatures(features, MAX_FEATURES);
     // for (int i = 0; i < count; i++) {
     //     printf("%s\n", features[i]);
     // }
-    if (find("asimd",features,count)) {
+    if (find("asimd", features, count)) {
         printf("_ASIMD_\n");
         printf("_ASIMD_REDUCE_\n");
         printf("_ASIMD_RECIP_\n");
         printf("_ASIMD_INT_MAC_\n");
         printf("_ASIMD_TBL_\n");
     }
-    if (find("asimddp",features,count)) {
+    if (find("asimddp", features, count)) {
         printf("_ASIMD_DP_\n");
     }
-    if (find("asimdhp",features,count)) {
+    if (find("asimdhp", features, count)) {
         printf("_ASIMD_HP_\n");
     }
-    if (find("i8mm",features,count)) {
+    if (find("i8mm", features, count)) {
         printf("_I8MM_\n");
     }
-    if (find("bf16",features,count)) {
+    if (find("bf16", features, count)) {
         printf("_BF16_\n");
     }
-    if (find("asimdfhm",features,count) || find("fhm",features,count)) {
+    if (find("asimdfhm", features, count) || find("fhm", features, count)) {
         printf("_FHM_\n");
     }
-    if (find("fcma",features,count)) {
+    if (find("fcma", features, count)) {
         printf("_ASIMD_FCMA_\n");
     }
-    if (find("sme",features,count)) {
+    if (find("sme", features, count)) {
         printf("_SME_\n");
     }
-    if (find("sve",features,count)) {
+    if (find("sve", features, count)) {
         printf("_SVE_\n");
-        if (find("svei8mm",features,count)) {
+        if (find("svei8mm", features, count)) {
             printf("_SVE_I8MM_\n");
         }
-        if (find("svebf16",features,count)) {
+        if (find("svebf16", features, count)) {
             printf("_SVE_BF16_\n");
         }
-        if (find("svef32mm",features,count)) {
+        if (find("svef32mm", features, count)) {
             printf("_SVE_F32MM_\n");
         }
-        if (find("svef64mm",features,count)) {
+        if (find("svef64mm", features, count)) {
             printf("_SVE_F64MM_\n");
         }
         // SVE FP16 FMLA: implied when SVE + asimdhp are present
-        if (find("asimdhp",features,count)) {
+        if (find("asimdhp", features, count)) {
             printf("_SVE_FP16_FMLA_\n");
         }
-        if (find("sve2",features,count)) {
+        if (find("sve2", features, count)) {
             printf("_SVE2_\n");
         }
     }
     // /proc/cpuinfo spells the SME sub-features without an underscore
     // ("smef64f64"); the underscored forms are kept for older notes/tools.
-    if (find("sme2",features,count)) {
+    if (find("sme2", features, count)) {
         printf("_SME2_\n");
-        if (find("smef64f64",features,count) || find("sme_f64f64",features,count)) {
+        if (find("smef64f64", features, count) ||
+            find("sme_f64f64", features, count)) {
             printf("_SMEf64_\n");
         }
-        if (find("smef16f16",features,count) || find("sme_f16f16",features,count)) {
+        if (find("smef16f16", features, count) ||
+            find("sme_f16f16", features, count)) {
             printf("_SME_F16F16_\n");
         }
-        if (find("smeb16b16",features,count) || find("sme_b16b16",features,count)) {
+        if (find("smeb16b16", features, count) ||
+            find("sme_b16b16", features, count)) {
             printf("_SME_B16B16_\n");
         }
-        if (find("smei16i64",features,count) || find("sme_i16i64",features,count)) {
+        if (find("smei16i64", features, count) ||
+            find("sme_i16i64", features, count)) {
             printf("_SME_I16I32_\n");
         }
     }
-    printf("_LDP_\n");     
-    printf("_ISSUE_\n");    
+    printf("_LDP_\n");
+    printf("_ISSUE_\n");
     return 0;
 }

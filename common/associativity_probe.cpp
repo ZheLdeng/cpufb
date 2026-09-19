@@ -35,8 +35,7 @@ double time_ring(const uint64_t *base, uint64_t first)
     timespec start, end;
     uint64_t next = first;
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    for (int step = 0; step < kRingSteps; ++step)
-        next = base[next];
+    for (int step = 0; step < kRingSteps; ++step) next = base[next];
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     g_associativity_probe_sink ^= next;
     return end.tv_sec - start.tv_sec + (end.tv_nsec - start.tv_nsec) * 1e-9;
@@ -50,7 +49,8 @@ uint64_t build_ring(uint64_t *base, const std::vector<int> &order,
     const size_t count = order.size();
     for (size_t i = 0; i < count; ++i) {
         const uint64_t from = order[i] * (stride_words + skew_words);
-        const uint64_t to = order[(i + 1) % count] * (stride_words + skew_words);
+        const uint64_t to =
+            order[(i + 1) % count] * (stride_words + skew_words);
         base[from] = to;
     }
     return order[0] * (stride_words + skew_words);
@@ -107,7 +107,8 @@ int probe_l1_associativity(int cacheline_bytes)
         const uint64_t test_first = build_ring(base, order, stride_words, 0);
         const double test_time = median_ring_time(base, test_first);
 
-        const double ratio = control_time > 0.0 ? test_time / control_time : 0.0;
+        const double ratio =
+            control_time > 0.0 ? test_time / control_time : 0.0;
         if (debug)
             std::fprintf(stderr, "associativity probe: lines=%d ratio=%.3f\n",
                 lines, ratio);

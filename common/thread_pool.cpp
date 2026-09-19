@@ -13,47 +13,41 @@
 #include <iostream>
 #include <limits>
 #ifdef __linux__
-#include<sys/syscall.h>
+#include <sys/syscall.h>
 #endif
 using namespace std;
-
 
 static tpool_work_t *tpool_work_create(thread_func_t func, void *arg)
 {
     tpool_work_t *work;
 
-    if (func == nullptr)
-        return nullptr;
+    if (func == nullptr) return nullptr;
 
-    work = (tpool_work_t*)malloc(sizeof(*work));
+    work = (tpool_work_t *)malloc(sizeof(*work));
     work->func = func;
-    work->arg  = arg;
+    work->arg = arg;
     work->next = nullptr;
     return work;
 }
 
 static void tpool_work_destroy(tpool_work_t *work)
 {
-    if (work == nullptr)
-        return;
+    if (work == nullptr) return;
     free(work);
 }
-
 
 static tpool_work_t *tpool_work_get(tpool_t *tm)
 {
     tpool_work_t *work;
 
-    if (tm == nullptr)
-        return nullptr;
+    if (tm == nullptr) return nullptr;
 
     work = tm->work_first;
-    if (work == nullptr)
-        return nullptr;
+    if (work == nullptr) return nullptr;
 
     if (work->next == nullptr) {
         tm->work_first = nullptr;
-        tm->work_last  = nullptr;
+        tm->work_last = nullptr;
     } else {
         tm->work_first = work->next;
     }
@@ -70,9 +64,9 @@ size_t tpool_worker_index(void)
 
 static void *tpool_worker(void *arg)
 {
-    struct tpool_args* targs = (struct tpool_args*)arg;
-    tpool_t      *tm = targs->tm;
-    size_t cpu_id=targs->cpuid;
+    struct tpool_args *targs = (struct tpool_args *)arg;
+    tpool_t *tm = targs->tm;
+    size_t cpu_id = targs->cpuid;
     current_worker_index = targs->index;
     free(targs);
     bool affinity_failed = false;
@@ -84,8 +78,10 @@ static void *tpool_worker(void *arg)
     if (cpu_id < CPU_SETSIZE) CPU_SET(cpu_id, &mask);
     if (cpu_id >= CPU_SETSIZE ||
         sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
-        fprintf(stderr, "Error: cannot bind a worker to cpu %zu "
-            "(offline, outside the cpuset, or nonexistent).\n", cpu_id);
+        fprintf(stderr,
+            "Error: cannot bind a worker to cpu %zu "
+            "(offline, outside the cpuset, or nonexistent).\n",
+            cpu_id);
         affinity_failed = true;
     }
 #endif
@@ -99,12 +95,11 @@ static void *tpool_worker(void *arg)
 
     while (1) {
         while (tm->work_first == nullptr &&
-               tm->parallel_generation == observed_parallel_generation &&
-               !tm->stop)
+            tm->parallel_generation == observed_parallel_generation &&
+            !tm->stop)
             pthread_cond_wait(&(tm->work_cond), &(tm->work_mutex));
 
-        if (tm->stop)
-            break;
+        if (tm->stop) break;
 
         if (tm->parallel_generation != observed_parallel_generation) {
             observed_parallel_generation = tm->parallel_generation;
@@ -115,12 +110,13 @@ static void *tpool_worker(void *arg)
             if (tm->parallel_ready_cnt == tm->thread_num)
                 pthread_cond_signal(&(tm->parallel_ready_cond));
 
-            while (tm->parallel_start_generation < observed_parallel_generation &&
-                   !tm->stop)
-                pthread_cond_wait(&(tm->parallel_start_cond), &(tm->work_mutex));
+            while (
+                tm->parallel_start_generation < observed_parallel_generation &&
+                !tm->stop)
+                pthread_cond_wait(
+                    &(tm->parallel_start_cond), &(tm->work_mutex));
 
-            if (tm->stop)
-                break;
+            if (tm->stop) break;
 
             pthread_mutex_unlock(&(tm->work_mutex));
             parallel_func(parallel_arg);
@@ -155,19 +151,19 @@ static void *tpool_worker(void *arg)
 
 tpool_t *tpool_create(vector<int> set_of_threads)
 {
-    tpool_t   *tm;
-    size_t     i, num;
+    tpool_t *tm;
+    size_t i, num;
     num = set_of_threads.size();
-    if (num == 0)
-        num = 2;
+    if (num == 0) num = 2;
 
     tm = (tpool_t *)calloc(1, sizeof(*tm));
     tm->thread_cnt = num;
     tm->thread_num = num;
 #ifdef __APPLE__
     dispatch_qos_class_t qos_class = QOS_CLASS_USER_INTERACTIVE;
-    size_t size = sizeof(int);  
-    dispatch_queue_attr_t attr = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_CONCURRENT, qos_class, 0);
+    size_t size = sizeof(int);
+    dispatch_queue_attr_t attr = dispatch_queue_attr_make_with_qos_class(
+        DISPATCH_QUEUE_CONCURRENT, qos_class, 0);
     tm->queue = dispatch_queue_create("benchmark", attr);
 
     // A dispatch group waits for all workers to finish
@@ -182,21 +178,23 @@ tpool_t *tpool_create(vector<int> set_of_threads)
     pthread_cond_init(&(tm->parallel_done_cond), nullptr);
 
     tm->work_first = nullptr;
-    tm->work_last  = nullptr;
+    tm->work_last = nullptr;
     tm->threads = (pthread_t *)calloc(num, sizeof(*tm->threads));
 
     pthread_mutex_lock(&(tm->work_mutex));
-    for (i=0; i<num; i++) {
+    for (i = 0; i < num; i++) {
         tpool_args *args = (tpool_args *)malloc(sizeof(tpool_args));
         args->tm = tm;
         args->cpuid = set_of_threads[i];
         args->index = i;
-        if (pthread_create(&(tm->threads[i]), nullptr, tpool_worker, (void *)args) != 0) {
+        if (pthread_create(
+                &(tm->threads[i]), nullptr, tpool_worker, (void *)args) != 0) {
             free(args);
             tm->stop = true;
             pthread_cond_broadcast(&(tm->work_cond));
             pthread_mutex_unlock(&(tm->work_mutex));
-            for (size_t j = 0; j < i; j++) pthread_join(tm->threads[j], nullptr);
+            for (size_t j = 0; j < i; j++)
+                pthread_join(tm->threads[j], nullptr);
             free(tm->threads);
             pthread_mutex_destroy(&(tm->work_mutex));
             pthread_cond_destroy(&(tm->work_cond));
@@ -227,20 +225,18 @@ bool tpool_add_work(tpool_t *tm, thread_func_t func, void *arg)
 {
     tpool_work_t *work;
 
-    if (tm == nullptr)
-        return false;
+    if (tm == nullptr) return false;
 
     work = tpool_work_create(func, arg);
-    if (work == nullptr)
-        return false;
+    if (work == nullptr) return false;
 
     pthread_mutex_lock(&(tm->work_mutex));
     if (tm->work_first == nullptr) {
         tm->work_first = work;
-        tm->work_last  = tm->work_first;
+        tm->work_last = tm->work_first;
     } else {
         tm->work_last->next = work;
-        tm->work_last       = work;
+        tm->work_last = work;
     }
     // tm->thread_cnt += 1;
     pthread_cond_broadcast(&(tm->work_cond));
@@ -251,12 +247,12 @@ bool tpool_add_work(tpool_t *tm, thread_func_t func, void *arg)
 
 void tpool_wait(tpool_t *tm)
 {
-    if (tm == nullptr)
-        return;
+    if (tm == nullptr) return;
 
     pthread_mutex_lock(&(tm->work_mutex));
     while (1) {
-        if (tm->work_first != nullptr || (!tm->stop && tm->working_cnt != 0) || (tm->stop && tm->thread_cnt != 0)) {
+        if (tm->work_first != nullptr || (!tm->stop && tm->working_cnt != 0) ||
+            (tm->stop && tm->thread_cnt != 0)) {
             pthread_cond_wait(&(tm->working_cond), &(tm->work_mutex));
         } else {
             break;
@@ -315,8 +311,7 @@ void tpool_destroy(tpool_t *tm)
     tpool_work_t *work;
     tpool_work_t *work2;
 
-    if (tm == nullptr)
-        return;
+    if (tm == nullptr) return;
 
     pthread_mutex_lock(&(tm->work_mutex));
     work = tm->work_first;
@@ -345,8 +340,7 @@ void tpool_destroy(tpool_t *tm)
     free(tm);
 }
 
-bool parse_thread_pool(const char *sets,
-    vector<int> &set_of_threads)
+bool parse_thread_pool(const char *sets, vector<int> &set_of_threads)
 {
     static const size_t kMaxThreadPoolEntries = 65536;
     if (sets == nullptr || sets[0] != '[') return false;
@@ -361,8 +355,9 @@ bool parse_thread_pool(const char *sets,
         uint64_t left = 0;
         do {
             const uint64_t digit = static_cast<uint64_t>(sets[pos] - '0');
-            if (left > (static_cast<uint64_t>(numeric_limits<int>::max()) -
-                    digit) / 10)
+            if (left >
+                (static_cast<uint64_t>(numeric_limits<int>::max()) - digit) /
+                    10)
                 return false;
             left = left * 10 + digit;
             ++pos;
@@ -375,9 +370,9 @@ bool parse_thread_pool(const char *sets,
             right = 0;
             do {
                 const uint64_t digit = static_cast<uint64_t>(sets[pos] - '0');
-                if (right >
-                    (static_cast<uint64_t>(numeric_limits<int>::max()) -
-                        digit) / 10)
+                if (right > (static_cast<uint64_t>(numeric_limits<int>::max()) -
+                                digit) /
+                        10)
                     return false;
                 right = right * 10 + digit;
                 ++pos;

@@ -11,28 +11,16 @@ StreamKernelSpec select_stream_kernel()
         cpufb_x86_detect_runtime_features();
     if (features.avx512f) {
         StreamKernelSpec spec = {
-            load_vmovups_zmm_kernel,
-            "vmovups.zmm(f32) 512-bit",
-            512,
-            8
-        };
+            load_vmovups_zmm_kernel, "vmovups.zmm(f32) 512-bit", 512, 8};
         return spec;
     }
     if (features.avx) {
         StreamKernelSpec spec = {
-            load_vmovups_kernel,
-            "vmovups.ymm(f32) 256-bit",
-            512,
-            16
-        };
+            load_vmovups_kernel, "vmovups.ymm(f32) 256-bit", 512, 16};
         return spec;
     }
     StreamKernelSpec spec = {
-        load_movups_xmm_kernel,
-        "movups.xmm(f32) 128-bit",
-        512,
-        32
-    };
+        load_movups_xmm_kernel, "movups.xmm(f32) 128-bit", 512, 32};
     return spec;
 }
 

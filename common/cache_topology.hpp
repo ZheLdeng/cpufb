@@ -42,8 +42,8 @@ std::string format_cache_capacity(std::uint64_t bytes);
 // tolerance is the largest measured/reported ratio, in either direction, that
 // counts as agreement: 1.0 for discrete values, about 1.5 for capacities,
 // which the sweeps sample on a coarse grid and which are effective sizes.
-std::string describe_probe_agreement(double reported, double measured,
-    double tolerance);
+std::string describe_probe_agreement(
+    double reported, double measured, double tolerance);
 
 } // namespace cpufb
 

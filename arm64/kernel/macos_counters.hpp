@@ -4,12 +4,14 @@
 #include <cstdint>
 #include <string>
 
-struct MacosCounterSnapshot {
+struct MacosCounterSnapshot
+{
     uint64_t cycles = 0;
     uint64_t instructions = 0;
 };
 
-class MacosCounters {
+class MacosCounters
+{
 public:
     MacosCounters();
     ~MacosCounters();
@@ -31,6 +33,7 @@ private:
 double macos_reported_max_frequency_ghz();
 
 // powermetrics is a root-only, sampled fallback. The returned value is MHz.
-bool sample_powermetrics_frequency_mhz(double &frequency_mhz, std::string &error);
+bool sample_powermetrics_frequency_mhz(
+    double &frequency_mhz, std::string &error);
 
 #endif

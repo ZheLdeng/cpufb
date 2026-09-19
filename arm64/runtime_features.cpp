@@ -84,7 +84,8 @@
 bool Arm64RuntimeFeatures::supports(const std::string &t) const
 {
     if (t == "_ASIMD_" || t == "_LDP_" || t == "_ISSUE_" ||
-        t == "_ASIMD_INT_MAC_" || t == "_ASIMD_TBL_") return asimd;
+        t == "_ASIMD_INT_MAC_" || t == "_ASIMD_TBL_")
+        return asimd;
     if (t == "_ASIMD_HP_") return asimd && fp16;
     if (t == "_ASIMD_DP_") return asimd && dotprod;
     if (t == "_BF16_") return asimd && bf16;
@@ -123,8 +124,10 @@ bool Arm64RuntimeFeatures::supports(const std::string &t) const
 std::vector<std::string> Arm64RuntimeFeatures::runnable_tokens() const
 {
     std::vector<std::string> result;
-#define CPUFB_ADD_IF_RUNNABLE(token) \
-    do { if (supports(#token)) result.emplace_back(#token); } while (false)
+#define CPUFB_ADD_IF_RUNNABLE(token)                                           \
+    do {                                                                       \
+        if (supports(#token)) result.emplace_back(#token);                     \
+    } while (false)
 #ifdef _ASIMD_
     CPUFB_ADD_IF_RUNNABLE(_ASIMD_);
 #endif

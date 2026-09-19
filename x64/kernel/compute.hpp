@@ -26,17 +26,17 @@ extern "C"
 #endif
 
 #ifdef _AMX_BF16_
-    void amx_bf16_mm_f32bf16bf16(int64_t, void* tile_cfg);
-    void amx_bf16_mm_f32bf16bf16_latency(int64_t, void* tile_cfg);
+    void amx_bf16_mm_f32bf16bf16(int64_t, void *tile_cfg);
+    void amx_bf16_mm_f32bf16bf16_latency(int64_t, void *tile_cfg);
 
 #endif
 
 #ifdef _AMX_INT8_
-    void amx_int8_mm_s32s8s8(int64_t, void* tile_cfg);
-    void amx_int8_mm_s32s8u8(int64_t, void* tile_cfg);
-    void amx_int8_mm_s32u8s8(int64_t, void* tile_cfg);
-    void amx_int8_mm_s32u8u8(int64_t, void* tile_cfg);
-    void amx_int8_mm_s32s8s8_latency(int64_t, void* tile_cfg);
+    void amx_int8_mm_s32s8s8(int64_t, void *tile_cfg);
+    void amx_int8_mm_s32s8u8(int64_t, void *tile_cfg);
+    void amx_int8_mm_s32u8s8(int64_t, void *tile_cfg);
+    void amx_int8_mm_s32u8u8(int64_t, void *tile_cfg);
+    void amx_int8_mm_s32s8s8_latency(int64_t, void *tile_cfg);
 #endif
 
 #ifdef _AVX_
@@ -44,10 +44,14 @@ extern "C"
     void avx_add_mul_f64f64_f64(int64_t, void *params);
     void avx_add_mul_f32f32_f32_latency(int64_t, void *params);
     void avx_add_mul_f64f64_f64_latency(int64_t, void *params);
-    void avx_add_f32(int64_t, void *); void avx_add_f32_latency(int64_t, void *);
-    void avx_mul_f32(int64_t, void *); void avx_mul_f32_latency(int64_t, void *);
-    void avx_add_f64(int64_t, void *); void avx_add_f64_latency(int64_t, void *);
-    void avx_mul_f64(int64_t, void *); void avx_mul_f64_latency(int64_t, void *);
+    void avx_add_f32(int64_t, void *);
+    void avx_add_f32_latency(int64_t, void *);
+    void avx_mul_f32(int64_t, void *);
+    void avx_mul_f32_latency(int64_t, void *);
+    void avx_add_f64(int64_t, void *);
+    void avx_add_f64_latency(int64_t, void *);
+    void avx_mul_f64(int64_t, void *);
+    void avx_mul_f64_latency(int64_t, void *);
 #endif
 
 #ifdef _AVX_VNNI_
@@ -96,28 +100,19 @@ extern "C"
 
 #ifdef _SSE_
     void sse_add_mul_f32f32_f32(int64_t, void *params);
-    void sse_add_f32(int64_t, void *); void sse_add_f32_latency(int64_t, void *);
-    void sse_mul_f32(int64_t, void *); void sse_mul_f32_latency(int64_t, void *);
+    void sse_add_f32(int64_t, void *);
+    void sse_add_f32_latency(int64_t, void *);
+    void sse_mul_f32(int64_t, void *);
+    void sse_mul_f32_latency(int64_t, void *);
 #endif
 
 #ifdef _SSE2_
     void sse2_add_mul_f64f64_f64(int64_t, void *params);
-    void sse2_add_f64(int64_t, void *); void sse2_add_f64_latency(int64_t, void *);
-    void sse2_mul_f64(int64_t, void *); void sse2_mul_f64_latency(int64_t, void *);
+    void sse2_add_f64(int64_t, void *);
+    void sse2_add_f64_latency(int64_t, void *);
+    void sse2_mul_f64(int64_t, void *);
+    void sse2_mul_f64_latency(int64_t, void *);
 #endif
-
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
 #endif

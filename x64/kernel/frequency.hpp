@@ -15,7 +15,8 @@ extern "C"
     uint64_t cpufb_x64_frequency_add_chain(int64_t loop_time, uint64_t addend);
 }
 
-struct FrequencyData {
+struct FrequencyData
+{
     double theory_freq = 0;
     // Measured clock shown as "Test Freq"; 0 when nothing could be measured.
     double caculate_freq = 0;
@@ -27,7 +28,7 @@ struct FrequencyData {
     double IPC_fp64 = 0;
     double IPC_load = 0;
 };
-void get_cpu_freq(std::vector<int> &set_of_threads,Table &table);
+void get_cpu_freq(std::vector<int> &set_of_threads, Table &table);
 // Source of the cycle rate stored in freq[0]: "perf_event cycles",
 // "CPUFB_FREQ_GHZ (not measured)", "ADD-chain estimate", "invariant TSC" or
 // "OS-reported frequency (not measured)".

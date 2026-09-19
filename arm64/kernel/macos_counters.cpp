@@ -11,11 +11,12 @@
 namespace {
 constexpr uint32_t kKpcClassFixedMask = 1u;
 constexpr uint32_t kFixedCounterCount = 2;
-}
+} // namespace
 
 MacosCounters::MacosCounters()
 {
-    library_ = dlopen("/System/Library/PrivateFrameworks/kperf.framework/kperf", RTLD_LAZY);
+    library_ = dlopen(
+        "/System/Library/PrivateFrameworks/kperf.framework/kperf", RTLD_LAZY);
     if (library_ == nullptr) {
         error_ = "kperf framework unavailable";
         return;
@@ -40,11 +41,13 @@ MacosCounters::~MacosCounters()
 bool MacosCounters::read(MacosCounterSnapshot &snapshot) const
 {
     if (!available()) return false;
-    if (get_counter_count_(kKpcClassFixedMask) < kFixedCounterCount) return false;
+    if (get_counter_count_(kKpcClassFixedMask) < kFixedCounterCount)
+        return false;
 
     uint32_t count = kFixedCounterCount;
     uint64_t values[kFixedCounterCount] = {};
-    if (get_thread_counters_(&count, values) != 0 || count < kFixedCounterCount) return false;
+    if (get_thread_counters_(&count, values) != 0 || count < kFixedCounterCount)
+        return false;
 
     // Apple KPC's fixed-counter order is cycles followed by instructions.
     snapshot.cycles = values[0];
@@ -63,9 +66,11 @@ std::string MacosCounters::error() const
     return error_;
 }
 
-bool sample_powermetrics_frequency_mhz(double &frequency_mhz, std::string &error)
+bool sample_powermetrics_frequency_mhz(
+    double &frequency_mhz, std::string &error)
 {
-    FILE *pipe = popen("/usr/bin/powermetrics -n 1 -i 20 -s cpu_power 2>/dev/null", "r");
+    FILE *pipe =
+        popen("/usr/bin/powermetrics -n 1 -i 20 -s cpu_power 2>/dev/null", "r");
     if (pipe == nullptr) {
         error = "unable to launch powermetrics";
         return false;
@@ -80,7 +85,8 @@ bool sample_powermetrics_frequency_mhz(double &frequency_mhz, std::string &error
         return false;
     }
 
-    const std::regex frequency_pattern("(?:P-Cluster|P-core|CPU).*?[Ff]requency[^0-9]*([0-9]+(?:\\.[0-9]+)?)\\s*MHz");
+    const std::regex frequency_pattern(
+        "(?:P-Cluster|P-core|CPU).*?[Ff]requency[^0-9]*([0-9]+(?:\\.[0-9]+)?)\\s*MHz");
     std::smatch match;
     if (!std::regex_search(output, match, frequency_pattern)) {
         error = "powermetrics did not report a P-core frequency";
@@ -113,15 +119,16 @@ double macos_reported_max_frequency_ghz()
                 CFStringRef cf_key = CFStringCreateWithCString(
                     kCFAllocatorDefault, key, kCFStringEncodingUTF8);
                 if (cf_key == nullptr) continue;
-                CFTypeRef property = IORegistryEntryCreateCFProperty(entry,
-                    cf_key, kCFAllocatorDefault, 0);
+                CFTypeRef property = IORegistryEntryCreateCFProperty(
+                    entry, cf_key, kCFAllocatorDefault, 0);
                 CFRelease(cf_key);
                 if (property == nullptr) continue;
                 if (CFGetTypeID(property) == CFDataGetTypeID()) {
                     CFDataRef table = static_cast<CFDataRef>(property);
                     const UInt8 *bytes = CFDataGetBytePtr(table);
                     const CFIndex length = CFDataGetLength(table);
-                    for (CFIndex offset = 0; offset + 8 <= length; offset += 8) {
+                    for (CFIndex offset = 0; offset + 8 <= length;
+                        offset += 8) {
                         uint32_t raw = 0;
                         std::memcpy(&raw, bytes + offset, sizeof(raw));
                         // M1-M3 publish Hz, later parts kHz.

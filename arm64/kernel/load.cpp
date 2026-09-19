@@ -19,7 +19,7 @@
 #include <cache_curve.hpp>
 #include <cacheline_probe.hpp>
 #include <cache_topology.hpp>
-#include<common.hpp>
+#include <common.hpp>
 #include <load.hpp>
 #include <thread_pool.hpp>
 #include <sstream>
@@ -30,7 +30,7 @@
 #endif
 
 #ifdef __linux__
-#include<sys/syscall.h>
+#include <sys/syscall.h>
 #include <sys/mman.h>
 #endif
 // Assumed line size when neither the OS nor the probe provides one.
@@ -39,17 +39,19 @@ static constexpr int kDefaultCacheLineBytes = 64;
 using namespace std;
 
 double cacheline = kDefaultCacheLineBytes;
-typedef void (*load_bench)(float*, int, int64_t);
+typedef void (*load_bench)(float *, int, int64_t);
 
-struct load_bench_result {
+struct load_bench_result
+{
     double seconds = 0.0;
     uint64_t cycle_sum = 0;
     size_t cycle_worker_count = 0;
 };
 
-struct load_bench_task {
+struct load_bench_task
+{
     load_bench bench;
-    float* cache_data;
+    float *cache_data;
     int inner_loop;
     int64_t looptime;
     size_t worker_stride_bytes;
@@ -60,15 +62,13 @@ struct load_bench_task {
 
     load_bench_task(load_bench bench_value, float *cache_data_value,
         int inner_loop_value, int64_t looptime_value,
-        size_t worker_stride_bytes_value, size_t worker_count) :
-        bench(bench_value),
-        cache_data(cache_data_value),
-        inner_loop(inner_loop_value),
-        looptime(looptime_value),
-        worker_stride_bytes(worker_stride_bytes_value),
-        next_worker(0)
+        size_t worker_stride_bytes_value, size_t worker_count)
+        : bench(bench_value), cache_data(cache_data_value),
+          inner_loop(inner_loop_value), looptime(looptime_value),
+          worker_stride_bytes(worker_stride_bytes_value), next_worker(0)
 #ifdef __linux__
-        , worker_cycles(worker_count, 0)
+          ,
+          worker_cycles(worker_count, 0)
 #endif
     {
     }
@@ -79,16 +79,16 @@ static void load_bench_thread_func(void *params)
 #ifdef __APPLE__
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
 #endif
-    load_bench_task *task = reinterpret_cast<load_bench_task*>(params);
+    load_bench_task *task = reinterpret_cast<load_bench_task *>(params);
     // Index by pool position, not arrival order: the slice a worker warmed
     // into its private L1/L2 must be the slice it is later timed on.
     size_t worker_index = tpool_worker_index();
     if (worker_index == SIZE_MAX)
-        worker_index = task->next_worker.fetch_add(1,
-            std::memory_order_relaxed);
-    float *worker_data = reinterpret_cast<float*>(
-        reinterpret_cast<char*>(task->cache_data) +
-        worker_index * task->worker_stride_bytes);
+        worker_index =
+            task->next_worker.fetch_add(1, std::memory_order_relaxed);
+    float *worker_data =
+        reinterpret_cast<float *>(reinterpret_cast<char *>(task->cache_data) +
+            worker_index * task->worker_stride_bytes);
 #ifdef __linux__
     // Count the load kernel itself instead of inferring its cycle count from
     // a separately calibrated frequency and wall-clock duration.
@@ -105,8 +105,8 @@ static void load_bench_thread_func(void *params)
 #endif
 }
 
-static load_bench_result run_load_bench(load_bench bench, float* cache_data,
-    int inner_loop, int64_t looptime, size_t worker_stride_bytes, tpool_t* tm)
+static load_bench_result run_load_bench(load_bench bench, float *cache_data,
+    int inner_loop, int64_t looptime, size_t worker_stride_bytes, tpool_t *tm)
 {
     load_bench_result result;
     struct timespec start, end;
@@ -168,11 +168,12 @@ static double mean_measured_freq_ghz()
     return valid_count == 0 ? 0.0 : total_ghz / valid_count;
 }
 
-extern "C" {
+extern "C"
+{
     void load_ptr(int looptime, int64_t *ptr);
 }
 
-static inline int get_load_bytes_per_inner_loop(const string& type)
+static inline int get_load_bytes_per_inner_loop(const string &type)
 {
 #ifdef _SVE_
     if (type.find("sve-ld1") != string::npos) {
@@ -195,7 +196,7 @@ static inline int get_load_bytes_per_inner_loop(const string& type)
     return 512;
 }
 
-static inline size_t get_load_workset_alignment(const string& type)
+static inline size_t get_load_workset_alignment(const string &type)
 {
 #ifdef _SME_
     // ZA slice and SME2 multi-vector kernels use x3 as a scalar-element
@@ -213,7 +214,8 @@ static bool read_sysctl_u64(const char *name, uint64_t &value)
 {
     uint64_t sysctl_value = 0;
     size_t size = sizeof(sysctl_value);
-    if (sysctlbyname(name, &sysctl_value, &size, nullptr, 0) == 0 && sysctl_value > 0) {
+    if (sysctlbyname(name, &sysctl_value, &size, nullptr, 0) == 0 &&
+        sysctl_value > 0) {
         value = sysctl_value;
         return true;
     }
@@ -234,7 +236,7 @@ static void read_darwin_cache_info(struct CacheData *cache_data)
 
     if (cache_data->theory_L1 <= 0) {
         if ((read_sysctl_u64("hw.perflevel0.l1dcachesize", value) ||
-             read_sysctl_u64("hw.l1dcachesize", value)) &&
+                read_sysctl_u64("hw.l1dcachesize", value)) &&
             value / 1024 <= INT_MAX) {
             cache_data->theory_L1 = static_cast<int>(value / 1024);
         } else {
@@ -244,7 +246,7 @@ static void read_darwin_cache_info(struct CacheData *cache_data)
 
     if (cache_data->theory_L2 <= 0) {
         if ((read_sysctl_u64("hw.perflevel0.l2cachesize", value) ||
-             read_sysctl_u64("hw.l2cachesize", value)) &&
+                read_sysctl_u64("hw.l2cachesize", value)) &&
             value / 1024 <= INT_MAX) {
             cache_data->theory_L2 = static_cast<int>(value / 1024);
         } else {
@@ -268,8 +270,10 @@ static int parse_cache_size_kb(const string &text)
     char *end = nullptr;
     double value = strtod(text.c_str(), &end);
     if (end == text.c_str() || value <= 0) return 0;
-    if (*end == 'M' || *end == 'm') value *= 1024.0;
-    else if (*end == 'G' || *end == 'g') value *= 1024.0 * 1024.0;
+    if (*end == 'M' || *end == 'm')
+        value *= 1024.0;
+    else if (*end == 'G' || *end == 'g')
+        value *= 1024.0 * 1024.0;
     if (value > INT_MAX) return 0;
     return static_cast<int>(value);
 }
@@ -313,7 +317,8 @@ void get_reported_cache_info(struct CacheData *cache_data, int cpu_id)
         cache_data->test_cacheline, kDefaultCacheLineBytes);
 }
 
-cpufb::CacheCurveResult measure_cache_hierarchy(struct CacheData *cache_data, int cpu_id)
+cpufb::CacheCurveResult measure_cache_hierarchy(
+    struct CacheData *cache_data, int cpu_id)
 {
     cpufb::CacheCurveResult result;
     if (cache_data == nullptr) return result;
@@ -337,30 +342,29 @@ cpufb::CacheCurveResult measure_cache_hierarchy(struct CacheData *cache_data, in
     result = cpufb::measure_cache_curve(load_ptr, line_size, max_bytes);
     for (const auto &level : result.levels) {
         const int size_kb = static_cast<int>(level.capacity_bytes / 1024);
-        if (level.level == "L1") cache_data->test_L1 = size_kb;
-        else if (level.level == "L2") cache_data->test_L2 = size_kb;
+        if (level.level == "L1")
+            cache_data->test_L1 = size_kb;
+        else if (level.level == "L2")
+            cache_data->test_L2 = size_kb;
     }
     return result;
 }
 
-static void flush_cache_line(void *address) {
-    asm volatile (
-        "dc civac, %0\n\t"      // clean and invalidate cache line
+static void flush_cache_line(void *address)
+{
+    asm volatile("dc civac, %0\n\t" // clean and invalidate cache line
         :
-        : "r" (address)
-        : "memory"
-    );
+        : "r"(address)
+        : "memory");
 }
 
 static void finish_cache_line_flush()
 {
-    asm volatile (
-        "dsb ish\n\t"
-        "isb\n\t"
+    asm volatile("dsb ish\n\t"
+                 "isb\n\t"
         :
         :
-        : "memory"
-    );
+        : "memory");
 }
 
 void get_cacheline(struct CacheData *cache_data, int cpu_id)
@@ -374,15 +378,17 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
         printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
         printf("Warning: performance may be impacted \n");
     }
-    read_data(cpu_id, &cache_data->theory_cacheline, "/cache/index0/coherency_line_size");
+    read_data(cpu_id, &cache_data->theory_cacheline,
+        "/cache/index0/coherency_line_size");
 #endif
 #ifdef __APPLE__
     uint64_t cacheline_bytes = 0;
     size_t size = sizeof(cacheline_bytes);
-    if (sysctlbyname("hw.cachelinesize", &cacheline_bytes, &size, nullptr, 0) != 0) {
+    if (sysctlbyname("hw.cachelinesize", &cacheline_bytes, &size, nullptr, 0) !=
+        0) {
         perror("sysctlbyname cachelinesize failed");
     } else if (cacheline_bytes <=
-            static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+        static_cast<uint64_t>(std::numeric_limits<int>::max())) {
         cache_data->theory_cacheline = static_cast<int>(cacheline_bytes);
     }
 #endif
@@ -392,9 +398,9 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
 #else
         kDefaultCacheLineBytes;
 #endif
-    cache_data->test_cacheline = cpufb::probe_cacheline_size(
-        cache_data->theory_cacheline, flush_cache_line,
-        finish_cache_line_flush);
+    cache_data->test_cacheline =
+        cpufb::probe_cacheline_size(cache_data->theory_cacheline,
+            flush_cache_line, finish_cache_line_flush);
     cacheline = cpufb::effective_cacheline_size(cache_data->theory_cacheline,
         cache_data->test_cacheline, fallback_cacheline);
 }
@@ -403,10 +409,8 @@ void get_cache_capacities(struct CacheData *cache_size, int cpu_id)
 {
     if (cache_size == nullptr) return;
 
-    const cpufb::CacheLevelInfo l1 =
-        cpufb::detect_data_cache_level(cpu_id, 1);
-    const cpufb::CacheLevelInfo l2 =
-        cpufb::detect_data_cache_level(cpu_id, 2);
+    const cpufb::CacheLevelInfo l1 = cpufb::detect_data_cache_level(cpu_id, 1);
+    const cpufb::CacheLevelInfo l2 = cpufb::detect_data_cache_level(cpu_id, 2);
     const std::uint64_t max_kib =
         static_cast<std::uint64_t>(std::numeric_limits<int>::max());
 
@@ -431,17 +435,20 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
         printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
         printf("Warning: performance may be impacted \n");
     }
-    read_data(cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
+    read_data(
+        cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
 #endif
     // The previous ring used a bare 4 MiB stride: every line then sits on its
     // own page and those pages alias one DTLB set, so the first transition
     // was the DTLB associativity on cores without a fully associative L1
     // DTLB.  The shared probe cancels translation cost against a control ring
     // and needs no OS-reported geometry.
-    cache_size->test_way = cpufb::probe_l1_associativity(static_cast<int>(cacheline));
+    cache_size->test_way =
+        cpufb::probe_l1_associativity(static_cast<int>(cacheline));
 }
 
-LoadBandwidth get_bandwith(uint64_t looptime, double data_size, string type, void* bench, tpool_t* tm)
+LoadBandwidth get_bandwith(
+    uint64_t looptime, double data_size, string type, void *bench, tpool_t *tm)
 {
     LoadBandwidth perf;
     double best_time_used = 0.0;
@@ -456,29 +463,27 @@ LoadBandwidth get_bandwith(uint64_t looptime, double data_size, string type, voi
     if (data_size > 32 * 1024) {
         data_size = 32 * 1024;
     }
-    const size_t requested_data_bytes =
-        static_cast<size_t>(data_size) * 1024U;
+    const size_t requested_data_bytes = static_cast<size_t>(data_size) * 1024U;
     // Several hand-written, unrolled SME/SVE load kernels issue their last
     // vector load just past the logical end of the walk.  Keep a guard region
     // so a workset ending at a page boundary cannot fault; only data_bytes is
     // counted in the reported bandwidth.
     constexpr size_t kLoadGuardBytes = 4096;
-    const size_t thread_num = (tm != nullptr && tm->thread_num > 0) ?
-        tm->thread_num : 1;
+    const size_t thread_num =
+        (tm != nullptr && tm->thread_num > 0) ? tm->thread_num : 1;
     const size_t workset_alignment = get_load_workset_alignment(type);
     // Cache levels in the load table describe the working set seen by one
     // core.  Keep that per-worker working set constant during a scaling run;
     // otherwise a high-thread-count L2 sample can shrink below L1 capacity.
     // Workers still use disjoint storage, so aggregate traffic scales with
     // the worker count without sharing cache lines.
-    const size_t data_bytes = requested_data_bytes / workset_alignment *
-        workset_alignment;
+    const size_t data_bytes =
+        requested_data_bytes / workset_alignment * workset_alignment;
     if (data_bytes == 0) return perf;
     const size_t aggregate_data_bytes = data_bytes * thread_num;
-    const uint64_t bytes_per_outer_loop =
-        static_cast<uint64_t>(data_bytes);
-    uint64_t measured_looptime = max<uint64_t>(1,
-        kTargetBytesPerSample / bytes_per_outer_loop);
+    const uint64_t bytes_per_outer_loop = static_cast<uint64_t>(data_bytes);
+    uint64_t measured_looptime =
+        max<uint64_t>(1, kTargetBytesPerSample / bytes_per_outer_loop);
     measured_looptime = min<uint64_t>(measured_looptime, looptime);
     const size_t worker_stride_bytes = data_bytes + kLoadGuardBytes;
     if (worker_stride_bytes > std::numeric_limits<size_t>::max() / thread_num)
@@ -486,28 +491,30 @@ LoadBandwidth get_bandwith(uint64_t looptime, double data_size, string type, voi
     // Line-aligned storage: malloc() hands out 16-mod-64 addresses for large
     // blocks, which makes wide vector loads straddle cache lines.
     void *allocation = nullptr;
-    if (posix_memalign(&allocation, 4096, worker_stride_bytes * thread_num) != 0)
+    if (posix_memalign(&allocation, 4096, worker_stride_bytes * thread_num) !=
+        0)
         return perf;
-    float* cache_data = static_cast<float*>(allocation);
+    float *cache_data = static_cast<float *>(allocation);
 
     // Each worker owns a disjoint, equal-sized workset.  This avoids
     // synchronized reads of the same cache lines and keeps every worker's
     // stream in the selected per-core cache level.
     for (size_t worker = 0; worker < thread_num; ++worker) {
-        float *worker_data = reinterpret_cast<float*>(
-            reinterpret_cast<char*>(cache_data) + worker * worker_stride_bytes);
+        float *worker_data =
+            reinterpret_cast<float *>(reinterpret_cast<char *>(cache_data) +
+                worker * worker_stride_bytes);
         for (size_t i = 0; i < data_bytes / sizeof(float); i++) {
             worker_data[i] = static_cast<float>(i + worker);
         }
     }
-    inner_loop = static_cast<int>(data_bytes /
-        get_load_bytes_per_inner_loop(type));
+    inner_loop =
+        static_cast<int>(data_bytes / get_load_bytes_per_inner_loop(type));
     if (inner_loop < 1) {
         inner_loop = 1;
     }
 
     load_bench bench_ptr = reinterpret_cast<load_bench>(bench);
-	// warm up
+    // warm up
     run_load_bench(bench_ptr, cache_data, inner_loop, measured_looptime,
         worker_stride_bytes, tm);
 #ifdef __APPLE__
@@ -516,8 +523,8 @@ LoadBandwidth get_bandwith(uint64_t looptime, double data_size, string type, voi
     constexpr int repeat = 10;
 #endif
     for (int i = 0; i < repeat; i++) {
-        const load_bench_result sample = run_load_bench(bench_ptr, cache_data, inner_loop,
-            measured_looptime, worker_stride_bytes, tm);
+        const load_bench_result sample = run_load_bench(bench_ptr, cache_data,
+            inner_loop, measured_looptime, worker_stride_bytes, tm);
         if (sample.seconds > 0.0 &&
             (best_time_used == 0.0 || sample.seconds < best_time_used)) {
             best_time_used = sample.seconds;
@@ -535,8 +542,8 @@ LoadBandwidth get_bandwith(uint64_t looptime, double data_size, string type, voi
     perf.workset_bytes = data_bytes;
     perf.thread_num = thread_num;
     if (best_time_used > 0.0)
-        perf.gb_per_second = bytes_per_worker * thread_num /
-            best_time_used * 1e-9;
+        perf.gb_per_second =
+            bytes_per_worker * thread_num / best_time_used * 1e-9;
     if (best_cycle_worker_count == thread_num) {
         // PMU counts taken around the actual load kernels; cycle_sum /
         // thread_num is the mean cycle count of one worker.
@@ -545,8 +552,8 @@ LoadBandwidth get_bandwith(uint64_t looptime, double data_size, string type, voi
     } else {
         const double mean_freq_ghz = mean_measured_freq_ghz();
         if (best_time_used > 0.0 && mean_freq_ghz > 0.0) {
-            perf.bytes_per_cycle = bytes_per_worker /
-                (best_time_used * mean_freq_ghz * 1e9);
+            perf.bytes_per_cycle =
+                bytes_per_worker / (best_time_used * mean_freq_ghz * 1e9);
             perf.cycle_source = "time x measured frequency";
         }
     }

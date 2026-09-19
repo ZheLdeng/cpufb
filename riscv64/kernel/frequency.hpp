@@ -1,19 +1,20 @@
 #ifndef CPUFB_RISCV64_FREQUENCY_HPP
 #define CPUFB_RISCV64_FREQUENCY_HPP
-#include <string>  
+#include <string>
 #include <vector>
 #include "table.hpp"
-struct FrequencyData {
+struct FrequencyData
+{
     double theory_freq = 0;
     double caculate_freq = 0;
     double IPC_fp32 = 0;
     double IPC_fp64 = 0;
     double IPC_load = 0;
-    #ifdef _SVE_
+#ifdef _SVE_
     double IPC_fp32_sve = 0;
     double IPC_fp64_sve = 0;
-    #endif
+#endif
 };
-void get_cpu_freq(std::vector<int> &set_of_threads,Table &table);
+void get_cpu_freq(std::vector<int> &set_of_threads, Table &table);
 
 #endif

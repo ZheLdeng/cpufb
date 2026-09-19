@@ -7,7 +7,7 @@
 #include <cstring>
 #include <vector>
 #include <iostream>
-#include<common.hpp>
+#include <common.hpp>
 #include <load.hpp>
 #include <sstream>
 #ifdef __APPLE__
@@ -17,7 +17,7 @@
 #endif
 
 #ifdef __linux__
-#include<sys/syscall.h>
+#include <sys/syscall.h>
 #endif
 namespace {
 
@@ -47,17 +47,19 @@ static inline void load_ptr(int looptime, int64_t *ptr)
         idx = *(volatile int64_t *)(ptr + idx);
     }
 
-    asm volatile("" :: "r"(idx) : "memory");
+    asm volatile("" ::"r"(idx) : "memory");
 }
 
-static inline void shuffleVector(std::vector<int64_t>& vec) {
+static inline void shuffleVector(std::vector<int64_t> &vec)
+{
     // Seed the generator with the current time
     std::srand(static_cast<unsigned>(std::time(0)));
 
     // Fisher-Yates shuffle
     for (size_t i = vec.size() - 1; i > 0; --i) {
         int j = rand() % (i + 1); // random index in [0, i]
-        std::swap(vec[i], vec[j]);    // swap the current element with the random one
+        std::swap(
+            vec[i], vec[j]); // swap the current element with the random one
     }
 }
 
@@ -65,18 +67,16 @@ static inline void flush_cache_line(void *addr, size_t cl)
 {
     uintptr_t p = (uintptr_t)addr & ~(cl - 1);
 
-    asm volatile (
-        "fence rw, rw\n\t"
-        "cbo.flush (%0)\n\t"
-        "fence rw, rw\n\t"
+    asm volatile("fence rw, rw\n\t"
+                 "cbo.flush (%0)\n\t"
+                 "fence rw, rw\n\t"
         :
         : "r"(p)
-        : "memory"
-    );
+        : "memory");
 }
 
-
-static inline void shuffleGroups(std::vector<int64_t>& vec, int sub) {
+static inline void shuffleGroups(std::vector<int64_t> &vec, int sub)
+{
     if (sub <= 0) {
         std::cerr << "Error: sub must be greater than 0." << std::endl;
         return;
@@ -123,7 +123,8 @@ static inline void init(int64_t *ptr, vector<int64_t> ptr_index, int64_t group)
             index = ptr[index];
         }
         for (int64_t n = 0; n < group - 1; ++n) {
-            ptr[index] = ptr_index[group_index[n] * group_size + group_size - 1];
+            ptr[index] =
+                ptr_index[group_index[n] * group_size + group_size - 1];
             index = ptr[index];
         }
         ptr[index] = ptr_index[0];
@@ -147,12 +148,12 @@ static inline double inloop(int group, int win_size)
     int i, j, k;
     struct timespec start, end;
     double sum_time_used = 0;
-    int64_t *ptr = (int64_t*)malloc(win_size);
+    int64_t *ptr = (int64_t *)malloc(win_size);
     int read_stride = int(log(cacheline) / log(2));
     int total_num = (win_size) >> read_stride; // one value per cache line
-    int test_time = 100; 
+    int test_time = 100;
 
-    vector<int64_t> ptr_index(total_num) ;
+    vector<int64_t> ptr_index(total_num);
     for (i = 0; i < test_time; i++) {
         int64_t index = 0;
         for (int64_t m = 0; m < total_num; ++m) {
@@ -168,19 +169,21 @@ static inline double inloop(int group, int win_size)
         usleep(1000);
     }
     free(ptr);
-    printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
+    printf(
+        "size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
 
     return sum_time_used / test_time;
 }
 
-static inline void get_slope(vector<double>& data, vector<double>& slope)
+static inline void get_slope(vector<double> &data, vector<double> &slope)
 {
     for (int i = 1; i < data.size(); i++) {
         slope.push_back((data[i] - data[i - 1]) / data[i - 1]);
     }
 }
 
-static inline void get_validation(vector<double>& data, vector<double>& validation)
+static inline void get_validation(
+    vector<double> &data, vector<double> &validation)
 {
     for (int i = 1; i < data.size(); i++) {
         validation.push_back(abs(data[i] - data[i - 1]));
@@ -188,22 +191,23 @@ static inline void get_validation(vector<double>& data, vector<double>& validati
 }
 
 // Whether the point is a local maximum
-static inline bool isMaximum(const vector<double>& values, int index)
+static inline bool isMaximum(const vector<double> &values, int index)
 {
     int n = values.size();
     if (index == 0 || index == n - 1) {
         return false; // a boundary point is never a local maximum
     }
-    return values[index] > values[index - 1] && values[index] > values[index + 1];
+    return values[index] > values[index - 1] &&
+        values[index] > values[index + 1];
 }
 
 // Find the local maxima in the given range
-static inline int find_L2_point(const vector<double>& values, int start, int end)
+static inline int find_L2_point(
+    const vector<double> &values, int start, int end)
 {
     int size = 0;
     for (int i = start + 1; i < end; i++) {
-
-        if (isMaximum(values, i) && values[i] > values [start]) {
+        if (isMaximum(values, i) && values[i] > values[start]) {
             size = i;
             break;
         }
@@ -212,7 +216,7 @@ static inline int find_L2_point(const vector<double>& values, int start, int end
     return size;
 }
 
-static inline int find_L1_point(const vector<double>& values)
+static inline int find_L1_point(const vector<double> &values)
 {
     for (int i = 0; i < values.size(); i++) {
         if (values[i] > 0.2) {
@@ -222,10 +226,12 @@ static inline int find_L1_point(const vector<double>& values)
     return 0;
 }
 
-static inline void random_access(vector<double>& time_used) {
+static inline void random_access(vector<double> &time_used)
+{
     for (int win_size = 2 * 1024; win_size <= kWindowBytes; win_size *= 2) {
         time_used.push_back(inloop(max(1, win_size / 1024 / 64), win_size));
-        time_used.push_back(inloop(max(1, int(win_size * 1.5 / 1024 / 64)), win_size * 1.5));
+        time_used.push_back(
+            inloop(max(1, int(win_size * 1.5 / 1024 / 64)), win_size * 1.5));
     }
     return;
 }
@@ -237,7 +243,7 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
     vector<double> slope;
     int datasize = 64 * 1024;
     vector<double> time_used;
-    uintptr_t *ptr = (uintptr_t*)malloc(datasize);
+    uintptr_t *ptr = (uintptr_t *)malloc(datasize);
     double first_time, second_time;
 #ifdef __linux__
     pid_t pid = syscall(SYS_gettid);
@@ -248,39 +254,40 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
         printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
         printf("Warning: performance may be impacted \n");
     }
-    read_data(cpu_id, &cache_data->theory_cacheline, "/cache/index0/coherency_line_size");
+    read_data(cpu_id, &cache_data->theory_cacheline,
+        "/cache/index0/coherency_line_size");
 #endif
 
-    for(int buf = 16 ; buf <= 1024 ; buf *= 2){
+    for (int buf = 16; buf <= 1024; buf *= 2) {
         first_time = 0;
         second_time = 0;
         int w = datasize / buf;
-        int n = (buf >> 3)/2 + 1 ;
-        for(j = 0 ; j < datasize >> 3 ; j++){
+        int n = (buf >> 3) / 2 + 1;
+        for (j = 0; j < datasize >> 3; j++) {
             ptr[j] = 0;
         }
-        uintptr_t* next;
-        for( j = 0 ; j < w-1 ; j++){
-            ptr[(j * buf) >> 3 ]=(uintptr_t)&ptr[((j + 1) * buf) >> 3];
-            ptr[((j * buf) >> 3) + n]=(uintptr_t)&ptr[(((j + 1) * buf) >> 3) + n];
+        uintptr_t *next;
+        for (j = 0; j < w - 1; j++) {
+            ptr[(j * buf) >> 3] = (uintptr_t)&ptr[((j + 1) * buf) >> 3];
+            ptr[((j * buf) >> 3) + n] =
+                (uintptr_t)&ptr[(((j + 1) * buf) >> 3) + n];
         }
         ptr[(j * buf) >> 3] = (uintptr_t)&ptr[0];
         ptr[((j * buf) >> 3) + n] = (uintptr_t)&ptr[n];
 
-        for(i = 0; i < 1000 ; i++){
-            for (uintptr_t p = (uintptr_t)ptr;
-                p < (uintptr_t)ptr + datasize;
+        for (i = 0; i < 1000; i++) {
+            for (uintptr_t p = (uintptr_t)ptr; p < (uintptr_t)ptr + datasize;
                 p += cache_data->theory_cacheline) {
                 flush_cache_line((void *)p, cache_data->theory_cacheline);
             }
-            next = (uintptr_t*)&ptr[0];
-            for(k=0 ; k < w ; k++){
-                next = (uintptr_t*)*next;
+            next = (uintptr_t *)&ptr[0];
+            for (k = 0; k < w; k++) {
+                next = (uintptr_t *)*next;
             }
             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            next = (uintptr_t*)&ptr[n];
-            for(k=0 ; k < w ; k++){
-                next = (uintptr_t*)*next;
+            next = (uintptr_t *)&ptr[n];
+            for (k = 0; k < w; k++) {
+                next = (uintptr_t *)*next;
             }
             clock_gettime(CLOCK_MONOTONIC_RAW, &end);
             second_time += (get_time(&start, &end) / w);
@@ -315,12 +322,14 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     read_data(cpu_id, &cache_size->theory_L1, "/cache/index0/size");
     read_data(cpu_id, &cache_size->theory_L2, "/cache/index2/size");
 #endif
-#ifdef __APPLE__ 
+#ifdef __APPLE__
     size_t size = sizeof(int);
-    if (sysctlbyname("hw.perflevel0.l1dcachesize", &cache_size->theory_L1, &size, nullptr, 0) != 0) {
+    if (sysctlbyname("hw.perflevel0.l1dcachesize", &cache_size->theory_L1,
+            &size, nullptr, 0) != 0) {
         perror("sysctlbyname l1dcachesize failed");
     }
-    if (sysctlbyname("hw.perflevel0.l2cachesize", &cache_size->theory_L2, &size, nullptr, 0) != 0) {
+    if (sysctlbyname("hw.perflevel0.l2cachesize", &cache_size->theory_L2, &size,
+            nullptr, 0) != 0) {
         perror("sysctlbyname l2cachesize failed");
     }
     cache_size->theory_L1 /= 1024;
@@ -332,9 +341,11 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     get_validation(time_used, validation);
     L1_size_num = find_L1_point(slope);
     cout << "L1_size = " << cache_size->theory_L1 << endl;
-    cache_size->test_L1 = pow(2, L1_size_num / 2 + 1) * (1 + 0.5 * (L1_size_num % 2));
+    cache_size->test_L1 =
+        pow(2, L1_size_num / 2 + 1) * (1 + 0.5 * (L1_size_num % 2));
     cout << "L1_size test == " << cache_size->test_L1 << endl;
-    cache_size->test_L2 = find_L2_point(validation, L1_size_num, validation.size());
+    cache_size->test_L2 =
+        find_L2_point(validation, L1_size_num, validation.size());
     cout << "L2_size = " << cache_size->theory_L2 << endl;
     cout << "L2_size test == " << cache_size->test_L2 << endl;
 }
@@ -354,14 +365,15 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
         printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
         printf("Warning: performance may be impacted \n");
     }
-    read_data(cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
+    read_data(
+        cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
 #endif
     for (w = 0; w < kBufferCount; w++) {
-        uint64_t *index = (uint64_t*)malloc(kBufferBytes * (w + 1));
+        uint64_t *index = (uint64_t *)malloc(kBufferBytes * (w + 1));
         uint64_t next = 0;
         //init
-        for ( j = 0; j < w; j++) {
-            index[(j * kBufferBytes) >> 3 ] = ((j + 1) * kBufferBytes) >> 3;
+        for (j = 0; j < w; j++) {
+            index[(j * kBufferBytes) >> 3] = ((j + 1) * kBufferBytes) >> 3;
         }
         index[(j * kBufferBytes) >> 3] = 0;
         //warm up
@@ -372,19 +384,19 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
 
         pre_time_used = time_used;
         time_used = 0;
-        for (i = 0; i < test_time;i++) {
+        for (i = 0; i < test_time; i++) {
             clock_gettime(CLOCK_MONOTONIC_RAW, &start);
             next = 0;
-            for (k = 0; k<loop_time; k++) {
+            for (k = 0; k < loop_time; k++) {
                 next = index[next];
             }
             clock_gettime(CLOCK_MONOTONIC_RAW, &end);
             time_used += get_time(&start, &end);
         }
         time_used /= test_time;
-        cout << "multi way " << w << " / " << time_used << " " << pre_time_used << " / "<< 
-            time_used/pre_time_used << endl;
-        if (w > 1 && time_used/pre_time_used - 1 > 1e-1) {
+        cout << "multi way " << w << " / " << time_used << " " << pre_time_used
+             << " / " << time_used / pre_time_used << endl;
+        if (w > 1 && time_used / pre_time_used - 1 > 1e-1) {
             break;
         }
         free(index);

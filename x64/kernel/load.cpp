@@ -22,15 +22,16 @@
 #include <fstream>
 #include <sstream>
 #ifdef __linux__
-#include<sys/syscall.h>
+#include <sys/syscall.h>
 #endif
 // Assumed line size when neither the OS nor the probe provides one.
 static constexpr int kDefaultCacheLineBytes = 64;
 
 using namespace std;
 
-static void flush_cache_line(void* addr) {
-    _mm_clflush(addr);  // CLFLUSH
+static void flush_cache_line(void *addr)
+{
+    _mm_clflush(addr); // CLFLUSH
 }
 
 static void finish_cache_line_flush()
@@ -49,11 +50,12 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
         printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
         printf("Warning: performance may be impacted \n");
     }
-    read_data(cpu_id, &cache_size->theory_cacheline, "/cache/index0/coherency_line_size");
+    read_data(cpu_id, &cache_size->theory_cacheline,
+        "/cache/index0/coherency_line_size");
 #endif
-    cache_size->test_cacheline = cpufb::probe_cacheline_size(
-        cache_size->theory_cacheline, flush_cache_line,
-        finish_cache_line_flush);
+    cache_size->test_cacheline =
+        cpufb::probe_cacheline_size(cache_size->theory_cacheline,
+            flush_cache_line, finish_cache_line_flush);
 }
 
 void get_theory_cache(struct CacheData *cache_size, int cpu_id)
@@ -61,8 +63,8 @@ void get_theory_cache(struct CacheData *cache_size, int cpu_id)
 #ifdef __linux__
     read_data(cpu_id, &cache_size->theory_L1, "/cache/index0/size");
     read_data(cpu_id, &cache_size->theory_L2, "/cache/index2/size");
-    read_data(cpu_id, &cache_size->theory_way,
-        "/cache/index0/ways_of_associativity");
+    read_data(
+        cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
     read_data(cpu_id, &cache_size->theory_cacheline,
         "/cache/index0/coherency_line_size");
 #endif
@@ -102,8 +104,10 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     cache_size->test_L2 = 0;
     for (const cpufb::CacheLevelEstimate &level : curve.levels) {
         const int size_kb = static_cast<int>(level.capacity_bytes / 1024);
-        if (level.level == "L1") cache_size->test_L1 = size_kb;
-        else if (level.level == "L2") cache_size->test_L2 = size_kb;
+        if (level.level == "L1")
+            cache_size->test_L1 = size_kb;
+        else if (level.level == "L2")
+            cache_size->test_L2 = size_kb;
     }
     if (getenv("CPUFB_DEBUG_CACHE_CURVE") != nullptr) {
         fprintf(stderr, "cache curve (%s):\n", curve.translation_mode.c_str());
@@ -127,7 +131,8 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
         printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
         printf("Warning: performance may be impacted \n");
     }
-    read_data(cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
+    read_data(
+        cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
     read_data(cpu_id, &cache_size->theory_L1, "/cache/index0/size");
     read_data(cpu_id, &cache_size->theory_cacheline,
         "/cache/index0/coherency_line_size");
@@ -135,8 +140,9 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
 
     // The shared probe takes no OS-reported cache geometry, so the result is
     // an independent measurement rather than a confirmation of sysfs.
-    detected_way = cpufb::probe_l1_associativity(cpufb::effective_cacheline_size(
-        cache_size->theory_cacheline, cache_size->test_cacheline, kDefaultCacheLineBytes));
+    detected_way = cpufb::probe_l1_associativity(
+        cpufb::effective_cacheline_size(cache_size->theory_cacheline,
+            cache_size->test_cacheline, kDefaultCacheLineBytes));
     cache_size->test_way = detected_way;
 }
 
@@ -159,8 +165,8 @@ bool bind_current_thread(int cpu_id)
     return true;
 }
 
-LoadBandwidth get_bandwith(uint64_t looptime, double data_size,
-    LoadKernel kernel)
+LoadBandwidth get_bandwith(
+    uint64_t looptime, double data_size, LoadKernel kernel)
 {
     struct timespec start, end;
     LoadBandwidth result;
@@ -173,19 +179,20 @@ LoadBandwidth get_bandwith(uint64_t looptime, double data_size,
 
     // Every kernel consumes exactly 512 bytes per inner iteration.
     const uint64_t kBytesPerInnerLoop = 512;
-    const int inner_loop = static_cast<int>(data_size * 1024 / kBytesPerInnerLoop);
+    const int inner_loop =
+        static_cast<int>(data_size * 1024 / kBytesPerInnerLoop);
     if (inner_loop <= 0) return result;
     const uint64_t bytes_per_loop = inner_loop * kBytesPerInnerLoop;
     const uint64_t target_bytes = 32ULL * 1024 * 1024 * 1024;
-    uint64_t effective_looptime = std::max<uint64_t>(1,
-        std::min<uint64_t>(looptime, target_bytes / bytes_per_loop));
+    uint64_t effective_looptime = std::max<uint64_t>(
+        1, std::min<uint64_t>(looptime, target_bytes / bytes_per_loop));
 
     // malloc() returns 16-mod-64 addresses for large blocks, so every zmm
     // load and every other ymm load would split a cache line and roughly
     // halve the reported bandwidth.
     void *allocation = nullptr;
     if (posix_memalign(&allocation, 64, bytes_per_loop) != 0) return result;
-    float *cache_data = static_cast<float*>(allocation);
+    float *cache_data = static_cast<float *>(allocation);
 
     //Preventing Compiler Optimization
     for (uint64_t i = 0; i < bytes_per_loop / sizeof(float); i++) {

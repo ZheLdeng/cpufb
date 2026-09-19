@@ -5,22 +5,24 @@
 #include <string>
 #include <vector>
 
+using cpufb::build_cache_curve_sizes;
 using cpufb::CacheLatencyPoint;
 using cpufb::CacheLevelEstimate;
-using cpufb::build_cache_curve_sizes;
 using cpufb::estimate_cache_levels;
 
 namespace {
 
 constexpr uint64_t kKiB = 1024;
 
-struct ExpectedLevel {
+struct ExpectedLevel
+{
     const char *level;
     uint64_t capacity_kib;
 };
 
 // Latency of the first grid point whose working set exceeds each boundary.
-struct Step {
+struct Step
+{
     uint64_t capacity_kib;
     double latency_ns;
 };
@@ -49,7 +51,8 @@ bool expect_levels(const char *name,
     const std::vector<CacheLatencyPoint> &points,
     const std::vector<ExpectedLevel> &expected)
 {
-    const std::vector<CacheLevelEstimate> levels = estimate_cache_levels(points);
+    const std::vector<CacheLevelEstimate> levels =
+        estimate_cache_levels(points);
     bool ok = levels.size() == expected.size();
     for (size_t i = 0; ok && i < expected.size(); ++i)
         ok = levels[i].level == expected[i].level &&
@@ -79,8 +82,7 @@ int main()
         make_curve(1.3, {{48, 4.5}, {1280, 20.0}, {16384, 90.0}}),
         {{"L1", 48}, {"L2", 1280}, {"L3", 16384}});
 
-    ok &= expect_levels("no L3",
-        make_curve(1.0, {{128, 5.0}, {16384, 95.0}}),
+    ok &= expect_levels("no L3", make_curve(1.0, {{128, 5.0}, {16384, 95.0}}),
         {{"L1", 128}, {"L2", 16384}});
 
     // A contended L1 softens the knee over two grid points below 64 KiB; the
@@ -101,7 +103,8 @@ int main()
 
     ok &= expect_levels("flat curve", make_curve(2.0, {}), {});
 
-    const std::vector<uint64_t> sizes = build_cache_curve_sizes(8 * 1024 * kKiB);
+    const std::vector<uint64_t> sizes =
+        build_cache_curve_sizes(8 * 1024 * kKiB);
     if (sizes.empty() || sizes.front() != 4 * kKiB ||
         sizes.back() != 8 * 1024 * kKiB) {
         std::cerr << "size grid bounds are wrong\n";

@@ -4,7 +4,8 @@
 #include <string>
 #include <vector>
 
-struct Arm64RuntimeFeatures {
+struct Arm64RuntimeFeatures
+{
     bool asimd = false;
     bool fp16 = false;
     bool dotprod = false;

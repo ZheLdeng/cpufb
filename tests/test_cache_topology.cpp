@@ -7,10 +7,12 @@ namespace {
 
 constexpr std::uint64_t kMiB = 1024ULL * 1024ULL;
 
-bool expect_equal(const char *name, std::uint64_t actual, std::uint64_t expected)
+bool expect_equal(
+    const char *name, std::uint64_t actual, std::uint64_t expected)
 {
     if (actual == expected) return true;
-    std::cerr << name << ": got " << actual << ", expected " << expected << '\n';
+    std::cerr << name << ": got " << actual << ", expected " << expected
+              << '\n';
     return false;
 }
 
@@ -19,8 +21,8 @@ bool expect_equal(const char *name, std::uint64_t actual, std::uint64_t expected
 int main()
 {
     cpufb::LastLevelCacheInfo unavailable;
-    if (!expect_equal("fallback", cpufb::recommended_stream_workset_bytes(unavailable),
-            256 * kMiB))
+    if (!expect_equal("fallback",
+            cpufb::recommended_stream_workset_bytes(unavailable), 256 * kMiB))
         return 1;
 
     cpufb::LastLevelCacheInfo small_cache;

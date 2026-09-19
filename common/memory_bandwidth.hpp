@@ -30,7 +30,7 @@ StreamKernelSpec select_stream_kernel();
 bool run_memory_bandwidth(const cpufb::cli::CliOptions &options);
 
 // L3 and DRAM stream rows of the cache table.
-bool append_cache_memory_bandwidth(const cpufb::cli::CliOptions &options,
-    Table &table);
+bool append_cache_memory_bandwidth(
+    const cpufb::cli::CliOptions &options, Table &table);
 
 #endif

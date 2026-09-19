@@ -44,8 +44,7 @@ int main()
     uint64_t hwcaps = getauxval(AT_HWCAP);
 
 #ifdef ISA_V_HWCAP
-    if (hwcaps & ISA_V_HWCAP)
-    {
+    if (hwcaps & ISA_V_HWCAP) {
         printf("_VECTOR_\n");
     }
 #endif

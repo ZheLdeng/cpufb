@@ -16,51 +16,54 @@
 #endif
 typedef void (*thread_func_t)(void *arg);
 
-struct tpool_work {
-    thread_func_t      func;
-    void              *arg;
+struct tpool_work
+{
+    thread_func_t func;
+    void *arg;
     struct tpool_work *next;
 };
 typedef struct tpool_work tpool_work_t;
 
-struct tpool {
-    tpool_work_t    *work_first;
-    tpool_work_t    *work_last;
-    pthread_mutex_t  work_mutex;
-    pthread_cond_t   work_cond;
-    pthread_cond_t   working_cond;
-    pthread_cond_t   parallel_ready_cond;
-    pthread_cond_t   parallel_start_cond;
-    pthread_cond_t   parallel_done_cond;
-    size_t           working_cnt;
-    size_t           thread_cnt;
-    size_t           thread_num;
-    size_t           startup_ready_cnt;
-    size_t           affinity_failure_cnt;
-    size_t           parallel_ready_cnt;
-    size_t           parallel_done_cnt;
-    uint64_t         parallel_generation;
-    uint64_t         parallel_start_generation;
-    thread_func_t    parallel_func;
-    void            *parallel_arg;
-    pthread_t       *threads;
+struct tpool
+{
+    tpool_work_t *work_first;
+    tpool_work_t *work_last;
+    pthread_mutex_t work_mutex;
+    pthread_cond_t work_cond;
+    pthread_cond_t working_cond;
+    pthread_cond_t parallel_ready_cond;
+    pthread_cond_t parallel_start_cond;
+    pthread_cond_t parallel_done_cond;
+    size_t working_cnt;
+    size_t thread_cnt;
+    size_t thread_num;
+    size_t startup_ready_cnt;
+    size_t affinity_failure_cnt;
+    size_t parallel_ready_cnt;
+    size_t parallel_done_cnt;
+    uint64_t parallel_generation;
+    uint64_t parallel_start_generation;
+    thread_func_t parallel_func;
+    void *parallel_arg;
+    pthread_t *threads;
 #ifdef __APPLE__
     dispatch_group_t group;
     dispatch_queue_t queue;
 #endif
-    bool             stop;
+    bool stop;
 };
 typedef struct tpool tpool_t;
 
-struct tpool_args {
-    tpool_t * tm;
+struct tpool_args
+{
+    tpool_t *tm;
     size_t cpuid;
     size_t index;
 };
 
 bool parse_thread_pool(const char *sets, std::vector<int> &set_of_threads);
 
-tpool_t *tpool_create(std::vector<int>thread_pool);
+tpool_t *tpool_create(std::vector<int> thread_pool);
 void tpool_destroy(tpool_t *tm);
 
 // Position of the calling worker in the --thread_pool list (stable for the

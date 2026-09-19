@@ -10,17 +10,20 @@ typedef void (*test_func_t)(void);
 
 // One probe function per instruction-set extension
 #ifdef __aarch64__
-void test_asimd(void) {
+void test_asimd(void)
+{
     // FMOV D0, #1.0
     __asm__ volatile(".inst 0x1e601000" ::: "v0", "memory");
 }
 
-void test_asimd_hp(void) {
+void test_asimd_hp(void)
+{
     // FCVT H0, S0 - half-precision conversion
     __asm__ volatile(".inst 0x1e23c000" ::: "v0", "memory");
 }
 
-void test_asimd_dp(void) {
+void test_asimd_dp(void)
+{
     // UDOT v0.2s, v1.8b, v2.8b - DotProd
     __asm__ volatile(".inst 0x2e829420" ::: "v0", "memory");
 }
@@ -39,224 +42,215 @@ void test_asimd_dp(void) {
 //         ::: "v0"
 //     );
 
-void test_i8mm(void) {
-    __asm__ volatile(
-        ".inst 0x4e82a420\n"  // SMMLA v0.4s, v1.16b, v2.16b
-        ::: "v0"
-    );
+void test_i8mm(void)
+{
+    __asm__ volatile(".inst 0x4e82a420\n" // SMMLA v0.4s, v1.16b, v2.16b
+        ::
+            : "v0");
 }
 
-void test_bf16(void) {
-    __asm__ volatile(
-        ".inst 0x2e42fc20\n"  // BFDOT v0.2s, v1.4h, v2.4h
-        ::: "v0"
-    );
+void test_bf16(void)
+{
+    __asm__ volatile(".inst 0x2e42fc20\n" // BFDOT v0.2s, v1.4h, v2.4h
+        ::
+            : "v0");
 }
 
-void test_fhm(void) {
+void test_fhm(void)
+{
     // FMLAL v0.4s, v0.4h, v0.4h  (FEAT_FHM / fp16fml)
-    __asm__ volatile(
-        ".inst 0x4e20ec00\n"
-        ::: "v0"
-    );
+    __asm__ volatile(".inst 0x4e20ec00\n" ::: "v0");
 }
 
-void test_asimd_fcma(void) {
+void test_asimd_fcma(void)
+{
     // FCMLA v0.4s, v0.4s, v0.4s, #0  (FEAT_FCMA, mandatory in ARMv8.3-a)
-    __asm__ volatile(
-        ".inst 0x6e84c400\n"
-        ::: "v0"
-    );
+    __asm__ volatile(".inst 0x6e84c400\n" ::: "v0");
 }
 
-void test_sve(void) {
-    __asm__ volatile(
-        ".inst 0x2518e3e0\n"  // PTRUE p0.b
-        :::
-    );
+void test_sve(void)
+{
+    __asm__ volatile(".inst 0x2518e3e0\n" // PTRUE p0.b
+        ::
+            :);
 }
 
-void test_sve_i8mm(void) {
+void test_sve_i8mm(void)
+{
     // SMMLA z0.s, z0.b, z0.b -> 0x45009800
-    __asm__ volatile(
-        ".inst 0x45009800\n"
-        ::: "memory"
-    );
+    __asm__ volatile(".inst 0x45009800\n" ::: "memory");
 }
 
-void test_sve_bf16(void) {
+void test_sve_bf16(void)
+{
     // BFMMLA z0.s, z0.h, z0.h -> 0x6464e400
-    __asm__ volatile(
-        ".inst 0x6464e400\n"
-        ::: "memory"
-    );
+    __asm__ volatile(".inst 0x6464e400\n" ::: "memory");
 }
 
-void test_sve_f32mm(void) {
+void test_sve_f32mm(void)
+{
     // FMMLA z0.s, z0.s, z0.s  (FEAT_F32MM)
-    __asm__ volatile(
-        ".inst 0x64a0e400\n"
-        ::: "memory"
-    );
+    __asm__ volatile(".inst 0x64a0e400\n" ::: "memory");
 }
 
-void test_sve_f64mm(void) {
+void test_sve_f64mm(void)
+{
     // FMMLA z0.d, z0.d, z0.d  (FEAT_F64MM)
-    __asm__ volatile(
-        ".inst 0x64e0e400\n"
-        ::: "memory"
-    );
+    __asm__ volatile(".inst 0x64e0e400\n" ::: "memory");
 }
 
-void test_sve_fp16_fmla(void) {
+void test_sve_fp16_fmla(void)
+{
     // FMLA z0.h, p0/m, z0.h, z0.h  (FEAT_SVE with FP16)
-    __asm__ volatile(
-        ".inst 0x65600000\n"
-        ::: "memory"
-    );
+    __asm__ volatile(".inst 0x65600000\n" ::: "memory");
 }
 
-void test_sve2(void) {
-    __asm__ volatile(
-        ".inst 0x45004000\n"  // SADDLB z0.h, z0.b, z0.b
-        :::
-    );
+void test_sve2(void)
+{
+    __asm__ volatile(".inst 0x45004000\n" // SADDLB z0.h, z0.b, z0.b
+        ::
+            :);
 }
 
-void test_sme_f16f16(void) {
+void test_sme_f16f16(void)
+{
     // FMOPA za0.h, p0/m, p0/m, z0.h, z0.h  (FEAT_SME_F16F16)
-    __asm__ volatile(
-        ".inst 0xd503477f\n"  // SMSTART
-        ".inst 0x81800008\n"
-        ".inst 0xd503467f\n"  // SMSTOP
-        :::
-    );
+    __asm__ volatile(".inst 0xd503477f\n" // SMSTART
+                     ".inst 0x81800008\n"
+                     ".inst 0xd503467f\n" // SMSTOP
+        ::
+            :);
 }
 
-void test_sme_b16b16(void) {
+void test_sme_b16b16(void)
+{
     // BFMOPA za0.h, p0/m, p0/m, z0.h, z0.h  (FEAT_SME_B16B16, non-widening)
-    __asm__ volatile(
-        ".inst 0xd503477f\n"  // SMSTART
-        ".inst 0x81a00008\n"
-        ".inst 0xd503467f\n"  // SMSTOP
-        :::
-    );
+    __asm__ volatile(".inst 0xd503477f\n" // SMSTART
+                     ".inst 0x81a00008\n"
+                     ".inst 0xd503467f\n" // SMSTOP
+        ::
+            :);
 }
 
-void test_sme_i16i32(void) {
+void test_sme_i16i32(void)
+{
     // SMOPA za0.s, p0/m, p0/m, z0.h, z0.h  (FEAT_SME_I16I32 / part of sme-i16i64)
-    __asm__ volatile(
-        ".inst 0xd503477f\n"  // SMSTART
-        ".inst 0xa0800008\n"
-        ".inst 0xd503467f\n"  // SMSTOP
-        :::
-    );
+    __asm__ volatile(".inst 0xd503477f\n" // SMSTART
+                     ".inst 0xa0800008\n"
+                     ".inst 0xd503467f\n" // SMSTOP
+        ::
+            :);
 }
 
-void test_sme(void) {
-    __asm__ volatile(
-        ".inst 0xd503467f\n"  // SMSTART
-        ".inst 0xd503477f\n"  // SMSTOP
-        :::
-    );
+void test_sme(void)
+{
+    __asm__ volatile(".inst 0xd503467f\n" // SMSTART
+                     ".inst 0xd503477f\n" // SMSTOP
+        ::
+            :);
 }
 
-void test_sme2(void) {
-    __asm__ volatile(
-        ".inst 0xd503477f\n"
-        ".inst 0xC1328240\n"  // BFMLAL
-        ".inst 0xd503467f\n"
-        :::
-    );
+void test_sme2(void)
+{
+    __asm__ volatile(".inst 0xd503477f\n"
+                     ".inst 0xC1328240\n" // BFMLAL
+                     ".inst 0xd503467f\n" ::
+                         :);
 }
 
-void test_sme_f64(void) {
-    __asm__ volatile(
-        ".inst 0xd503477f\n"
-        ".inst 0x80C82100\n"
-        ".inst 0xd503467f\n"
-        :::
-    );
+void test_sme_f64(void)
+{
+    __asm__ volatile(".inst 0xd503477f\n"
+                     ".inst 0x80C82100\n"
+                     ".inst 0xd503467f\n" ::
+                         :);
 }
 
 #else
 // 32-bit ARM or another architecture
-void test_asimd(void) {
+void test_asimd(void)
+{
     __asm__ volatile(".inst 0xeeb70b00" :::);
 }
 
-void test_asimd_hp(void) {
+void test_asimd_hp(void)
+{
     __asm__ volatile(".inst 0xeeb20ac0" :::);
 }
 
-void test_asimd_dp(void) {
+void test_asimd_dp(void)
+{
     __asm__ volatile(".inst 0xfe000d10" :::);
 }
 
-void test_i8mm(void) {
+void test_i8mm(void)
+{
     __asm__ volatile(".inst 0xfc200c40" :::);
 }
 
-void test_bf16(void) {
+void test_bf16(void)
+{
     __asm__ volatile(".inst 0xfe000d00" :::);
 }
 
-void test_sve(void) { }
-void test_sve_i8mm(void) { }
-void test_sve_bf16(void) { }
-void test_sve2(void) { }
-void test_sme(void) { }
-void test_sme2(void) { }
-void test_sme_f64(void) { }
-void test_fhm(void) { }
-void test_asimd_fcma(void) { }
-void test_sve_f32mm(void) { }
-void test_sve_f64mm(void) { }
-void test_sve_fp16_fmla(void) { }
-void test_sme_f16f16(void) { }
-void test_sme_b16b16(void) { }
-void test_sme_i16i32(void) { }
+void test_sve(void) {}
+void test_sve_i8mm(void) {}
+void test_sve_bf16(void) {}
+void test_sve2(void) {}
+void test_sme(void) {}
+void test_sme2(void) {}
+void test_sme_f64(void) {}
+void test_fhm(void) {}
+void test_asimd_fcma(void) {}
+void test_sve_f32mm(void) {}
+void test_sve_f64mm(void) {}
+void test_sve_fp16_fmla(void) {}
+void test_sme_f16f16(void) {}
+void test_sme_b16b16(void) {}
+void test_sme_i16i32(void) {}
 
 #endif
 
 // Signal handler
-static volatile const char* current_test_name = nullptr;
+static volatile const char *current_test_name = nullptr;
 
-void sigill_handler(int sig) {
+void sigill_handler(int sig)
+{
     (void)sig;
     // SIGILL caught in the child: exit quietly with status 1
     _exit(1);
 }
 
 // Run the probe in a child process
-bool test_instruction_in_child(test_func_t test_func, const char* name) {
+bool test_instruction_in_child(test_func_t test_func, const char *name)
+{
     pid_t pid = fork();
-    
+
     if (pid < 0) {
         // fork failed
         fprintf(stderr, "fork failed for %s\n", name);
         return false;
     }
-    
+
     if (pid == 0) {
         // child
         current_test_name = name;
-        
+
         // Install the signal handler
         signal(SIGILL, sigill_handler);
         signal(SIGSEGV, sigill_handler);
         signal(SIGBUS, sigill_handler);
-        
+
         // Execute the probe instruction
         test_func();
-        
+
         // Reaching this point means the instruction is supported
         _exit(0);
     } else {
         // parent
         int status = 0;
         waitpid(pid, &status, 0);
-        
+
         if (WIFEXITED(status)) {
             // normal exit
             int exit_code = WEXITSTATUS(status);
@@ -274,13 +268,14 @@ bool test_instruction_in_child(test_func_t test_func, const char* name) {
             return false;
         }
     }
-    
+
     return false;
 }
 
-int get_cpuid(void) {
+int get_cpuid(void)
+{
     fflush(stdout);
-    
+
     // Probe in dependency order
     test_instruction_in_child(test_asimd, "ASIMD");
     test_instruction_in_child(test_asimd_hp, "ASIMD_HP");
@@ -312,7 +307,7 @@ int get_cpuid(void) {
         test_instruction_in_child(test_sme_b16b16, "SME_B16B16");
         test_instruction_in_child(test_sme_i16i32, "SME_I16I32");
     }
-    
+
     // Always available (ARMv8 baseline)
     printf("_LDP_\n");
     printf("_ISSUE_\n");
@@ -321,11 +316,12 @@ int get_cpuid(void) {
     printf("_ASIMD_INT_MAC_\n");
     printf("_ASIMD_TBL_\n");
     fflush(stdout);
-    
+
     return 0;
 }
 
-int main(void) {
+int main(void)
+{
     get_cpuid();
     return 0;
 }

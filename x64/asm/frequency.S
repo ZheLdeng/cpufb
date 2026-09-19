@@ -58,4 +58,24 @@ cpufb_x64_frequency_load:
     ret
 .size cpufb_x64_frequency_load, .-cpufb_x64_frequency_load
 
+
+# Core-clock calibration for hosts without PMU access: a register-register
+# ADD dependency chain retires exactly one ADD per core cycle on every x86-64
+# microarchitecture, so 16 x loop_time / elapsed is the running core clock.
+# The addend comes from a register because recent Intel cores fold small
+# immediate adds at rename.  Loop control is off the chain.
+.p2align 4
+.globl cpufb_x64_frequency_add_chain
+.type cpufb_x64_frequency_add_chain, @function
+cpufb_x64_frequency_add_chain:
+    xor %eax, %eax
+.Lcpufb_frequency_add_chain:
+    .rept 16
+        add %rsi, %rax
+    .endr
+    dec %rdi
+    jne .Lcpufb_frequency_add_chain
+    ret
+.size cpufb_x64_frequency_add_chain, .-cpufb_x64_frequency_add_chain
+
 .section .note.GNU-stack,"",@progbits

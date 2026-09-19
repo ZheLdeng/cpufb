@@ -114,6 +114,10 @@ typedef struct
     int inner_loop;
     int loop_time;
     void (*bench)(float*, int, int64_t);
+#ifdef __linux__
+    std::atomic<uint64_t> *cycle_count;
+    std::atomic<int> *cycle_samples;
+#endif
 } cache_bm_t;
 static vector<cpubm_t> bm_list;
 
@@ -167,6 +171,18 @@ static void reg_new_isa(std::string isa,
     bm_list.push_back(new_one);
 }
 
+static void warn_estimated_cycles_once()
+{
+    static bool warned = false;
+    if (warned) return;
+    warned = true;
+    cerr << "Warning: per-kernel perf_event cycle counts are unavailable; "
+         << "IPC and latency are estimated from elapsed time x "
+         << cpu_freq_counter_source()
+         << " frequency. Lower /proc/sys/kernel/perf_event_paranoid or run "
+         << "with CAP_PERFMON for counted cycles." << endl;
+}
+
 static void thread_func(void *params)
 {
     cpubm_t *bm = (cpubm_t*)params;
@@ -199,6 +215,23 @@ static void thread_func(void *params)
 static void cache_thread_func(void *params)
 {
     cache_bm_t *bm = (cache_bm_t*)params;
+#ifdef __linux__
+    if (bm->cycle_count != NULL && bm->cycle_samples != NULL) {
+        PerfEventCycle cycle_counter(0, false);
+        if (cycle_counter.available()) {
+            cycle_counter.start();
+            bm->bench(bm->cache_data, bm->inner_loop, bm->loop_time);
+            cycle_counter.stop();
+            const long long cycles = cycle_counter.get_cycle();
+            if (cycles > 0) {
+                bm->cycle_count->fetch_add(
+                    static_cast<uint64_t>(cycles), std::memory_order_relaxed);
+                bm->cycle_samples->fetch_add(1, std::memory_order_relaxed);
+            }
+            return;
+        }
+    }
+#endif
     bm->bench(bm->cache_data, bm->inner_loop, bm->loop_time);
 }
 
@@ -230,6 +263,15 @@ static ComputeResult cpubm_run_compute(tpool_t *tm, cpubm_t &item)
         result.hardware_cycles = true;
     }
 #endif
+    // perf_event_open is denied by default on many distributions
+    // (perf_event_paranoid >= 3), containers and VMs.  Rather than dropping
+    // every IPC and latency value, normalize by the calibrated cycle rate from
+    // the frequency probe; its source is printed in the frequency table.
+    if (!result.hardware_cycles && !freq.empty() && freq[0] > 0.0) {
+        result.ipc = static_cast<double>(item.loop_time) * item.inst_pl /
+            (time_used * freq[0] * 1e9);
+        warn_estimated_cycles_once();
+    }
     return result;
 }
 
@@ -257,7 +299,7 @@ static void cpubm_x64_one(tpool_t *tm,
     cont[0] = item.isa;
     cont[1] = item.type;
     cont[2] = format_perf_value(result.perf, item.dim);
-    cont[3] = result.hardware_cycles ? to_string(result.ipc) : "-";
+    cont[3] = result.ipc > 0.0 ? to_string(result.ipc) : "-";
     cont[4] = latency > 0.0 ? format_latency_cycles(latency) : "-";
     table.addOneItem(cont);
 }
@@ -370,14 +412,15 @@ static void cpubm_x64_multiple_issue(tpool_t *tm,
     cpubm_t &item,
     Table &table)
 {
-
     struct timespec start, end;
-    double time_used, perf;
     cache_bm_t bm;
-    int size = 1024;
-    float* cache_data = (float*)malloc(1024);
+    const size_t size = 1024;
+    // 64-byte alignment keeps the 512-byte zmm window from splitting lines.
+    void *allocation = NULL;
+    if (posix_memalign(&allocation, 64, size) != 0) return;
+    float *cache_data = static_cast<float*>(allocation);
     //Preventing Compiler Optimization
-    for (int i = 0;i < size / sizeof(float); i++){
+    for (size_t i = 0; i < size / sizeof(float); i++){
         cache_data[i] = i;
     }
     int inner_loop = 1024;
@@ -387,21 +430,41 @@ static void cpubm_x64_multiple_issue(tpool_t *tm,
     bm.cache_data = cache_data;
     bm.inner_loop = inner_loop;
     bm.loop_time = item.loop_time;
+#ifdef __linux__
+    bm.cycle_count = NULL;
+    bm.cycle_samples = NULL;
+#endif
 
-	// warm up
-    tpool_add_work(tm, cache_thread_func, (void*)&bm);
-    tpool_wait(tm);
+    // Every pinned worker runs the kernel once (tpool_add_work would hand a
+    // single job to an arbitrary worker); the result is the per-core rate.
+    tpool_run_all(tm, cache_thread_func, (void*)&bm, &start, &end);
 
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    tpool_add_work(tm, cache_thread_func, (void*)&bm);
-    tpool_wait(tm);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    time_used = get_time(&start, &end);
-    perf = (double)item.loop_time * (inner_loop * item.comp_pl + 4)/
-        (time_used * freq[0] * 1e9);
+#ifdef __linux__
+    std::atomic<uint64_t> cycle_count(0);
+    std::atomic<int> cycle_samples(0);
+    bm.cycle_count = &cycle_count;
+    bm.cycle_samples = &cycle_samples;
+#endif
+    double perf = 0.0;
+    const double instructions = (double)item.loop_time *
+        ((double)inner_loop * item.comp_pl + 4);
+    if (tpool_run_all(tm, cache_thread_func, (void*)&bm, &start, &end)) {
+        const double time_used = get_time(&start, &end);
+#ifdef __linux__
+        const uint64_t cycles = cycle_count.load(std::memory_order_relaxed);
+        if (cycles > 0 &&
+            cycle_samples.load(std::memory_order_relaxed) == (int)tm->thread_num)
+            perf = instructions * tm->thread_num / cycles;
+#endif
+        if (perf <= 0.0 && time_used > 0.0 && !freq.empty() && freq[0] > 0.0) {
+            perf = instructions / (time_used * freq[0] * 1e9);
+            warn_estimated_cycles_once();
+        }
+    }
     stringstream ss;
 
-    ss << setprecision(5) << perf;
+    if (perf > 0.0) ss << setprecision(5) << perf;
+    else ss << "-";
 
     vector<string> cont;
     cont.resize(table.getCol());
@@ -456,20 +519,21 @@ static void init_table(vector<Table*> &tables)
     tables[2]->setColumnNum(ti.size());
     tables[2]->addOneItem(ti);
 
-    ti.resize(6);
+    ti.resize(7);
     ti[0] = "Core ID";
     ti[1] = "Theory Freq";
-    ti[2] = "TSC Freq";
-    ti[3] = "Instr/TSC(FSU32)";
-    ti[4] = "Instr/TSC(FSU64)";
-    ti[5] = "Instr/TSC(LSU ldr)";
+    ti[2] = "Test Freq";
+    ti[3] = "IPC(FSU32)";
+    ti[4] = "IPC(FSU64)";
+    ti[5] = "IPC(LSU ldr)";
+    ti[6] = "Counter Source";
     tables[3]->setColumnNum(ti.size());
     tables[3]->addOneItem(ti);
 
     ti.resize(3);
     ti[0] = "Item";
     ti[1] = "Core Instruction";
-    ti[2] = "Instr/TSC Cycle";
+    ti[2] = "IPC";
     tables[4]->setColumnNum(ti.size());
     tables[4]->addOneItem(ti);
 }
@@ -480,13 +544,14 @@ static bool prepare_instruction_sweep(const vector<int> &threads,
     void *)
 {
     Table freq_table;
-    vector<string> freq_head(6);
+    vector<string> freq_head(7);
     freq_head[0] = "Core ID";
     freq_head[1] = "Theory Freq";
-    freq_head[2] = "TSC Freq";
-    freq_head[3] = "Instr/TSC(FSU32)";
-    freq_head[4] = "Instr/TSC(FSU64)";
-    freq_head[5] = "Instr/TSC(LSU ldr)";
+    freq_head[2] = "Test Freq";
+    freq_head[3] = "IPC(FSU32)";
+    freq_head[4] = "IPC(FSU64)";
+    freq_head[5] = "IPC(LSU ldr)";
+    freq_head[6] = "Counter Source";
     freq_table.setColumnNum(freq_head.size());
     freq_table.addOneItem(freq_head);
     vector<int> mutable_threads = threads;
@@ -830,7 +895,7 @@ static void cpufb_register_isa()
     }
 #endif
     if (runtime_features.sse) {
-    reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC",
+    reg_new_isa("MULTI_ISSUE", "movups/mulps.xmm", "IPC",
         0x40000LL, 34LL, NULL, NULL);
     }
 #ifdef _FMA_

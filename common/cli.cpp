@@ -210,6 +210,42 @@ CliOptions::CliOptions() :
 {
 }
 
+// Strict unsigned parse for options where 0 is meaningful.  atoi() would
+// turn "-1" into a 4-billion-second sleep and "abc" into a silent 0.
+static bool parse_uint32_option(const char *value,
+    const char *option,
+    uint32_t &parsed)
+{
+    bool digits_only = value != NULL && *value != '\0';
+    for (const char *cursor = value; digits_only && *cursor != '\0'; ++cursor)
+        digits_only = isdigit(static_cast<unsigned char>(*cursor)) != 0;
+    errno = 0;
+    const unsigned long long result =
+        digits_only ? strtoull(value, NULL, 10) : 0;
+    if (!digits_only || errno != 0 ||
+        result > numeric_limits<uint32_t>::max()) {
+        cerr << "Error: " << option << " must be a non-negative integer."
+             << endl;
+        return false;
+    }
+    parsed = static_cast<uint32_t>(result);
+    return true;
+}
+
+static bool validate_test_categories(const set<string> &values)
+{
+    for (const string &value : values) {
+        bool known = false;
+        for (size_t i = 0; i < kTestCategoryCount; ++i)
+            known = known || value == kTestCategories[i];
+        if (!known) {
+            cerr << "Error: unknown test category '" << value << "'." << endl;
+            return false;
+        }
+    }
+    return true;
+}
+
 bool parse_cli_options(int argc, char *argv[], CliOptions &options)
 {
     for (int i = 1; i < argc; ++i) {
@@ -221,13 +257,19 @@ bool parse_cli_options(int argc, char *argv[], CliOptions &options)
             }
             options.thread_pool_set = true;
         } else if (strncmp(argv[i], "--idle_time=", 12) == 0) {
-            options.idle_time = static_cast<uint32_t>(atoi(argv[i] + 12));
+            if (!parse_uint32_option(argv[i] + 12, "--idle_time",
+                    options.idle_time))
+                return false;
         } else if (strncmp(argv[i], "--loop_scale=", 13) == 0) {
-            const uint32_t requested_scale =
-                static_cast<uint32_t>(atoi(argv[i] + 13));
+            uint32_t requested_scale = 1;
+            if (!parse_uint32_option(argv[i] + 13, "--loop_scale",
+                    requested_scale))
+                return false;
             options.loop_scale = requested_scale > 0 ? requested_scale : 1;
         } else if (strncmp(argv[i], "--bench_limit=", 14) == 0) {
-            options.bench_limit = static_cast<uint32_t>(atoi(argv[i] + 14));
+            if (!parse_uint32_option(argv[i] + 14, "--bench_limit",
+                    options.bench_limit))
+                return false;
         } else if (strncmp(argv[i], "--mode=", 7) == 0) {
             options.mode_explicit = true;
             const string requested_mode = argv[i] + 7;
@@ -301,12 +343,20 @@ bool parse_cli_options(int argc, char *argv[], CliOptions &options)
                 return false;
             }
             options.save.format_set = true;
+        } else {
+            // A misspelled filter (--include_test=...) would otherwise be
+            // dropped and silently run the full suite.
+            cerr << "Error: unknown option '" << argv[i] << "'." << endl;
+            return false;
         }
     }
 
     // An explicit all mode restores every category even if a reused command
-    // line still contains a narrower include-test filter.
+    // line still contains a narrower include-test filter.  The discarded
+    // filter is still validated so a typo cannot hide behind the override.
     if (options.mode_explicit && options.mode == BENCH_MODE_ALL) {
+        if (!validate_test_categories(options.filter.include_test))
+            return false;
         options.filter.include_test.clear();
         options.include_test_explicit = false;
     } else if (!options.include_test_explicit && options.mode != BENCH_MODE_ALL) {
@@ -326,9 +376,13 @@ bool validate_memory_bandwidth_options(const CliOptions &options,
 {
     if (!options.memory_bandwidth) {
         if (options.memory_size_set || options.memory_repetitions_set) {
-            const bool explicit_cache_test =
+            // An explicit --mode=all clears include-test but still runs the
+            // cache category, so the memory options remain meaningful.
+            const bool cache_included =
                 options.filter.include_test.find("cache") !=
-                    options.filter.include_test.end() &&
+                    options.filter.include_test.end() ||
+                (options.mode_explicit && options.mode == BENCH_MODE_ALL);
+            const bool explicit_cache_test = cache_included &&
                 options.filter.exclude_test.find("cache") ==
                     options.filter.exclude_test.end();
             if (!explicit_cache_test) {
@@ -701,7 +755,7 @@ bool run_instruction_sweep(const vector<int> &threads,
         row[3] = format_perf_value(sample.performance / cores, selected.metric);
         row[4] = format_ratio_value(speedup);
         row[5] = format_percent_value(efficiency);
-        row[6] = to_string(sample.ipc);
+        row[6] = sample.ipc > 0.0 ? to_string(sample.ipc) : "-";
         row[7] = sample.latency.empty() ? "-" : sample.latency;
         table.addOneItem(row);
     }

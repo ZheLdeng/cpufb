@@ -544,10 +544,14 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
         return false;
     }
     BenchmarkCatalog catalog = build_benchmark_catalog();
+    uint32_t benches_run = 0;
     for (size_t i = 0; i < bm_list.size(); ++i) {
+        if (options.bench_limit > 0 && benches_run >= options.bench_limit)
+            break;
         if (catalog[i].is_latency) continue;
         if (!should_run_benchmark(filter, bm_list[i].isa, bm_list[i].dim))
             continue;
+        ++benches_run;
         if (bm_list[i].dim.find("OPS") != string::npos) {
             double latency = 0.0;
             if (catalog[i].pair_index >= 0) {
@@ -820,6 +824,14 @@ static void cpufb_register_isa()
 #endif
 }
 
+// Same contract as ARM64: divide every registered loop count for smoke runs.
+static void scale_benchmark_loops(uint32_t loop_scale)
+{
+    if (loop_scale <= 1) return;
+    for (cpubm_t &bm : bm_list)
+        bm.loop_time = max<int64_t>(1, bm.loop_time / loop_scale);
+}
+
 int main(int argc, char *argv[])
 {
     CliOptions options;
@@ -836,7 +848,7 @@ int main(int argc, char *argv[])
     {
         fprintf(stderr, "Error: You must set --thread_pool parameter.\n");
         fprintf(stderr, "You may also set --idle_time parameter.\n");
-        fprintf(stderr, "Usage: %s --thread_pool=[xxx] [--idle_time=yyy] [--include-test=list] [--exclude-test=list] [--include-isa=list] [--exclude-isa=list]\n", argv[0]);
+        fprintf(stderr, "Usage: %s --thread_pool=[xxx] [--idle_time=yyy] [--mode=all|cache|compute] [--loop_scale=zzz] [--bench_limit=nnn] [--include-test=list] [--exclude-test=list] [--include-isa=list] [--exclude-isa=list]\n", argv[0]);
         fprintf(stderr, "       %s --thread_pool=[xxx] --sweep-instruction='Core Computation'\n", argv[0]);
         fprintf(stderr, "       %s --thread_pool=[cores] --memory-bandwidth [--memory-size-mib=N; default=auto per stream] [--memory-repetitions=5]\n", argv[0]);
         fprintf(stderr, "       %s --list-categories | --list-instructions\n", argv[0]);
@@ -858,6 +870,7 @@ int main(int argc, char *argv[])
         return run_x64_memory_bandwidth(options) ? 0 : 1;
 
     cpufb_register_isa();
+    scale_benchmark_loops(options.loop_scale);
     BenchmarkCatalog catalog = build_benchmark_catalog();
     if (!validate_benchmark_filter(options.filter, catalog)) return 1;
     if (!options.sweep_instruction.empty())

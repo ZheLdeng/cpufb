@@ -181,6 +181,18 @@ case "${test_case}" in
             "${binary}" "${thread_arg}" --include-test=not_a_test
         expect_failure "unavailable ISA category 'not_an_isa'" \
             "${binary}" "${thread_arg}" --exclude-isa=not_an_isa
+        # An explicit --mode=all discards --include-test, but a typo in the
+        # discarded filter must still be reported.
+        expect_failure "unknown test category 'not_a_test'" \
+            "${binary}" "${thread_arg}" --mode=all --include-test=not_a_test
+        # A misspelled option used to be ignored and ran the full suite.
+        expect_failure "unknown option '--include_test=freq'" \
+            "${binary}" "${thread_arg}" --include_test=freq
+        for invalid_number in -1 abc 99999999999; do
+            expect_failure "--idle_time must be a non-negative integer" \
+                "${binary}" "${thread_arg}" --include-test=freq \
+                "--idle_time=${invalid_number}"
+        done
         ;;
 
     instruction_matching)

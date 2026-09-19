@@ -174,6 +174,19 @@ static void *thread_function_freq(void *arg)
     data->clock_ghz = cycle_frequency * 1e-9;
     data->caculate_freq = measured ? data->clock_ghz : 0.0;
 
+    // CPUFB_DEBUG_CLOCK=1 prints every available clock next to the selected
+    // one, to cross-check the ADD-chain estimate against counted cycles.
+    const char *debug_clock = getenv("CPUFB_DEBUG_CLOCK");
+    if (debug_clock != nullptr && *debug_clock != '\0' &&
+        std::string(debug_clock) != "0") {
+        fprintf(stderr,
+            "clock debug: selected=%.4f GHz (%s) counted=%.4f GHz "
+            "add_chain=%.4f GHz tsc=%.4f GHz reported=%.4f GHz\n",
+            data->clock_ghz, data->counter_source.c_str(),
+            cycles > 0 && elapsed > 0.0 ? cycles / elapsed * 1e-9 : 0.0,
+            add_chain_frequency() * 1e-9, data->tsc_freq, data->theory_freq);
+    }
+
     cpufb_x64_frequency_fsu64(kFrequencyLoopTime);
     data->IPC_fp64 = instruction_rate(
         measure_kernel(cpufb_x64_frequency_fsu64, kFrequencyLoopTime),

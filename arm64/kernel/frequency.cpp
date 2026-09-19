@@ -193,6 +193,20 @@ static void *thread_function_freq(void *arg)
     }
     data->clock_ghz = clock_hz * 1e-9;
 
+    // CPUFB_DEBUG_CLOCK=1 prints every available clock next to the selected
+    // one, which is how the ADD-chain estimate is validated against counted
+    // cycles on hardware that has both.
+    const char *debug_clock = getenv("CPUFB_DEBUG_CLOCK");
+    if (debug_clock != nullptr && *debug_clock != '\0' &&
+        strcmp(debug_clock, "0") != 0) {
+        fprintf(stderr,
+            "clock debug: selected=%.4f GHz (%s) counted=%.4f GHz "
+            "add_chain=%.4f GHz reported=%.4f GHz\n",
+            data->clock_ghz, data->counter_source.c_str(),
+            fp64_elapsed > 0.0 ? counted_cycles / fp64_elapsed * 1e-9 : 0.0,
+            add_chain_frequency_hz() * 1e-9, data->theory_freq);
+    }
+
     data->IPC_fp64 = instruction_rate(looptime, fp64_elapsed, clock_hz);
     data->IPC_fp32 = instruction_rate(
         looptime, time_kernel(asimd_fmla_vv_f32f32f32, looptime), clock_hz);

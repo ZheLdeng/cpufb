@@ -37,6 +37,7 @@ avx512_fp16_fma_f16f16f16:
     vfmadd231ph %zmm15, %zmm15, %zmm15
     sub $0x1, %rdi
     jne .avx512.fp16.fma.f16f16f16.L1
+    vzeroupper
     ret
 
 avx512_fp16_fma_f16f16f16_latency:

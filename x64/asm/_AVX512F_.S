@@ -39,6 +39,7 @@ avx512f_fma_f32f32f32:
     vfmadd231ps %zmm15, %zmm15, %zmm15
     sub $0x1, %rdi
     jne .avx512f.fma.f32f32f32.L1
+    vzeroupper
     ret
 
 avx512f_fma_f64f64f64:
@@ -77,6 +78,7 @@ avx512f_fma_f64f64f64:
     vfmadd231pd %zmm15, %zmm15, %zmm15
     sub $0x1, %rdi
     jne .avx512f.fma.f64f64f64.L1
+    vzeroupper
     ret
 
 avx512f_fma_f32f32f32_latency:

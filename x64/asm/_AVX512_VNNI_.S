@@ -39,6 +39,7 @@ avx512_vnni_dp4a_s32u8s8:
     vpdpbusd %zmm15, %zmm15, %zmm15
     sub $0x1, %rdi
     jne .avx512.vnni.dp4a.s32u8s8.L1
+    vzeroupper
     ret
 
 avx512_vnni_dp2a_s32s16s16:
@@ -77,6 +78,7 @@ avx512_vnni_dp2a_s32s16s16:
     vpdpwssd %zmm15, %zmm15, %zmm15
     sub $0x1, %rdi
     jne .avx512.vnni.dp2a.s32s16s16.L1
+    vzeroupper
     ret
 
 avx512_vnni_dp4a_s32u8s8_latency:

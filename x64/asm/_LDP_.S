@@ -26,6 +26,7 @@ load_movups_kernel:
     vmovups (%r9), %ymm14
     vmovups (%r9), %ymm15
     jne .load.movups.kernel.L1
+    vzeroupper
     ret
 
 load_vmovups_kernel:

@@ -39,6 +39,7 @@ avx_vnni_dp4a_s32u8s8:
     {vex} vpdpbusd %ymm15, %ymm15, %ymm15
     sub $0x1, %rdi
     jne .avx.vnni.dp4a.s32u8s8.L1
+    vzeroupper
     ret
 
 avx_vnni_dp2a_s32s16s16:
@@ -77,6 +78,7 @@ avx_vnni_dp2a_s32s16s16:
     {vex} vpdpwssd %ymm15, %ymm15, %ymm15
     sub $0x1, %rdi
     jne .avx.vnni.dp2a.s32s16s16.L1
+    vzeroupper
     ret
 
 avx_vnni_dp4a_s32u8s8_latency:

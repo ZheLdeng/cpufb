@@ -15,11 +15,24 @@ latency_cycles = 1 / dependency_chain_IPC
 
 On Linux, each worker reads `PERF_COUNT_HW_CPU_CYCLES` around the assembly
 kernel. The instruction table therefore reports core-clock IPC and latency in
-core cycles, matching the ARM measurement method and remaining valid when the
-processor uses turbo frequencies. If any worker cannot access its hardware
-cycle counter, IPC and latency are reported as unavailable rather than being
-estimated from the invariant TSC. Running with sufficient perf-event
-permissions is required to populate both columns.
+core cycles, the same method ARM64 uses on Linux, and remains valid when the
+processor uses turbo frequencies.
+
+If any worker cannot access its hardware cycle counter (the default on hosts
+with `perf_event_paranoid >= 3`, in most containers and on non-Linux builds),
+IPC and latency are estimated instead of being dropped:
+
+```text
+IPC = loop_time * inst_pl / (elapsed_seconds * cycle_frequency)
+```
+
+`cycle_frequency` is the frequency-table value, whose `Counter Source` column
+names its origin: `perf_event cycles`, `CPUFB_FREQ_GHZ override`,
+`ADD-chain estimate` (16 dependent register-register `ADD`s per loop, one core
+cycle each, best of three) or, last, `invariant TSC`. One warning is printed
+on stderr whenever an estimate is used. The estimate assumes the scalar core
+clock also holds during the kernel, so AVX-512 kernels that reduce the clock
+read proportionally slow; counted cycles remain the reference.
 
 Throughput kernels use independent accumulator/register chains. Latency kernels
 use one dependency chain while retaining the listed instruction count per loop.
@@ -34,9 +47,10 @@ The three instruction-rate columns in the separate x86 frequency table use dedic
 always-built x86-64 baseline kernels. `FSU32` runs 16 independent packed FP32
 `addps` instructions per loop, `FSU64` runs 16 independent packed FP64 `addpd`
 instructions, and `LSU ldr` runs 16 independent 128-bit `movups` loads. Their
-rates remain instructions per invariant-TSC cycle, not mathematical operations
-or core-clock IPC. They are frequency diagnostics and are not used to compute
-the instruction table's IPC or latency.
+rates are instructions per cycle of the `Counter Source` clock, not
+mathematical operations. The `Test Freq` value from the same probe is the
+fallback clock for the instruction, load and multi-issue tables when per-kernel
+cycle counts are unavailable.
 
 These kernels intentionally use legacy SSE/SSE2 only. Their meaning and
 availability therefore do not change when optional FMA, AVX, AVX-512, or AMX

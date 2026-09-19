@@ -231,7 +231,8 @@ last column only labels the agreement (`probe (agrees with OS)`,
   that a bare power-of-two stride otherwise reports as cache ways;
 - L1/L2 capacity: the dependent-load latency curve on a fixed quarter-octave
   grid up to 64 MiB; plateaus are detected from the curve alone and each
-  capacity is the last working set before the next plateau begins. Without transparent huge pages the ring is shuffled page
+  capacity is the last working set below the geometric midpoint of two
+  adjacent plateaus. Without transparent huge pages the ring is shuffled page
   by page so translation misses cannot form a spurious level. The result is
   the effective capacity seen by the pinned core, so a busy SMT sibling or a
   co-tenant lowers it.

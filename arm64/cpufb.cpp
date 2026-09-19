@@ -581,9 +581,8 @@ static bool cpubm_arm_cache(
         if (level.level != "L1" && level.level != "L2") continue;
         vector<string> row(4);
         row[0] = level.level;
-        row[1] = level.capacity_bytes >= 1024 * 1024
-            ? to_string(level.capacity_bytes / (1024 * 1024)) + " MB"
-            : to_string(level.capacity_bytes / 1024) + " KB";
+        // Not every capacity is a whole number of MiB (1280 KiB is not 1 MB).
+        row[1] = cpufb::format_cache_capacity(level.capacity_bytes);
         ostringstream latency, jump;
         latency << fixed << setprecision(3) << level.latency_ns << " ns/load";
         jump << fixed << setprecision(2) << level.jump_ratio << "x";

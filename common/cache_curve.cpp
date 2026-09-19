@@ -1,6 +1,7 @@
 #include "cache_curve.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -21,9 +22,11 @@ namespace {
 // Points of one plateau stay within this max/min band.
 const double kPlateauBand = 1.10;
 const size_t kMinimumPlateauPoints = 3;
-// Adjacent plateaus closer than this are one level drifting (for example
-// under growing translation cost), not a new cache level.
-const double kMinimumLevelRatio = 1.25;
+// Adjacent plateaus closer than this are one level drifting, not a new cache
+// level.  Translation cost is the usual cause: on a Kunpeng 920F DRAM latency
+// climbs 1.5x between 8 MiB and 64 MiB as the huge-page TLB reach is exceeded,
+// while the smallest real step observed so far (L1 to L2) is 2.8x.
+const double kMinimumLevelRatio = 1.75;
 const double kMinimumLevelDeltaNs = 0.20;
 
 double elapsed_ns(const timespec &start, const timespec &end)
@@ -186,15 +189,21 @@ std::vector<CacheLevelEstimate> estimate_cache_levels(
             continue;
 
         // A cyclic ring re-references every line after exactly one lap, so
-        // the ideal curve is a step: all hits up to the capacity, all misses
-        // from the first larger working set, where the next plateau starts.
-        // Real curves soften only below the step, because a ring that fills
-        // the level completely competes with every other resident line
-        // (stack, code, an SMT sibling).  The capacity is therefore the last
-        // working set before the upper plateau begins, not the start or the
-        // midpoint of the ramp, which would under-report by a grid step.
-        size_t capacity_index =
-            above.first > below.last ? above.first - 1 : below.last;
+        // the ideal curve is a step at the capacity.  Real curves soften on
+        // either side of it: below when the level is shared with other
+        // activity, above when replacement is not strict LRU (a 768 KiB L2
+        // measured on an isolated Kunpeng 920F core reads half-way up at
+        // 896 KiB).  The geometric midpoint splits the step without depending
+        // on where the upper plateau is judged to begin, which is unreliable
+        // when that plateau is noisy DRAM latency.
+        const double threshold = std::sqrt(below.latency_ns * above.latency_ns);
+        size_t capacity_index = below.last;
+        for (size_t j = below.last; j < above.first; ++j) {
+            if (points[j].latency_ns < threshold)
+                capacity_index = j;
+            else
+                break;
+        }
         CacheLevelEstimate level;
         level.level = "L" + std::to_string(levels.size() + 1);
         level.capacity_bytes = points[capacity_index].working_set_bytes;

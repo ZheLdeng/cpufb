@@ -215,7 +215,7 @@ static void cpubm_riskv64_cache(std::vector<int> &set_of_threads,Table &table)
 }
 
 
-static void cpubm_do_bench(std::vector<int> &set_of_threads,
+static bool cpubm_do_bench(std::vector<int> &set_of_threads,
     uint32_t idle_time)
 {
     int i;
@@ -242,7 +242,7 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
         if (tm == NULL) {
             cerr << "Error: failed to create benchmark thread pool." << endl;
             for (Table *table : tables) delete table;
-            return;
+            return false;
         }
         BenchmarkCatalog catalog = build_benchmark_catalog();
 
@@ -276,11 +276,11 @@ static void cpubm_do_bench(std::vector<int> &set_of_threads,
             tables[i]->print();
 
         tpool_destroy(tm);
+        for (Table *table : tables) delete table;
+        return true;
     }
-    else
-    {
-        printf("Sorry, there's no any supported SIMD isa.\n");
-    }
+    printf("Sorry, there's no any supported SIMD isa.\n");
+    return false;
 }
 
 
@@ -332,29 +332,12 @@ static void cpufb_register_isa()
 
 int main(int argc, char *argv[])
 {
-    vector<int> set_of_threads;
-    uint32_t idle_time = 0;
+    // Same strict parser as ARM64 and x86-64.  The options this backend does
+    // not implement are rejected instead of being accepted and ignored.
+    CliOptions options;
+    if (!parse_cli_options(argc, argv, options)) return 1;
 
-    bool params_enough = false;
-
-    int i;
-    for (i = 1; i < argc; i++)
-    {
-        if (strncmp(argv[i], "--thread_pool=", 14) == 0)
-        {
-            if (!parse_thread_pool(argv[i] + 14, set_of_threads)) {
-                fprintf(stderr, "Error: --thread_pool must use syntax "
-                    "[N,N-M,...] with non-negative CPU IDs.\n");
-                return 1;
-            }
-            params_enough = true;
-        }
-        else if (strncmp(argv[i], "--idle_time=", 12) == 0)
-        {
-            idle_time = (uint32_t)atoi(argv[i] + 12);
-        }
-    }
-    if (!params_enough)
+    if (!options.thread_pool_set || options.thread_pool.empty())
     {
         fprintf(stderr, "Error: You must set --thread_pool parameter.\n");
         fprintf(stderr, "You may also set --idle_time parameter.\n");
@@ -364,11 +347,22 @@ int main(int argc, char *argv[])
         fprintf(stderr, "idle_time is the interval time(s) between every two benchmarks.\n");
         fprintf(stderr, "idle_time parameter can be ignored, the default value is 0s.\n");
         fprintf(stderr, "Notice: there must NOT be any spaces.\n");
-        exit(0);
+        return 1;
+    }
+    const BenchmarkFilter &filter = options.filter;
+    if (options.mode_explicit || options.memory_bandwidth ||
+        options.memory_size_set || options.memory_repetitions_set ||
+        options.list_categories || options.list_instructions ||
+        !options.sweep_instruction.empty() || options.save.enabled ||
+        options.save.format_set || options.loop_scale != 1 ||
+        options.bench_limit != 0 || !filter.include_test.empty() ||
+        !filter.exclude_test.empty() || !filter.include_isa.empty() ||
+        !filter.exclude_isa.empty()) {
+        fprintf(stderr, "Error: the riscv64 backend only supports "
+            "--thread_pool and --idle_time.\n");
+        return 1;
     }
 
     cpufb_register_isa();
-    cpubm_do_bench(set_of_threads, idle_time);
-
-    return 0;
+    return cpubm_do_bench(options.thread_pool, options.idle_time) ? 0 : 1;
 }

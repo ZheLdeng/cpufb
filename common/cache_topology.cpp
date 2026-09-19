@@ -296,6 +296,17 @@ std::uint64_t recommended_stream_workset_bytes(const LastLevelCacheInfo &cache)
     return cache_scaled > recommended ? cache_scaled : recommended;
 }
 
+std::string describe_probe_agreement(double reported, double measured,
+    double tolerance)
+{
+    if (measured <= 0.0) return "probe: not observed";
+    if (reported <= 0.0) return "probe (no OS value)";
+    const double ratio = measured / reported;
+    if (ratio <= tolerance && ratio >= 1.0 / tolerance)
+        return "probe (agrees with OS)";
+    return "probe (DISAGREES with OS)";
+}
+
 std::string format_cache_capacity(std::uint64_t bytes)
 {
     if (bytes == 0) return "0 B";

@@ -14,7 +14,8 @@
 namespace {
 
 const int kFallbackCacheline = 64;
-const size_t kProbeBytes = 64 * 1024;
+const size_t kProbeBytes = 256 * 1024;
+const size_t kMinimumWindowPitch = 256;
 const size_t kFlushGranularity = 16;
 const int kProbeRepeats = 31;
 const double kMinimumBoundaryGain = 1.50;
@@ -43,22 +44,22 @@ double median(std::vector<double> values)
     return result;
 }
 
-uintptr_t *node_at(unsigned char *buffer, size_t window, size_t stride,
+uintptr_t *node_at(unsigned char *buffer, size_t window, size_t pitch,
     size_t offset)
 {
-    return reinterpret_cast<uintptr_t *>(buffer + window * stride + offset);
+    return reinterpret_cast<uintptr_t *>(buffer + window * pitch + offset);
 }
 
 uintptr_t *make_chain(unsigned char *buffer, const std::vector<size_t> &order,
-    size_t stride, size_t offset)
+    size_t pitch, size_t offset)
 {
     for (size_t i = 0; i < order.size(); ++i) {
         const size_t next = (i + 1) % order.size();
-        *node_at(buffer, order[i], stride, offset) =
+        *node_at(buffer, order[i], pitch, offset) =
             reinterpret_cast<uintptr_t>(
-                node_at(buffer, order[next], stride, offset));
+                node_at(buffer, order[next], pitch, offset));
     }
-    return node_at(buffer, order[0], stride, offset);
+    return node_at(buffer, order[0], pitch, offset);
 }
 
 double time_chain(uintptr_t *next, size_t steps)
@@ -81,22 +82,17 @@ bool debug_enabled()
 
 } // namespace
 
-int probe_cacheline_size(int theory_cacheline, int fallback_cacheline,
+int probe_cacheline_size(int theory_cacheline,
     cacheline_flush_fn flush_line,
     cacheline_fence_fn finish_flush)
 {
     static const size_t strides[] = {16, 32, 64, 128, 256, 512, 1024};
     const size_t stride_count = sizeof(strides) / sizeof(strides[0]);
 
-    const int fallback = fallback_cacheline > 0
-        ? fallback_cacheline
-        : kFallbackCacheline;
-    if (flush_line == nullptr || finish_flush == nullptr)
-        return theory_cacheline > 0 ? theory_cacheline : fallback;
+    if (flush_line == nullptr || finish_flush == nullptr) return 0;
 
     void *allocation = nullptr;
-    if (posix_memalign(&allocation, 4096, kProbeBytes) != 0)
-        return theory_cacheline > 0 ? theory_cacheline : fallback;
+    if (posix_memalign(&allocation, 4096, kProbeBytes) != 0) return 0;
 
     unsigned char *buffer = static_cast<unsigned char *>(allocation);
     std::vector<double> ratios;
@@ -105,16 +101,25 @@ int probe_cacheline_size(int theory_cacheline, int fallback_cacheline,
 
     for (size_t stride_index = 0; stride_index < stride_count; ++stride_index) {
         const size_t stride = strides[stride_index];
-        const size_t window_count = kProbeBytes / stride;
+        // Windows are spaced four strides apart (and at least four 64-byte
+        // lines) so that a forward next-line prefetch triggered by one node
+        // can never land on another node.
+        const size_t pitch = stride * 4 > kMinimumWindowPitch
+            ? stride * 4 : kMinimumWindowPitch;
+        const size_t window_count = kProbeBytes / pitch;
         std::vector<size_t> order(window_count);
         std::iota(order.begin(), order.end(), 0);
         std::shuffle(order.begin(), order.end(), generator);
 
         std::memset(buffer, 0, kProbeBytes);
-        uintptr_t *first = make_chain(buffer, order, stride, 0);
-        // Half a window keeps the chains distinct at the 16-byte stride while
-        // placing both nodes in one line until stride exceeds the line size.
-        uintptr_t *second = make_chain(buffer, order, stride, stride / 2);
+        // The cold chain sits half a stride ABOVE the reuse chain: both share
+        // one line until stride exceeds the line size, and the adjacent-line
+        // prefetcher, which only fetches forward, cannot pull the reuse node
+        // in.  With the reuse node above the cold node a 64-byte line plus
+        // next-line prefetch is indistinguishable from a 128-byte line.
+        uintptr_t *first = make_chain(buffer, order, pitch,
+            stride + stride / 2);
+        uintptr_t *second = make_chain(buffer, order, pitch, stride);
 
         std::vector<double> samples;
         samples.reserve(kProbeRepeats);
@@ -160,22 +165,28 @@ int probe_cacheline_size(int theory_cacheline, int fallback_cacheline,
         ? static_cast<int>(strides[boundary])
         : 0;
 
-    // OS cache topology is authoritative when exposed. A disagreement means
-    // the empirical curve was noisy or the boundary was not observable, so do
-    // not publish a transient 16/32-byte result as the measured line size.
-    const int selected = theory_cacheline > 0 && measured != theory_cacheline
-        ? theory_cacheline
-        : (measured > 0 ? measured : fallback);
+    // The probe result is reported as measured, even when it disagrees with
+    // the OS topology: substituting the reported value here would make the
+    // "test" column agree with the "theory" column by construction.  Callers
+    // that need a working line size use effective_cacheline_size().
 
     if (debug_enabled()) {
         std::fprintf(stderr, "cacheline probe ratios:");
         for (size_t i = 0; i < ratios.size(); ++i)
             std::fprintf(stderr, " %zu=%.3f", strides[i], ratios[i]);
         std::fprintf(stderr,
-            " boundary=%zu gain=%.3f delta=%.3f measured=%d theory=%d selected=%d\n",
+            " boundary=%zu gain=%.3f delta=%.3f measured=%d theory=%d\n",
             strides[boundary], boundary_gain, boundary_delta, measured,
-            theory_cacheline, selected);
+            theory_cacheline);
     }
 
-    return selected;
+    return measured;
+}
+
+int effective_cacheline_size(int theory_cacheline, int measured_cacheline,
+    int fallback_cacheline)
+{
+    if (theory_cacheline > 0) return theory_cacheline;
+    if (measured_cacheline > 0) return measured_cacheline;
+    return fallback_cacheline > 0 ? fallback_cacheline : kFallbackCacheline;
 }

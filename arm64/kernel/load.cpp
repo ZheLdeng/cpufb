@@ -15,6 +15,8 @@
 #include <vector>
 #include <atomic>
 #include <iostream>
+#include <associativity_probe.hpp>
+#include <cache_curve.hpp>
 #include <cacheline_probe.hpp>
 #include <cache_topology.hpp>
 #include<common.hpp>
@@ -33,33 +35,6 @@
 #endif
 //cacheline长度
 #define CACHE_LINE 64
-//测试WINDOW的数量上限
-#define WINDOW_NUM 2048
-#ifndef __APPLE__
-//WINDOW 大小 4MB
-#define WINDOW_SIZE 4 * 1024 * 1024
-#define LOOP_TIME 1000000
-#define CACHE_PROBE_REPEAT 100
-#define MULTIWAY_LOOP_TIME 1000000
-#define MULTIWAY_TEST_TIME 100
-#else
-// macOS 上 perf counter 和绑核能力有限，使用较短循环避免整轮 benchmark 过慢。
-// WINDOW_SIZE 必须大于本机 L2（M-series perf cluster 16-32 MB），否则
-// random_access 不会跨过 L2 边界，L2→DRAM 跳变要么不发生、要么落在
-// validation 数组末位被 isMaximum 的 boundary 检查吞掉。64 MB 在所有
-// M1/M2/M3/M4 上都足以越过 L2 进入 DRAM 区。
-#define WINDOW_SIZE 64 * 1024 * 1024
-#define LOOP_TIME 200000
-#define CACHE_PROBE_REPEAT 20
-#define MULTIWAY_LOOP_TIME 200000
-#define MULTIWAY_TEST_TIME 20
-#endif
-
-#define PTR_BITS 3
-#define MAX_RAND 100000
-
-#define BUFFER_NUM 16
-#define BUFFER_SIZE 4 * 1024 * 1024
 
 using namespace std;
 
@@ -105,15 +80,19 @@ static void load_bench_thread_func(void *params)
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
 #endif
     load_bench_task *task = reinterpret_cast<load_bench_task*>(params);
-    const size_t worker_index = task->next_worker.fetch_add(1,
-        std::memory_order_relaxed);
+    // Index by pool position, not arrival order: the slice a worker warmed
+    // into its private L1/L2 must be the slice it is later timed on.
+    size_t worker_index = tpool_worker_index();
+    if (worker_index == SIZE_MAX)
+        worker_index = task->next_worker.fetch_add(1,
+            std::memory_order_relaxed);
     float *worker_data = reinterpret_cast<float*>(
         reinterpret_cast<char*>(task->cache_data) +
         worker_index * task->worker_stride_bytes);
 #ifdef __linux__
     // Count the load kernel itself instead of inferring its cycle count from
     // a separately calibrated frequency and wall-clock duration.
-    PerfEventCycle cycle_counter;
+    PerfEventCycle cycle_counter(0, false);
     cycle_counter.start();
 #endif
     task->bench(worker_data, task->inner_loop, task->looptime);
@@ -133,7 +112,7 @@ static load_bench_result run_load_bench(load_bench bench, float* cache_data,
     struct timespec start, end;
     if (tm == nullptr || tm->thread_num == 0) {
 #ifdef __linux__
-        PerfEventCycle cycle_counter;
+        PerfEventCycle cycle_counter(0, false);
 #endif
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 #ifdef __linux__
@@ -327,241 +306,11 @@ void get_reported_cache_info(struct CacheData *cache_data, int cpu_id)
 #else
     (void)cpu_id;
 #endif
-    if (cache_data->theory_cacheline <= 0) cache_data->theory_cacheline = 64;
-    cacheline = cache_data->theory_cacheline;
-}
-
-static double median_values(vector<double> values)
-{
-    if (values.empty()) return 0;
-    size_t middle = values.size() / 2;
-    nth_element(values.begin(), values.begin() + middle, values.end());
-    double result = values[middle];
-    if (values.size() % 2 == 0) {
-        nth_element(values.begin(), values.begin() + middle - 1, values.end());
-        result = (result + values[middle - 1]) / 2.0;
-    }
-    return result;
-}
-
-static vector<uint64_t> build_curve_sizes(const CacheData &cache_data,
-    uint64_t max_bytes)
-{
-    set<uint64_t> sizes;
-    for (uint64_t base = 4 * 1024; base <= max_bytes; base *= 2) {
-        sizes.insert(base);
-        if (base <= max_bytes / 3 * 2) sizes.insert(base + base / 2);
-        if (base > max_bytes / 2) break;
-    }
-    const int reported_kb[] = {
-        cache_data.theory_L1, cache_data.theory_L2
-    };
-    for (int size_kb : reported_kb) {
-        if (size_kb <= 0) continue;
-        uint64_t bytes = static_cast<uint64_t>(size_kb) * 1024;
-        for (int percent : {75, 100, 125}) {
-            uint64_t point = bytes * percent / 100;
-            point = max<uint64_t>(4 * 1024, point);
-            point = (point + 4095) & ~uint64_t(4095);
-            if (point <= max_bytes) sizes.insert(point);
-        }
-    }
-    sizes.insert(max_bytes);
-    return vector<uint64_t>(sizes.begin(), sizes.end());
-}
-
-static double measure_pointer_chase(int64_t *buffer, uint64_t working_set_bytes,
-    int line_size, uint64_t seed)
-{
-    size_t stride = max<size_t>(sizeof(int64_t), static_cast<size_t>(line_size));
-    size_t line_count = max<size_t>(2, working_set_bytes / stride);
-    size_t stride_words = stride / sizeof(int64_t);
-    vector<size_t> order(line_count);
-    iota(order.begin(), order.end(), 0);
-    mt19937_64 random(seed);
-    shuffle(order.begin(), order.end(), random);
-
-    auto word_index = [stride_words](size_t line) { return line * stride_words; };
-    for (size_t i = 0; i < line_count; ++i) {
-        size_t current = order[i];
-        size_t next = order[(i + 1) % line_count];
-        buffer[word_index(current)] = static_cast<int64_t>(word_index(next));
-    }
-
-    int warmup = static_cast<int>(min<size_t>(max<size_t>(10000, line_count),
-        static_cast<size_t>(numeric_limits<int>::max())));
-    load_ptr(warmup, buffer);
-
-    int probe_iterations = static_cast<int>(min<size_t>(
-        max<size_t>(50000, line_count), 2000000));
-    struct timespec start, end;
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    load_ptr(probe_iterations, buffer);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    double probe_ns = get_time(&start, &end) * 1e9 / probe_iterations;
-    if (!(probe_ns > 0)) return 0;
-
-    size_t target_iterations = static_cast<size_t>(5e6 / probe_ns);
-    target_iterations = max<size_t>(50000, target_iterations);
-    target_iterations = max(target_iterations, line_count);
-    target_iterations = min<size_t>(target_iterations,
-        static_cast<size_t>(numeric_limits<int>::max()));
-    int iterations = static_cast<int>(target_iterations);
-    vector<double> samples;
-    samples.reserve(5);
-    for (int sample = 0; sample < 5; ++sample) {
-        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        load_ptr(iterations, buffer);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-        samples.push_back(get_time(&start, &end) * 1e9 / iterations);
-    }
-    return median_values(samples);
-}
-
-struct CacheJumpCandidate {
-    size_t point_index;
-    double ratio;
-};
-
-static vector<CacheLevelEstimate> estimate_cache_levels(
-    const vector<CacheLatencyPoint> &points, const CacheData &cache_data)
-{
-    vector<CacheJumpCandidate> candidates;
-    if (points.size() < 7) return {};
-    for (size_t i = 2; i + 3 < points.size(); ++i) {
-        vector<double> before, after;
-        for (size_t j = i - 2; j <= i; ++j) before.push_back(points[j].latency_ns);
-        for (size_t j = i + 1; j <= i + 3; ++j) after.push_back(points[j].latency_ns);
-        double before_median = median_values(before);
-        double after_median = median_values(after);
-        if (before_median <= 0) continue;
-        double ratio = after_median / before_median;
-        if (ratio >= 1.12 && after_median - before_median >= 0.25)
-            candidates.push_back({i, ratio});
-    }
-
-    struct SelectedJump {
-        CacheJumpCandidate jump;
-        string level;
-    };
-    vector<SelectedJump> selected;
-    const pair<const char*, int> reported[] = {
-        {"L1", cache_data.theory_L1},
-        {"L2", cache_data.theory_L2}
-    };
-    for (const auto &expected : reported) {
-        if (expected.second <= 0) continue;
-        uint64_t expected_bytes = static_cast<uint64_t>(expected.second) * 1024;
-        const CacheJumpCandidate *best = nullptr;
-        double best_distance = numeric_limits<double>::max();
-        for (const auto &candidate : candidates) {
-            size_t capacity_index = candidate.point_index > 0
-                ? candidate.point_index - 1 : candidate.point_index;
-            uint64_t capacity = points[capacity_index].working_set_bytes;
-            if (capacity < expected_bytes / 2 || capacity > expected_bytes * 2)
-                continue;
-            bool already_used = any_of(selected.begin(), selected.end(),
-                [&](const SelectedJump &item) {
-                    return item.jump.point_index == candidate.point_index;
-                });
-            if (already_used) continue;
-            double distance = abs(log2(static_cast<double>(capacity) /
-                static_cast<double>(expected_bytes)));
-            if (distance < best_distance - 1e-9 ||
-                (abs(distance - best_distance) < 1e-9 &&
-                 (best == nullptr || candidate.ratio > best->ratio))) {
-                best = &candidate;
-                best_distance = distance;
-            }
-        }
-        if (best != nullptr) selected.push_back({*best, expected.first});
-    }
-
-    // If the nominal-size search misses on a noisy system, retain a constrained
-    // curve-only fallback above L1 rather than fabricating the reported value.
-    bool has_reported_l2 = cache_data.theory_L2 > 0;
-    bool has_selected_l2 = any_of(selected.begin(), selected.end(),
-        [](const SelectedJump &item) { return item.level == "L2"; });
-    if (has_reported_l2 && !has_selected_l2) {
-        uint64_t lower_bound = static_cast<uint64_t>(
-            max(cache_data.theory_L1 * 2, 128)) * 1024;
-        uint64_t upper_bound = static_cast<uint64_t>(cache_data.theory_L2) *
-            1024 * 4;
-        const CacheJumpCandidate *best = nullptr;
-        for (const auto &candidate : candidates) {
-            size_t capacity_index = candidate.point_index > 0
-                ? candidate.point_index - 1 : candidate.point_index;
-            uint64_t capacity = points[capacity_index].working_set_bytes;
-            if (capacity < lower_bound || capacity > upper_bound) continue;
-            bool already_used = any_of(selected.begin(), selected.end(),
-                [&](const SelectedJump &item) {
-                    return item.jump.point_index == candidate.point_index;
-                });
-            if (already_used) continue;
-            if (best == nullptr || candidate.ratio > best->ratio)
-                best = &candidate;
-        }
-        if (best != nullptr) selected.push_back({*best, "L2"});
-    }
-
-    if (selected.empty()) {
-        sort(candidates.begin(), candidates.end(), [](const auto &a, const auto &b) {
-            return a.ratio > b.ratio;
-        });
-        static const char *fallback_names[] = {"L1", "L2"};
-        for (const auto &candidate : candidates) {
-            size_t capacity_index = candidate.point_index > 0
-                ? candidate.point_index - 1 : candidate.point_index;
-            uint64_t capacity = points[capacity_index].working_set_bytes;
-            bool separated = all_of(selected.begin(), selected.end(),
-                [&](const SelectedJump &existing) {
-                    size_t other_index = existing.jump.point_index > 0
-                        ? existing.jump.point_index - 1 : existing.jump.point_index;
-                    uint64_t other = points[other_index].working_set_bytes;
-                    return max(capacity, other) >= min(capacity, other) * 4;
-                });
-            if (separated) {
-                selected.push_back({candidate, fallback_names[selected.size()]});
-                if (selected.size() == 2) break;
-            }
-        }
-    }
-    sort(selected.begin(), selected.end(), [](const auto &a, const auto &b) {
-        return a.jump.point_index < b.jump.point_index;
-    });
-
-    vector<CacheLevelEstimate> result;
-    size_t segment_start = 0;
-    for (size_t level = 0; level < selected.size(); ++level) {
-        size_t end = selected[level].jump.point_index;
-        size_t capacity_index = end > 0 ? end - 1 : end;
-        vector<double> plateau;
-        size_t plateau_start = capacity_index > 2 ? capacity_index - 2 : 0;
-        plateau_start = max(plateau_start, segment_start);
-        if (selected[level].level == "L2" && capacity_index >= segment_start + 2) {
-            for (size_t start = segment_start; start + 2 <= capacity_index; ++start) {
-                double minimum = points[start].latency_ns;
-                double maximum = minimum;
-                for (size_t i = start + 1; i <= start + 2; ++i) {
-                    minimum = min(minimum, points[i].latency_ns);
-                    maximum = max(maximum, points[i].latency_ns);
-                }
-                if (minimum > 0 && maximum / minimum <= 1.10) {
-                    plateau_start = start;
-                    capacity_index = start + 2;
-                    break;
-                }
-            }
-        }
-        for (size_t i = plateau_start; i <= capacity_index; ++i)
-            plateau.push_back(points[i].latency_ns);
-        size_t measured_capacity_index = end > 0 ? end - 1 : end;
-        result.push_back({selected[level].level,
-            points[measured_capacity_index].working_set_bytes,
-            median_values(plateau), selected[level].jump.ratio});
-        segment_start = min(points.size(), end + 1);
-    }
-    return result;
+    // Leave theory_cacheline at 0 when the OS exposes nothing (Android):
+    // writing the 64-byte default into it would present an assumption as a
+    // reported value.  Only the working line size falls back.
+    cacheline = effective_cacheline_size(cache_data->theory_cacheline,
+        cache_data->test_cacheline, CACHE_LINE);
 }
 
 CacheCurveResult measure_cache_hierarchy(struct CacheData *cache_data, int cpu_id)
@@ -577,62 +326,21 @@ CacheCurveResult measure_cache_hierarchy(struct CacheData *cache_data, int cpu_i
         cerr << "Warning: cache curve could not bind to CPU " << cpu_id << endl;
 #endif
 
-    uint64_t reported_max_kb = static_cast<uint64_t>(max({
-        cache_data->theory_L1, cache_data->theory_L2, 0
-    }));
-    uint64_t max_bytes = max<uint64_t>(8ULL * 1024 * 1024,
-        reported_max_kb * 1024 * 4);
-    max_bytes = min<uint64_t>(max_bytes, 64ULL * 1024 * 1024);
-    int line_size = max(64, cache_data->theory_cacheline);
-    void *allocation = nullptr;
-#ifdef __linux__
-    constexpr size_t huge_page_size = 2ULL * 1024 * 1024;
-    size_t mapping_bytes = static_cast<size_t>(max_bytes) + huge_page_size;
-    void *mapping = mmap(nullptr, mapping_bytes, PROT_READ | PROT_WRITE,
-        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (mapping == MAP_FAILED) return result;
-    uintptr_t aligned = (reinterpret_cast<uintptr_t>(mapping) +
-        huge_page_size - 1) & ~(huge_page_size - 1);
-    allocation = reinterpret_cast<void*>(aligned);
-    madvise(allocation, static_cast<size_t>(max_bytes), MADV_HUGEPAGE);
-    memset(allocation, 0, static_cast<size_t>(max_bytes));
-#else
-    if (posix_memalign(&allocation, static_cast<size_t>(line_size), max_bytes) != 0)
-        return result;
-#endif
-    int64_t *buffer = static_cast<int64_t*>(allocation);
-
-    vector<uint64_t> sizes = build_curve_sizes(*cache_data, max_bytes);
-    for (size_t i = 0; i < sizes.size(); ++i) {
-        double latency = measure_pointer_chase(buffer, sizes[i], line_size,
-            0x4350554642ULL + i * 0x9e3779b97f4a7c15ULL);
-        result.points.push_back({sizes[i], latency});
-    }
-#ifdef __linux__
-    munmap(mapping, mapping_bytes);
-#else
-    free(allocation);
-#endif
-    result.levels = estimate_cache_levels(result.points, *cache_data);
-    if (!result.levels.empty()) {
-        for (const auto &level : result.levels) {
-            int size_kb = static_cast<int>(level.capacity_bytes / 1024);
-            if (level.level == "L1") cache_data->test_L1 = size_kb;
-            else if (level.level == "L2") cache_data->test_L2 = size_kb;
-        }
+    // The sweep range, the sample grid and the level estimate are all fixed
+    // or derived from the curve itself.  Reported sizes used to seed the grid
+    // and select the jump nearest to them, which made the "measured" capacity
+    // agree with the OS by construction and left it empty without topology
+    // data (Android).
+    const uint64_t max_bytes = 64ULL * 1024 * 1024;
+    const int line_size = effective_cacheline_size(
+        cache_data->theory_cacheline, cache_data->test_cacheline, 64);
+    result = measure_cache_curve(load_ptr, line_size, max_bytes);
+    for (const auto &level : result.levels) {
+        const int size_kb = static_cast<int>(level.capacity_bytes / 1024);
+        if (level.level == "L1") cache_data->test_L1 = size_kb;
+        else if (level.level == "L2") cache_data->test_L2 = size_kb;
     }
     return result;
-}
-
-static inline void shuffleVector(std::vector<int64_t>& vec) {
-    // 使用当前时间作为随机数种子
-    std::srand(static_cast<unsigned>(std::time(0)));
-
-    // Fisher-Yates 洗牌算法
-    for (size_t i = vec.size() - 1; i > 0; --i) {
-        int j = rand() % (i + 1); // 生成范围 [0, i] 的随机索引
-        std::swap(vec[i], vec[j]);    // 交换当前元素与随机索引元素
-    }
 }
 
 static void flush_cache_line(void *address) {
@@ -653,170 +361,6 @@ static void finish_cache_line_flush()
         :
         : "memory"
     );
-}
-
-static inline void shuffleGroups(std::vector<int64_t>& vec, int sub) {
-    if (sub <= 0) {
-        std::cerr << "Error: sub must be greater than 0." << std::endl;
-        return;
-    }
-    // 初始化随机数种子
-    std::srand(std::time(0));
-
-    // 遍历 vector，将其分为大小为 sub 的组
-    for (size_t i = 0; i < vec.size(); i += sub) {
-        // 计算当前组的结束位置
-        size_t end = std::min(i + sub, vec.size());
-
-        // 对当前组进行洗牌
-        for (size_t j = i; j < end; ++j) {
-            // 生成范围内的随机索引
-            size_t randomIndex = i + (std::rand() % (end - i));
-            // 交换当前元素和随机索引处的元素
-            std::swap(vec[j], vec[randomIndex]);
-        }
-    }
-}
-
-static inline void init(int64_t *ptr, vector<int64_t> ptr_index, int64_t group)
-{
-    // cout << "start init" << endl;
-    volatile int64_t index = 0;
-    volatile int64_t group_size = ptr_index.size() / group;
-    if (group > 1) {
-        vector<int64_t> group_index(group - 1);
-        //group 最后返回0
-        for (int64_t m = 0; m < group - 1; ++m) {
-            group_index[m] = m + 1;
-        }
-        // cout << "start shuffle vector" << endl;
-        shuffleVector(group_index);
-        // cout << "start shuffle groups" << endl;
-        shuffleGroups(ptr_index, group_size);
-        // cout << "finish shuffle" << endl;
-        // 每次,从0开始,按照shuffle的顺序访问子块,最后返回0
-        index = ptr_index[0];
-        for (int64_t m = 0; m < group_size - 1; ++m) {
-            for (int64_t n = 0; n < group - 1; ++n) {
-                ptr[index] = ptr_index[group_index[n] * group_size + m];
-                index = ptr[index];
-            }
-            shuffleVector(group_index);
-            ptr[index] = ptr_index[m + 1];
-            index = ptr[index];
-        }
-        for (int64_t n = 0; n < group - 1; ++n) {
-            ptr[index] = ptr_index[group_index[n] * group_size + group_size - 1];
-            index = ptr[index];
-        }
-        ptr[index] = ptr_index[0];
-    } else {
-        vector<int64_t> indexs(ptr_index.size());
-        for (int64_t m = 0; m < ptr_index.size(); m++) {
-            indexs[m] = m;
-        }
-        shuffleVector(indexs);
-        index = ptr_index[indexs[0]];
-        for (int64_t m = 0; m < ptr_index.size() - 1; m++) {
-            ptr[index] = ptr_index[indexs[m + 1]];
-            index = ptr[index];
-        }
-        ptr[index] = ptr_index[indexs[0]];
-    }
-    // cout << "finish init" << endl;
-}
-
-static inline double inloop(int group, int win_size)
-{
-    int i, j, k;
-    struct timespec start, end;
-    double sum_time_used = 0;
-    int64_t *ptr = (int64_t*)malloc(win_size);
-    int read_stride = int(log(cacheline) / log(2));
-    int total_num = (win_size) >> read_stride; //每cacheline byte 1个数
-
-    vector<int64_t> ptr_index(total_num) ;
-    for (i = 0; i < CACHE_PROBE_REPEAT; i++) {
-        // cout << "main loop start " << i << endl;
-        int64_t index = 0;
-        for (int64_t m = 0; m < total_num; ++m) {
-            ptr_index[m] = m << (read_stride - 3);
-        }
-        init(ptr, ptr_index, group);
-        //warm up
-        load_ptr(LOOP_TIME, ptr);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        load_ptr(LOOP_TIME, ptr);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-        sum_time_used += get_time(&start, &end);
-        usleep(1000);
-    }
-    free(ptr);
-    // printf("size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / CACHE_PROBE_REPEAT);
-
-    return sum_time_used / CACHE_PROBE_REPEAT;
-}
-
-static inline void get_slope(vector<double>& data, vector<double>& slope)
-{
-    for (int i = 1; i < data.size(); i++) {
-        slope.push_back((data[i] - data[i - 1]) / data[i - 1]);
-        // cout << "slope is" << i << " is " << abs(data[i] - data[i - 1]) << endl;
-    }
-}
-
-static inline void get_validation(vector<double>& data, vector<double>& validation)
-{
-    for (int i = 1; i < data.size(); i++) {
-        validation.push_back(abs(data[i] - data[i - 1]));
-        // cout << scientific << "validation " << i << " is " << abs(data[i] - data[i - 1]) << endl;
-    }
-}
-
-// 检查点是否是极大值点
-static inline bool isMaximum(const vector<double>& values, int index)
-{
-    int n = values.size();
-    if (index == 0 || index == n - 1) {
-        return false; // 如果点是边界点，则不是极大值点
-    }
-    return values[index] > values[index - 1] && values[index] > values[index + 1];
-}
-
-// 找到给定范围内的所有极大值点
-static inline int find_L2_point(const vector<double>& values, int start, int end)
-{
-    int size = 0;
-    // cout << "start end " << start << " " << end << " " << values[start] << endl;
-    for (int i = start + 1; i < end; i++) {
-
-        if (isMaximum(values, i) && values[i] > values [start]) {
-            size = i;
-            break;
-        }
-    }
-    // cout << "size = " << size << endl;
-    size = pow(2, size / 2 + 1) * (1 + 0.5 * (size % 2));
-    return size;
-}
-
-static inline int find_L1_point(const vector<double>& values)
-{
-    for (int i = 0; i < values.size(); i++) {
-        if (values[i] > 0.2) {
-            return i;
-        }
-    }
-    return 0;
-}
-
-static inline void random_access(vector<double>& time_used) {
-    for (int win_size = 2 * 1024; win_size <= WINDOW_SIZE; win_size *= 2) {
-        // cout << "win_size = " << win_size << " " << int(win_size * 1.5 / 1024 / 64) << endl;
-        time_used.push_back(inloop(max(1, win_size / 1024 / 64), win_size));
-        time_used.push_back(inloop(max(1, int(win_size * 1.5 / 1024 / 64)), win_size * 1.5));
-    }
-    return;
 }
 
 void get_cacheline(struct CacheData *cache_data, int cpu_id)
@@ -849,36 +393,10 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
         CACHE_LINE;
 #endif
     cache_data->test_cacheline = probe_cacheline_size(
-        cache_data->theory_cacheline, fallback_cacheline, flush_cache_line,
+        cache_data->theory_cacheline, flush_cache_line,
         finish_cache_line_flush);
-    cacheline = cache_data->test_cacheline > 0
-        ? cache_data->test_cacheline
-        : CACHE_LINE;
-}
-
-void get_cachesize(struct CacheData *cache_size, int cpu_id)
-{
-    vector<double> time_used, validation, slope;
-    int L1_size_num = 0;
-#ifdef __linux__
-    pid_t pid = syscall(SYS_gettid);
-    cpu_set_t mask;
-    CPU_ZERO(&mask);
-    CPU_SET(cpu_id, &mask);
-    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
-        printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
-        printf("Warning: performance may be impacted \n");
-    }
-#endif
-    get_cache_capacities(cache_size, cpu_id);
-    random_access(time_used);
-    get_slope(time_used, slope);
-    get_validation(time_used, validation);
-    L1_size_num = find_L1_point(slope);
-    // cout << "L1_size = " << L1_size_num << endl;
-    cache_size->test_L1 = pow(2, L1_size_num / 2 + 1) * (1 + 0.5 * (L1_size_num % 2));
-    // cout << "L1_size == " << cache_size->test_L1 << endl;
-    cache_size->test_L2 = find_L2_point(validation, L1_size_num, validation.size());
+    cacheline = effective_cacheline_size(cache_data->theory_cacheline,
+        cache_data->test_cacheline, fallback_cacheline);
 }
 
 void get_cache_capacities(struct CacheData *cache_size, int cpu_id)
@@ -904,10 +422,6 @@ void get_cache_capacities(struct CacheData *cache_size, int cpu_id)
 
 void get_multiway(struct CacheData *cache_size, int cpu_id)
 {
-    struct timespec start, end;
-    double time_used = 0, pre_time_used = 0;
-    int i, j, k, w;
-    int64_t loop_time = MULTIWAY_LOOP_TIME, test_time = MULTIWAY_TEST_TIME;
 #ifdef __linux__
     pid_t pid = syscall(SYS_gettid);
     cpu_set_t mask;
@@ -919,46 +433,17 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
     }
     read_data(cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
 #endif
-    for (w = 0; w < BUFFER_NUM; w++) {
-        uint64_t *index = (uint64_t*)malloc(BUFFER_SIZE * (w + 1));
-        uint64_t next = 0;
-        //init
-        for ( j = 0; j < w; j++) {
-            index[(j * BUFFER_SIZE) >> 3 ] = ((j + 1) * BUFFER_SIZE) >> 3;
-        }
-        index[(j * BUFFER_SIZE) >> 3] = 0;
-        //warm up
-        next = 0;
-        for (k = 0; k < loop_time; k++) {
-            next = index[next];
-        }
-
-        pre_time_used = time_used;
-        time_used = 0;
-        for (i = 0; i < test_time;i++) {
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            next = 0;
-            for (k = 0; k<loop_time; k++) {
-                next = index[next];
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            time_used += get_time(&start, &end);
-        }
-        time_used /= test_time;
-        // cout << "multi way " << w << " / " << time_used << " " << pre_time_used << " / "<<
-            // time_used/pre_time_used << endl;
-        if (w > 1 && time_used/pre_time_used - 1 > 1e-1) {
-            break;
-        }
-        free(index);
-    }
-    cache_size->test_way = w;
-    return;
+    // The previous ring used a bare 4 MiB stride: every line then sits on its
+    // own page and those pages alias one DTLB set, so the first transition
+    // was the DTLB associativity on cores without a fully associative L1
+    // DTLB.  The shared probe cancels translation cost against a control ring
+    // and needs no OS-reported geometry.
+    cache_size->test_way = probe_l1_associativity(static_cast<int>(cacheline));
 }
 
-double get_bandwith(uint64_t looptime, double data_size, string type, void* bench, tpool_t* tm)
+LoadBandwidth get_bandwith(uint64_t looptime, double data_size, string type, void* bench, tpool_t* tm)
 {
-    double perf;
+    LoadBandwidth perf;
     double best_time_used = 0.0;
     uint64_t best_cycle_sum = 0;
     size_t best_cycle_worker_count = 0;
@@ -988,7 +473,7 @@ double get_bandwith(uint64_t looptime, double data_size, string type, void* benc
     // the worker count without sharing cache lines.
     const size_t data_bytes = requested_data_bytes / workset_alignment *
         workset_alignment;
-    if (data_bytes == 0) return 0.0;
+    if (data_bytes == 0) return perf;
     const size_t aggregate_data_bytes = data_bytes * thread_num;
     const uint64_t bytes_per_outer_loop =
         static_cast<uint64_t>(data_bytes);
@@ -997,9 +482,13 @@ double get_bandwith(uint64_t looptime, double data_size, string type, void* benc
     measured_looptime = min<uint64_t>(measured_looptime, looptime);
     const size_t worker_stride_bytes = data_bytes + kLoadGuardBytes;
     if (worker_stride_bytes > std::numeric_limits<size_t>::max() / thread_num)
-        return 0.0;
-    float* cache_data = (float*)malloc(worker_stride_bytes * thread_num);
-    if (cache_data == nullptr) return 0.0;
+        return perf;
+    // Line-aligned storage: malloc() hands out 16-mod-64 addresses for large
+    // blocks, which makes wide vector loads straddle cache lines.
+    void *allocation = nullptr;
+    if (posix_memalign(&allocation, 4096, worker_stride_bytes * thread_num) != 0)
+        return perf;
+    float* cache_data = static_cast<float*>(allocation);
 
     // Each worker owns a disjoint, equal-sized workset.  This avoids
     // synchronized reads of the same cache lines and keeps every worker's
@@ -1039,18 +528,27 @@ double get_bandwith(uint64_t looptime, double data_size, string type, void* benc
             best_cycle_worker_count = sample.cycle_worker_count;
         }
     }
+    // Byte/Cycle is reported per core so that it is comparable with the
+    // per-core load-port limit and with the single-core x86 rows; the
+    // aggregate traffic of a multi-core pool is carried by GB/s.
+    const double bytes_per_worker = (double)measured_looptime * data_bytes;
+    perf.workset_bytes = data_bytes;
+    perf.thread_num = thread_num;
+    if (best_time_used > 0.0)
+        perf.gb_per_second = bytes_per_worker * thread_num /
+            best_time_used * 1e-9;
     if (best_cycle_worker_count == thread_num) {
-        // cycle_sum/thread_num is the mean cycle count over workers.  Dividing
-        // aggregate data by that mean reports aggregate Byte/Cycle while using
-        // the PMU counts taken around the actual load kernels.
-        perf = (double)measured_looptime * aggregate_data_bytes * thread_num /
-            best_cycle_sum;
+        // PMU counts taken around the actual load kernels; cycle_sum /
+        // thread_num is the mean cycle count of one worker.
+        perf.bytes_per_cycle = bytes_per_worker * thread_num / best_cycle_sum;
+        perf.cycle_source = "perf_event cycles";
     } else {
         const double mean_freq_ghz = mean_measured_freq_ghz();
-        perf = best_time_used > 0.0 && mean_freq_ghz > 0.0
-            ? (double)measured_looptime * aggregate_data_bytes /
-                (best_time_used * mean_freq_ghz * 1e9)
-            : 0.0;
+        if (best_time_used > 0.0 && mean_freq_ghz > 0.0) {
+            perf.bytes_per_cycle = bytes_per_worker /
+                (best_time_used * mean_freq_ghz * 1e9);
+            perf.cycle_source = "time x measured frequency";
+        }
     }
     free(cache_data);
     return perf;

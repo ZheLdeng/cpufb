@@ -281,7 +281,6 @@ static void cpubm_arm64_one(tpool_t *tm,
 
 static void cpubm_arm_load(tpool_t *tm, cpubm_t &item, Table &table)
 {
-    double perf = 0;
 
     vector<string> cont;
     cont.resize(table.getCol());
@@ -311,19 +310,31 @@ static void cpubm_arm_load(tpool_t *tm, cpubm_t &item, Table &table)
     cont[4] = to_string(workset_kib) + " KiB";
     cont[5] = load_capacity_source;
 
-    tpool_t *load_tm = (tm != nullptr && tm->thread_num > 1) ? tm : nullptr;
-    perf = get_bandwith(item.loop_time, (double)load_pl, item.type, item.bench, load_tm);
+    // Always run on the pinned pool workers, also for a single core: the
+    // calling thread is only pinned as a side effect of the cache probes, so
+    // a load-only run would measure whichever core the scheduler picked.
+    const LoadBandwidth bandwidth = get_bandwith(item.loop_time,
+        (double)load_pl, item.type, item.bench, tm);
 
-    stringstream ss1;
+    stringstream ss1, ss2;
 
-    if (perf >= 0)
-        ss1 << setprecision(5) << perf << " " << item.dim;
+    if (bandwidth.bytes_per_cycle > 0)
+        ss1 << setprecision(5) << bandwidth.bytes_per_cycle << " " << item.dim;
     else
         ss1 << "-";
+    if (bandwidth.gb_per_second > 0) {
+        ss2 << setprecision(5) << bandwidth.gb_per_second << " GB/s";
+        if (bandwidth.thread_num > 1)
+            ss2 << " (" << bandwidth.thread_num << " cores)";
+    } else {
+        ss2 << "-";
+    }
 
     cont[0] = item.isa;
     cont[1] = item.type;
     cont[2] = ss1.str();
+    cont[6] = ss2.str();
+    cont[7] = bandwidth.cycle_source.empty() ? "-" : bandwidth.cycle_source;
 
     table.addOneItem(cont);
     //cout << "test load end" << endl;
@@ -342,25 +353,6 @@ static void prepare_arm_load_cache(std::vector<int> &set_of_threads)
     }
 }
 
-static void sanitize_cache_size_probe()
-{
-#ifdef __linux__
-    if (cache_size.theory_L1 > 0 &&
-        (cache_size.test_L1 <= 0 ||
-         cache_size.test_L1 < cache_size.theory_L1 / 4 ||
-         cache_size.test_L1 > cache_size.theory_L1 * 4)) {
-        cache_size.test_L1 = cache_size.theory_L1;
-    }
-
-    if (cache_size.theory_L2 > 0 &&
-        (cache_size.test_L2 <= cache_size.test_L1 ||
-         cache_size.test_L2 < cache_size.theory_L2 / 4 ||
-         cache_size.test_L2 > cache_size.theory_L2 * 4)) {
-        cache_size.test_L2 = cache_size.theory_L2;
-    }
-#endif
-}
-
 static void probe_arm_cache(std::vector<int> &set_of_threads)
 {
 #ifdef __APPLE__
@@ -371,9 +363,9 @@ static void probe_arm_cache(std::vector<int> &set_of_threads)
     // cout << "get cacheline" << endl;
     get_multiway(&cache_size, set_of_threads[0]);
     // cout << "get multiway" << endl;
-    get_cachesize(&cache_size, set_of_threads[0]);
-    sanitize_cache_size_probe();
-    // cout << "get cachesize" << endl;
+    // L1/L2 capacity comes from the dependent-load latency curve in
+    // cpubm_arm_cache(); running the legacy slope probe as well would print a
+    // second, conflicting set of "measured" sizes.
 }
 
 static bool cpubm_arm_cache(std::vector<int> &set_of_threads,
@@ -384,19 +376,35 @@ static bool cpubm_arm_cache(std::vector<int> &set_of_threads,
 
     cont.resize(table.getCol());
     probe_arm_cache(set_of_threads);
+
+    // One capacity measurement feeds both the summary rows and the curve
+    // tables below.  Probe results are printed as measured and only labelled
+    // against the OS topology, never replaced by it.
+    int cpu_id = set_of_threads[0];
+    get_reported_cache_info(&cache_size, cpu_id);
+    CacheCurveResult curve = measure_cache_hierarchy(&cache_size, cpu_id);
+    auto with_agreement = [](const string &source, int reported, int measured,
+        double tolerance) {
+        const string verdict =
+            cpufb::describe_probe_agreement(reported, measured, tolerance);
+        return source.empty() ? verdict : source + "; " + verdict;
+    };
+
     cont[0] = "L1 data cache capacity";
     cont[1] = cache_size.theory_L1 > 0 ?
         to_string(cache_size.theory_L1) + " KiB" : "-";
     cont[2] = cache_size.test_L1 > 0 ?
         to_string(cache_size.test_L1) + " KiB" : "-";
-    cont[5] = cache_size.theory_L1_source;
+    cont[5] = with_agreement(cache_size.theory_L1_source,
+        cache_size.theory_L1, cache_size.test_L1, 1.5);
     table.addOneItem(cont);
     cont[0] = "L2/unified cache capacity";
     cont[1] = cache_size.theory_L2 > 0 ?
         to_string(cache_size.theory_L2) + " KiB" : "-";
     cont[2] = cache_size.test_L2 > 0 ?
         to_string(cache_size.test_L2) + " KiB" : "-";
-    cont[5] = cache_size.theory_L2_source;
+    cont[5] = with_agreement(cache_size.theory_L2_source,
+        cache_size.theory_L2, cache_size.test_L2, 1.5);
     table.addOneItem(cont);
     const cpufb::CacheLevelInfo l3 =
         cpufb::detect_data_cache_level(set_of_threads[0], 3);
@@ -414,20 +422,21 @@ static bool cpubm_arm_cache(std::vector<int> &set_of_threads,
     cont[2] = cache_size.test_way > 0 ? to_string(cache_size.test_way) : "-";
     cont[3].clear();
     cont[4].clear();
-    cont[5].clear();
+    cont[5] = with_agreement("", cache_size.theory_way,
+        cache_size.test_way, 1.0);
     table.addOneItem(cont);
     cont[0] = "cacheline size";
     cont[1] = cache_size.theory_cacheline > 0 ?
         to_string(cache_size.theory_cacheline) + " B" : "-";
     cont[2] = cache_size.test_cacheline > 0 ?
         to_string(cache_size.test_cacheline) + " B" : "-";
+    cont[5] = with_agreement("", cache_size.theory_cacheline,
+        cache_size.test_cacheline, 1.0);
     table.addOneItem(cont);
 
     // Cache-hierarchy latency curve: emit the dependent-load working-set
     // sweep and the inferred per-level capacity/latency/jump estimates.
-    int cpu_id = set_of_threads[0];
-    get_reported_cache_info(&cache_size, cpu_id);
-    CacheCurveResult curve = measure_cache_hierarchy(&cache_size, cpu_id);
+    cout << "Cache curve translation mode: " << curve.translation_mode << endl;
 
     Table curve_table;
     curve_table.setColumnNum(2);
@@ -550,13 +559,15 @@ static void init_table(vector<Table*> &tables)
     tables[0]->setColumnNum(ti.size());
     tables[0]->addOneItem(ti);
 
-    ti.resize(6);
+    ti.resize(8);
     ti[0] = "Cache Level";
     ti[1] = "Core Instruction";
-    ti[2] = "Bandwidth";
+    ti[2] = "Bandwidth (per core)";
     ti[3] = "Cache Capacity";
     ti[4] = "Workset";
     ti[5] = "Capacity Source";
+    ti[6] = "Bandwidth (GB/s)";
+    ti[7] = "Cycle Source";
     tables[1]->setColumnNum(ti.size());
     tables[1]->addOneItem(ti);
 

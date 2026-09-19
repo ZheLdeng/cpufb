@@ -262,10 +262,20 @@ static void cpubm_x64_one(tpool_t *tm,
     table.addOneItem(cont);
 }
 
+static string format_reported_value(int value, const char *unit)
+{
+    return value > 0 ? to_string(value) + unit : "-";
+}
+
+// Capacity used to size the L1/L2 load worksets: same policy as ARM64, the
+// OS topology when exposed and the empirical probe otherwise.
+static int load_capacity_kb(int reported, int measured)
+{
+    return reported > 0 ? reported : measured;
+}
+
 static void cpubm_x64_load(cpubm_t &item, Table &table)
 {
-    double perf = 0;
-
     vector<string> cont;
     cont.resize(table.getCol());
 
@@ -274,23 +284,33 @@ static void cpubm_x64_load(cpubm_t &item, Table &table)
         (item.isa == "--------" && item.comp_pl == 32LL);
 
     if (is_l1){
-        data_size = cache_size.test_L1;
-        cont[3] = to_string(cache_size.theory_L1) + " KB";
+        data_size = load_capacity_kb(cache_size.theory_L1, cache_size.test_L1);
+        cont[3] = format_reported_value(cache_size.theory_L1, " KB");
+        cont[4] = format_reported_value(cache_size.test_L1, " KB");
     } else {
-        data_size = cache_size.test_L2;
-        cont[3] = to_string(cache_size.theory_L2) + " KB";
+        data_size = load_capacity_kb(cache_size.theory_L2, cache_size.test_L2);
+        cont[3] = format_reported_value(cache_size.theory_L2, " KB");
+        cont[4] = format_reported_value(cache_size.test_L2, " KB");
     }
 
-    perf = get_bandwith(item.loop_time, data_size, item.type);
+    const LoadBandwidth bandwidth =
+        get_bandwith(item.loop_time, data_size, item.type);
 
-    stringstream ss1;
-
-    ss1 << setprecision(5) << perf << " " << item.dim;
+    stringstream per_cycle, per_second;
+    if (bandwidth.bytes_per_cycle > 0.0)
+        per_cycle << setprecision(5) << bandwidth.bytes_per_cycle << " " << item.dim;
+    else
+        per_cycle << "-";
+    if (bandwidth.gb_per_second > 0.0)
+        per_second << setprecision(5) << bandwidth.gb_per_second << " GB/s";
+    else
+        per_second << "-";
 
     cont[0] = item.isa;
     cont[1] = item.type;
-    cont[2] = ss1.str();
-    cont[4] = to_string(static_cast<int64_t>(data_size)) + " KB";
+    cont[2] = per_cycle.str();
+    cont[5] = per_second.str();
+    cont[6] = to_string(bandwidth.workset_bytes / 1024) + " KB";
     table.addOneItem(cont);
 }
 
@@ -306,35 +326,31 @@ static bool cpubm_x64_cache(std::vector<int> &set_of_threads,
     get_multiway(&cache_size, set_of_threads[0]);
     // cout << "get multiway" << endl;
     get_cachesize(&cache_size, set_of_threads[0]);
-    if (cache_size.theory_L1 > 0 &&
-        (cache_size.test_L1 <= 0 ||
-         cache_size.test_L1 < cache_size.theory_L1 / 4 ||
-         cache_size.test_L1 > cache_size.theory_L1 * 4))
-        cache_size.test_L1 = cache_size.theory_L1;
-    if (cache_size.theory_L2 > 0 &&
-        (cache_size.test_L2 <= cache_size.test_L1 ||
-         cache_size.test_L2 < cache_size.theory_L2 / 4 ||
-         cache_size.test_L2 > cache_size.theory_L2 * 4))
-        cache_size.test_L2 = cache_size.theory_L2;
-    // cout << "get cachesize" << endl;
-    cont[0] = "L1 ways of associativity";
-    cont[1] = to_string(cache_size.theory_way);
-    cont[2] = to_string(cache_size.test_way);
+    // The probe column always shows what was measured.  A result that
+    // disagrees with the OS topology is flagged, never replaced, so the
+    // report cannot agree with the reported value by construction.
     cont[3].clear();
     cont[4].clear();
-    cont[5].clear();
+    cont[0] = "L1 ways of associativity";
+    cont[1] = format_reported_value(cache_size.theory_way, "");
+    cont[2] = format_reported_value(cache_size.test_way, "");
+    cont[5] = cpufb::describe_probe_agreement(cache_size.theory_way, cache_size.test_way, 1.0);
     table.addOneItem(cont);
     cont[0] = "cacheline size";
-    cont[1] = to_string(cache_size.theory_cacheline) + " B";
-    cont[2] = to_string(cache_size.test_cacheline) + " B";
+    cont[1] = format_reported_value(cache_size.theory_cacheline, " B");
+    cont[2] = format_reported_value(cache_size.test_cacheline, " B");
+    cont[5] = cpufb::describe_probe_agreement(cache_size.theory_cacheline,
+        cache_size.test_cacheline, 1.0);
     table.addOneItem(cont);
     cont[0] = "L1 cache size";
-    cont[1] = to_string(cache_size.theory_L1) + " KB";
-    cont[2] = to_string(cache_size.test_L1) + " KB";
+    cont[1] = format_reported_value(cache_size.theory_L1, " KB");
+    cont[2] = format_reported_value(cache_size.test_L1, " KB");
+    cont[5] = cpufb::describe_probe_agreement(cache_size.theory_L1, cache_size.test_L1, 1.5);
     table.addOneItem(cont);
     cont[0] = "L2 cache size";
-    cont[1] = to_string(cache_size.theory_L2) + " KB";
-    cont[2] = to_string(cache_size.test_L2) + " KB";
+    cont[1] = format_reported_value(cache_size.theory_L2, " KB");
+    cont[2] = format_reported_value(cache_size.test_L2, " KB");
+    cont[5] = cpufb::describe_probe_agreement(cache_size.theory_L2, cache_size.test_L2, 1.5);
     table.addOneItem(cont);
     const cpufb::CacheLevelInfo l3 =
         cpufb::detect_data_cache_level(set_of_threads[0], 3);
@@ -419,12 +435,14 @@ static void init_table(vector<Table*> &tables)
     tables[0]->setColumnNum(ti.size());
     tables[0]->addOneItem(ti);
 
-    ti.resize(5);
+    ti.resize(7);
     ti[0] = "Cache Level";
     ti[1] = "Core Instruction";
-    ti[2] = "Bandwidth";
+    ti[2] = "Bandwidth (per core)";
     ti[3] = "Theory Size";
     ti[4] = "Test Size";
+    ti[5] = "Bandwidth (GB/s)";
+    ti[6] = "Workset";
     tables[1]->setColumnNum(ti.size());
     tables[1]->addOneItem(ti);
 
@@ -536,6 +554,11 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
     }
     else if (should_run_test(filter, "load"))
         get_theory_cache(&cache_size, set_of_threads[0]);
+    // The L1/L2 load kernels run on the calling thread.  The cache probes pin
+    // it as a side effect, but a load-only run would otherwise measure
+    // whichever core the scheduler picks while reporting thread_pool[0].
+    if (should_run_test(filter, "load"))
+        bind_current_thread(set_of_threads[0]);
 
     tpool_t *tm = tpool_create(set_of_threads);
     if (tm == NULL) {
@@ -777,32 +800,32 @@ static void cpufb_register_isa()
 #endif
 
     if (runtime_features.avx) {
-    reg_new_isa("L1 Cache", "vmovups.ymm(f32)", "Byte/TSC Cycle",
+    reg_new_isa("L1 Cache", "vmovups.ymm(f32)", "Byte/Cycle",
         0x186A00LL, 32LL, NULL, NULL);
     }
     reg_new_isa(runtime_features.avx ? "--------" : "L1 Cache",
-        "movss.scalar(f32)", "Byte/TSC Cycle",
+        "movss.scalar(f32)", "Byte/Cycle",
         0x186A00LL, 32LL, NULL, NULL);
-    reg_new_isa("--------", "movups.xmm(f32)", "Byte/TSC Cycle",
+    reg_new_isa("--------", "movups.xmm(f32)", "Byte/Cycle",
         0x186A00LL, 32LL, NULL, NULL);
 #ifdef _AVX512F_
     if (runtime_features.avx512f) {
-    reg_new_isa("--------", "vmovups.zmm(f32)", "Byte/TSC Cycle",
+    reg_new_isa("--------", "vmovups.zmm(f32)", "Byte/Cycle",
         0x186A00LL, 32LL, NULL, NULL);
     }
 #endif
     if (runtime_features.avx) {
-    reg_new_isa("L2 Cache", "vmovups.ymm(f32)", "Byte/TSC Cycle",
+    reg_new_isa("L2 Cache", "vmovups.ymm(f32)", "Byte/Cycle",
         0x186A00LL, 128LL, NULL, NULL);
     }
     reg_new_isa(runtime_features.avx ? "--------" : "L2 Cache",
-        "movss.scalar(f32)", "Byte/TSC Cycle",
+        "movss.scalar(f32)", "Byte/Cycle",
         0x186A00LL, 128LL, NULL, NULL);
-    reg_new_isa("--------", "movups.xmm(f32)", "Byte/TSC Cycle",
+    reg_new_isa("--------", "movups.xmm(f32)", "Byte/Cycle",
         0x186A00LL, 128LL, NULL, NULL);
 #ifdef _AVX512F_
     if (runtime_features.avx512f) {
-    reg_new_isa("--------", "vmovups.zmm(f32)", "Byte/TSC Cycle",
+    reg_new_isa("--------", "vmovups.zmm(f32)", "Byte/Cycle",
         0x186A00LL, 128LL, NULL, NULL);
     }
 #endif

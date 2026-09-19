@@ -66,7 +66,9 @@ find_package(Threads REQUIRED)
 # common/ as an OBJECT library
 # ---------------------------------------------------------------------------
 add_library(cpufb_common OBJECT
+    "${CPUFB_COMMON_DIR}/cache_curve.cpp"
     "${CPUFB_COMMON_DIR}/cache_topology.cpp"
+    "${CPUFB_COMMON_DIR}/associativity_probe.cpp"
     "${CPUFB_COMMON_DIR}/cacheline_probe.cpp"
     "${CPUFB_COMMON_DIR}/cli.cpp"
     "${CPUFB_COMMON_DIR}/table.cpp"
@@ -268,6 +270,19 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
         COMMAND cpufb_cache_topology_test
     )
     set_tests_properties(cpufb_cache_topology PROPERTIES
+        LABELS "unit"
+        TIMEOUT 30
+    )
+
+    add_executable(cpufb_cache_curve_test
+        "${CMAKE_SOURCE_DIR}/tests/test_cache_curve.cpp"
+    )
+    target_link_libraries(cpufb_cache_curve_test PRIVATE cpufb_common)
+    add_test(
+        NAME cpufb_cache_curve
+        COMMAND cpufb_cache_curve_test
+    )
+    set_tests_properties(cpufb_cache_curve PROPERTIES
         LABELS "unit"
         TIMEOUT 30
     )

@@ -4,6 +4,9 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+
+#include "cache_curve.hpp"
+
 struct tpool;
 typedef struct tpool tpool_t;
 extern std::vector<double> freq;
@@ -48,28 +51,20 @@ struct CacheData {
     int test_cacheline = 0;
 };
 
-struct CacheLatencyPoint {
-    uint64_t working_set_bytes = 0;
-    double latency_ns = 0;
-};
-
-struct CacheLevelEstimate {
-    std::string level;
-    uint64_t capacity_bytes = 0;
-    double latency_ns = 0;
-    double jump_ratio = 0;
-};
-
-struct CacheCurveResult {
-    std::vector<CacheLatencyPoint> points;
-    std::vector<CacheLevelEstimate> levels;
-};
-
 void get_reported_cache_info(struct CacheData *cache_size, int cpu_id);
 CacheCurveResult measure_cache_hierarchy(struct CacheData *cache_size, int cpu_id);
 void get_cache_capacities(struct CacheData *cache_size, int cpu_id);
-void get_cachesize(struct CacheData *cache_size, int cpu_id);
 void get_multiway(struct CacheData *cache_size,int cpu_id);
 void get_cacheline(struct CacheData *cache_size, int cpu_id);
-double get_bandwith(uint64_t looptime, double data_size, std::string type, void* bench, tpool_t* tm);
+// Cache-resident load bandwidth.  bytes_per_cycle is the per-core mean and is
+// 0 when no cycle count or frequency is available; gb_per_second (1e9 B/s) is
+// the aggregate over thread_num workers and never depends on the clock probe.
+struct LoadBandwidth {
+    double gb_per_second = 0.0;
+    double bytes_per_cycle = 0.0;
+    uint64_t workset_bytes = 0;
+    size_t thread_num = 1;
+    std::string cycle_source;
+};
+LoadBandwidth get_bandwith(uint64_t looptime, double data_size, std::string type, void* bench, tpool_t* tm);
 #endif

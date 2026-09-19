@@ -4,8 +4,16 @@
 typedef void (*cacheline_flush_fn)(void *address);
 typedef void (*cacheline_fence_fn)();
 
-int probe_cacheline_size(int theory_cacheline, int fallback_cacheline,
+// Returns the empirically measured cache-line size in bytes, or 0 when no
+// boundary was observed.  theory_cacheline is only used for debug output; the
+// measurement never depends on, and is never replaced by, the OS value.
+int probe_cacheline_size(int theory_cacheline,
     cacheline_flush_fn flush_line,
     cacheline_fence_fn finish_flush);
+
+// Line size other probes should build on: the OS value when exposed, then
+// the measurement, then the architecture fallback.
+int effective_cacheline_size(int theory_cacheline, int measured_cacheline,
+    int fallback_cacheline);
 
 #endif

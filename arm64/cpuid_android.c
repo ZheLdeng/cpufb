@@ -109,18 +109,20 @@ int main() {
             printf("_SVE2_\n");
         }
     }
+    // /proc/cpuinfo spells the SME sub-features without an underscore
+    // ("smef64f64"); the underscored forms are kept for older notes/tools.
     if (find("sme2",features,count)) {
         printf("_SME2_\n");
-        if (find("sme_f64f64",features,count)) {
+        if (find("smef64f64",features,count) || find("sme_f64f64",features,count)) {
             printf("_SMEf64_\n");
         }
-        if (find("sme_f16f16",features,count)) {
+        if (find("smef16f16",features,count) || find("sme_f16f16",features,count)) {
             printf("_SME_F16F16_\n");
         }
-        if (find("sme_b16b16",features,count)) {
+        if (find("smeb16b16",features,count) || find("sme_b16b16",features,count)) {
             printf("_SME_B16B16_\n");
         }
-        if (find("sme_i16i64",features,count)) {
+        if (find("smei16i64",features,count) || find("sme_i16i64",features,count)) {
             printf("_SME_I16I32_\n");
         }
     }

@@ -511,6 +511,9 @@
 ##########
 #void void sme_multiple_issue(float*,int, int64_t);
     PROLOGUE sme_multiple_issue
+    // smstart/smstop zero every Z register, including the callee-saved
+    // d8-d15 that the AAPCS64 caller expects back.
+    preserve_caller_vec
 
     RDSVL x6, #1
     mov w12, #0
@@ -577,4 +580,5 @@
     subs x4, x4, #1
     bne 2b
     smstop
+    restore_caller_vec
     ret

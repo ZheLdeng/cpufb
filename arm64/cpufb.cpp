@@ -3,6 +3,7 @@
 #include <ctime>
 #include <cstring>
 #include <cstdint>
+#include <atomic>
 #include <vector>
 #include <set>
 #include <sstream>
@@ -108,12 +109,36 @@ static void reg_new_isa(string isa,
 
     bm_list.push_back(new_one);
 }
+#ifdef __linux__
+// Core cycles counted around the compute kernel itself, summed over the pool
+// workers of one tpool_run_all() generation.  A frequency calibrated once at
+// start-up drifts under DVFS and differs per ISA width, so it is only the
+// fallback when perf_event_open is denied.
+static std::atomic<uint64_t> compute_cycle_sum(0);
+static std::atomic<int> compute_cycle_samples(0);
+#endif
+
 static void thread_func(void *params)
 {
 #ifdef __APPLE__
     pthread_set_qos_class_self_np( QOS_CLASS_USER_INTERACTIVE, 0 );
 #endif
     cpubm_t *bm = (cpubm_t*)params;
+#ifdef __linux__
+    PerfEventCycle cycle_counter(0, false);
+    if (cycle_counter.available()) {
+        cycle_counter.start();
+        ((void(*)(int64_t))bm->bench)(bm->loop_time);
+        cycle_counter.stop();
+        const long long cycles = cycle_counter.get_cycle();
+        if (cycles > 0) {
+            compute_cycle_sum.fetch_add(static_cast<uint64_t>(cycles),
+                std::memory_order_relaxed);
+            compute_cycle_samples.fetch_add(1, std::memory_order_relaxed);
+        }
+        return;
+    }
+#endif
     ((void(*)(int64_t))bm->bench)(bm->loop_time);
 }
 
@@ -146,9 +171,14 @@ static bool cpubm_standalone_warmup(vector<int> &set_of_threads)
     return true;
 }
 
-static double cpubm_measure_compute_time(tpool_t *tm, cpubm_t &item)
+// Returns the best wall time for item.loop_time iterations.  cycles_per_core
+// receives the smallest per-core PMU cycle count for the same iterations, or
+// 0 when hardware cycles were not available on every worker.
+static double cpubm_measure_compute_time(tpool_t *tm, cpubm_t &item,
+    double &cycles_per_core)
 {
     struct timespec start, end;
+    cycles_per_core = 0.0;
 
 #ifdef __APPLE__
     constexpr int kBenchRepeats = 5;
@@ -176,12 +206,27 @@ static double cpubm_measure_compute_time(tpool_t *tm, cpubm_t &item)
     run_item.loop_time = item.loop_time * loop_scale;
 
     for (int rep = 0; rep < kBenchRepeats; ++rep) {
+#ifdef __linux__
+        compute_cycle_sum.store(0, std::memory_order_relaxed);
+        compute_cycle_samples.store(0, std::memory_order_relaxed);
+#endif
         if (!tpool_run_all(tm, thread_func, (void*)&run_item, &start, &end))
             return best_time;
         // Normalize to the registered loop count so existing FLOP/OP
         // accounting remains unchanged.
         double t = get_time(&start, &end) / loop_scale;
         if (t < best_time) best_time = t;
+#ifdef __linux__
+        if (compute_cycle_samples.load(std::memory_order_relaxed) ==
+                static_cast<int>(tm->thread_num)) {
+            const double cycles = static_cast<double>(
+                compute_cycle_sum.load(std::memory_order_relaxed)) /
+                tm->thread_num / loop_scale;
+            if (cycles > 0.0 &&
+                (cycles_per_core == 0.0 || cycles < cycles_per_core))
+                cycles_per_core = cycles;
+        }
+#endif
     }
 #else
      // warm up
@@ -241,7 +286,8 @@ static int64_t cpubm_scaled_comp_pl(const cpubm_t &item)
 static ComputeResult cpubm_run_compute(tpool_t *tm, cpubm_t &item)
 {
     ComputeResult result;
-    double time_used = cpubm_measure_compute_time(tm, item);
+    double cycles_per_core = 0.0;
+    double time_used = cpubm_measure_compute_time(tm, item, cycles_per_core);
     int64_t comp_pl = cpubm_scaled_comp_pl(item);
 
     result.perf = item.loop_time * comp_pl * tm->thread_num / time_used;
@@ -249,21 +295,33 @@ static ComputeResult cpubm_run_compute(tpool_t *tm, cpubm_t &item)
     // Report estimated IPC per core rather than summing all cores into an
     // aggregate value that grows with the thread count.
     bool frequency_available = !freq.empty() && freq[0] > 0;
-    result.ipc = frequency_available
-        ? item.loop_time * 24 / time_used / freq[0] / 1e9 : 0;
+    if (cycles_per_core > 0.0)
+        result.ipc = item.loop_time * 24 / cycles_per_core;
+    else
+        result.ipc = frequency_available
+            ? item.loop_time * 24 / time_used / freq[0] / 1e9 : 0;
     return result;
 }
 
-static int64_t cpubm_arm64_latency(tpool_t *tm, cpubm_t &item)
+// Latency stays fractional, as on x86: rounding to whole cycles hides both
+// clock-estimate error and genuinely non-integer averages (a 3.5-cycle
+// reading is a finding, not a 4).
+static double cpubm_arm64_latency(tpool_t *tm, cpubm_t &item)
 {
     ComputeResult result = cpubm_run_compute(tm, item);
-    return result.ipc > 0.0 ?
-        static_cast<int64_t>(round(1.0 / result.ipc)) : 0;
+    return result.ipc > 0.0 ? 1.0 / result.ipc : 0.0;
+}
+
+static string format_latency_cycles(double latency)
+{
+    stringstream ss;
+    ss << fixed << setprecision(2) << latency;
+    return ss.str();
 }
 
 static void cpubm_arm64_one(tpool_t *tm,
     cpubm_t &item,
-    int64_t latency,
+    double latency,
     Table &table)
 {
     ComputeResult result = cpubm_run_compute(tm, item);
@@ -271,9 +329,8 @@ static void cpubm_arm64_one(tpool_t *tm,
     cont[0] = item.isa;
     cont[1] = item.type;
     cont[2] = format_perf_value(result.perf, item.dim);
-    bool frequency_available = !freq.empty() && freq[0] > 0;
-    cont[3] = frequency_available ? to_string(result.ipc) : "-";
-    cont[4] = latency > 0 ? to_string(latency) : "-";
+    cont[3] = result.ipc > 0 ? to_string(result.ipc) : "-";
+    cont[4] = latency > 0 ? format_latency_cycles(latency) : "-";
     table.addOneItem(cont);
 
     // cout << "test fop end" << endl;
@@ -673,8 +730,8 @@ static bool measure_instruction_sweep(const vector<int> &active_threads,
 
     if (latency_index >= 0) {
         cpubm_t latency_item = bm_list[latency_index];
-        int64_t latency = cpubm_arm64_latency(tm, latency_item);
-        if (latency > 0) sample.latency = to_string(latency);
+        double latency = cpubm_arm64_latency(tm, latency_item);
+        if (latency > 0) sample.latency = format_latency_cycles(latency);
     }
 
     cpubm_t selected_item = bm_list[benchmark_index];
@@ -748,6 +805,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
         // cout << "start benchmark" << endl;
         if (should_run_standalone_warmup(filter) &&
             !cpubm_standalone_warmup(set_of_threads)) {
+            for (size_t t = 0; t < tables.size(); ++t) delete tables[t];
             return false;
         }
         if (benchmark_needs_freq(filter)) {
@@ -757,6 +815,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
         // cout << "get freq" << endl;
         if (should_run_test(filter, "cache") &&
             !cpubm_arm_cache(set_of_threads, *tables[2], options)) {
+            for (size_t t = 0; t < tables.size(); ++t) delete tables[t];
             return false;
         }
         if (should_run_test(filter, "load"))
@@ -766,6 +825,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
         tm = tpool_create(set_of_threads);
         if (tm == NULL) {
             cerr << "Error: failed to create benchmark thread pool." << endl;
+            for (size_t t = 0; t < tables.size(); ++t) delete tables[t];
             return false;
         }
         BenchmarkCatalog catalog = build_benchmark_catalog();
@@ -782,7 +842,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads,
                 continue;
 
             if (bm_list[i].dim.find("OPS") != string::npos) {
-                int64_t latency = 0;
+                double latency = 0;
                 if (catalog[i].pair_index >= 0) {
                     sleep(idle_time);
                     latency = cpubm_arm64_latency(
@@ -1338,18 +1398,23 @@ static void cpufb_register_isa()
     reg_new_isa("SME2", "sme2_bfdot4.mvv(f32,bf16,bf16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme2_bfdot4_mvv_f32bf16bf16);
     
+    // FMLA/FDOT into ZA have no single-vector form: a four-register list
+    // assembles to the VGx4 encoding whether or not VGx4 is spelled out, so
+    // the rows without the "4" suffix execute four vectors per instruction
+    // and are counted as such.  They differ from the fmla4/fdot4 rows only in
+    // their overlapping ZA slice selection.
     reg_new_isa("SME2", "sme2_fmla.vs(f32,f32,f32)", "FLOPS",
-        kComputeLoopTime, 12LL, (void*)sme2_fmla_vs_f32f32f32);
+        kComputeLoopTime, 48LL, (void*)sme2_fmla_vs_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla4.vs(f32,f32,f32)", "FLOPS",
         kComputeLoopTime, 48LL, (void*)sme2_fmla4_vs_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla.vv(f32,f32,f32)", "FLOPS",
-        kComputeLoopTime, 12LL, (void*)sme2_fmla_vv_f32f32f32);
+        kComputeLoopTime, 48LL, (void*)sme2_fmla_vv_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla4.vv(f32,f32,f32)", "FLOPS",
         kComputeLoopTime, 48LL, (void*)sme2_fmla4_vv_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla.mvv(f32,f32,f32)_latency", "FLOPS",
         kLatencyLoopTime, 12LL, (void*)sme2_fmla2_mvv_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla.mvv(f32,f32,f32)", "FLOPS",
-        kComputeLoopTime, 12LL, (void*)sme2_fmla_mvv_f32f32f32);
+        kComputeLoopTime, 48LL, (void*)sme2_fmla_mvv_f32f32f32);
     reg_new_isa("SME2", "sme2_fmla4.mvv(f32,f32,f32)", "FLOPS",
         kComputeLoopTime, 48LL, (void*)sme2_fmla4_mvv_f32f32f32);
 
@@ -1362,7 +1427,7 @@ static void cpufb_register_isa()
     reg_new_isa("SME2", "sme2_fmlal4.vv(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme2_fmlal4_vv_f32f16f16);
     reg_new_isa("SME2", "sme2_fmlal.mvv(f32,f16,f16)", "FLOPS",
-        kComputeLoopTime, 24LL, (void*)sme2_fmlal_mvv_f32f16f16);
+        kComputeLoopTime, 96LL, (void*)sme2_fmlal_mvv_f32f16f16);
     reg_new_isa("SME2", "sme2_fmlal4.mvv(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme2_fmlal4_mvv_f32f16f16);
     
@@ -1372,15 +1437,15 @@ static void cpufb_register_isa()
         kComputeLoopTime, 72LL, (void*)sme2_fvdot2_vs_f32f16f16);
     
     reg_new_isa("SME2", "sme2_fdot.vs(f32,f16,f16)", "FLOPS",
-        kComputeLoopTime, 24LL, (void*)sme2_fdot_vs_f32f16f16);
+        kComputeLoopTime, 96LL, (void*)sme2_fdot_vs_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot4.vs(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme2_fdot4_vs_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot.mvv(f32,f16,f16)", "FLOPS",
-        kComputeLoopTime, 24LL, (void*)sme2_fdot_mvv_f32f16f16);
+        kComputeLoopTime, 96LL, (void*)sme2_fdot_mvv_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot4.vv(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme2_fdot4_vv_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot.vv(f32,f16,f16)", "FLOPS",
-        kComputeLoopTime, 24LL, (void*)sme2_fdot_vv_f32f16f16);
+        kComputeLoopTime, 96LL, (void*)sme2_fdot_vv_f32f16f16);
     reg_new_isa("SME2", "sme2_fdot4.mvv(f32,f16,f16)", "FLOPS",
         kComputeLoopTime, 96LL, (void*)sme2_fdot4_mvv_f32f16f16);
 #endif
@@ -1399,7 +1464,7 @@ static void cpufb_register_isa()
     reg_new_isa("SMEf64", "sme2_fmla.vs(f64,f64,f64)_latency", "FLOPS",
         kComputeLoopTime, 6LL, (void*)sme2_fmla2_vs_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla.vs(f64,f64,f64)", "FLOPS",
-        kComputeLoopTime, 6LL, (void*)sme2_fmla_vs_f64f64f64);
+        kComputeLoopTime, 24LL, (void*)sme2_fmla_vs_f64f64f64);
     
     reg_new_isa("SMEf64", "sme2_fmla4.vs(f64,f64,f64)", "FLOPS",
 
@@ -1407,11 +1472,11 @@ static void cpufb_register_isa()
     reg_new_isa("SMEf64", "sme2_fmla.vv(f64,f64,f64)_latency", "FLOPS",
         kComputeLoopTime, 6LL, (void*)sme2_fmla2_vv_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla.vv(f64,f64,f64)", "FLOPS",
-        kComputeLoopTime, 6LL, (void*)sme2_fmla_vv_f64f64f64);
+        kComputeLoopTime, 24LL, (void*)sme2_fmla_vv_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla4.vv(f64,f64,f64)", "FLOPS",
         kComputeLoopTime, 24LL, (void*)sme2_fmla4_vv_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla.mvv(f64,f64,f64)", "FLOPS",
-        kComputeLoopTime, 6LL, (void*)sme2_fmla_mvv_f64f64f64);
+        kComputeLoopTime, 24LL, (void*)sme2_fmla_mvv_f64f64f64);
     reg_new_isa("SMEf64", "sme2_fmla4.mvv(f64,f64,f64)", "FLOPS",
         kComputeLoopTime, 24LL, (void*)sme2_fmla4_mvv_f64f64f64);
 #endif

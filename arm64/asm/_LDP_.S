@@ -3,6 +3,8 @@
 #void load_ldp_kernel(float*, int, int64_t);
 #void load_ldr_kernel(float*, int64_t);
     PROLOGUE load_ldp_kernel
+    // The kernel loads into q8-q15, whose low halves are callee-saved.
+    preserve_caller_vec
     mov x4, x2
     2:
     mov x3, x1
@@ -32,6 +34,7 @@
 
     subs x4, x4, #1
     bne 2b
+    restore_caller_vec
     ret
 
 ###############################

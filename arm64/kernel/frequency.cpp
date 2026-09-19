@@ -54,7 +54,9 @@ static double cpu_freq_override_ghz()
 }
 
 static void* thread_function_freq(void* arg){
-    struct FrequencyData* data = (FrequencyData*)malloc(sizeof(FrequencyData));
+    // FrequencyData owns a std::string, so it must be constructed, not
+    // malloc'd; get_cpu_freq() deletes it after the join.
+    FrequencyData *data = new FrequencyData();
     double CPU_freq = 0;
 #ifdef __APPLE__
     int64_t looptime = 20000000;
@@ -138,11 +140,18 @@ static void* thread_function_freq(void* arg){
 
 
 
-    if(cycles == 0){
-        CPU_freq = fallback_ghz > 0.0 ? fallback_ghz * 1e9 :
-            read_freq * 1e3;
-    }else{
+    if (cycles > 0 && time_used > 0.0) {
         CPU_freq = (double)cycles / time_used;
+        data->counter_source = "perf_event cycles";
+    } else if (fallback_ghz > 0.0) {
+        CPU_freq = fallback_ghz * 1e9;
+        data->counter_source = "CPUFB_FREQ_GHZ override";
+    } else if (read_freq > 0) {
+        CPU_freq = read_freq * 1e3;
+        data->counter_source = "cpufreq estimate";
+    } else {
+        CPU_freq = 0;
+        data->counter_source = "unavailable";
     }
 
     data->caculate_freq = CPU_freq * 1e-9;
@@ -175,6 +184,11 @@ static void* thread_function_freq(void* arg){
             CPU_freq = frequency_mhz * 1e6;
             data->caculate_freq = frequency_mhz * 1e-3;
             data->counter_source = "powermetrics estimate";
+        } else if (CPU_freq > 0) {
+            // CPU_freq still holds the nominal per-model clock from the
+            // table above; say so instead of labelling a derived IPC as
+            // having no source.
+            data->counter_source = "nominal model clock (" + error + ")";
         } else {
             data->counter_source = "unavailable (" + error + ")";
         }
@@ -190,12 +204,19 @@ static void* thread_function_freq(void* arg){
     data->IPC_fp32 = CPU_freq > 0
         ? looptime * 24 / (time_used * CPU_freq) : 0;
 
-    float* cache_data = (float*)malloc(1024);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    load_ldr_kernel(cache_data, looptime);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-    time_used = get_time(&start, &end);
-    data->IPC_load = CPU_freq > 0
+    float* cache_data = NULL;
+    if (posix_memalign((void**)&cache_data, 64, 1024) != 0) cache_data = NULL;
+    if (cache_data != NULL) {
+        memset(cache_data, 0, 1024);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+        load_ldr_kernel(cache_data, looptime);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        time_used = get_time(&start, &end);
+        free(cache_data);
+    } else {
+        time_used = 0;
+    }
+    data->IPC_load = CPU_freq > 0 && time_used > 0
         ? looptime * 24 / (time_used * CPU_freq) : 0;
 
 #ifdef _SVE_
@@ -272,18 +293,23 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
         cont[3] = ss3.str();
         cont[4] = ss4.str();
         cont[5] = ss5.str();
-        cont[6] = "perf_event cycles";
+        cont[6] = result->counter_source;
         #ifdef _SVE_
         cont[7] = ss6.str();
         cont[8] = ss7.str();
         #endif
         table.addOneItem(cont);
+        delete result;
     }
 #else
+    result = NULL;
     for (int t = 0; t < num_thread; t++) {
         pthread_join(threads[t], &thread_result);
+        // Only the last worker's sample is reported on macOS.
+        delete result;
+        result = (struct FrequencyData *)thread_result;
     }
-    result = (struct FrequencyData *)thread_result;
+    if (result == NULL) return;
     stringstream ss1, ss2, ss3, ss4, ss5, ss6, ss7;
     if (result->theory_freq > 0)
         ss1 << std::setprecision(2) << result->theory_freq <<" GHZ";
@@ -315,6 +341,7 @@ void get_cpu_freq(std::vector<int> &set_of_threads,Table &table)
     cont[8] = ss7.str();
     #endif
     table.addOneItem(cont);
+    delete result;
 #endif
 
 }

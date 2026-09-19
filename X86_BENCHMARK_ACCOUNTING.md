@@ -27,9 +27,10 @@ IPC = loop_time * inst_pl / (elapsed_seconds * cycle_frequency)
 ```
 
 `cycle_frequency` is the frequency-table value, whose `Counter Source` column
-names its origin: `perf_event cycles`, `CPUFB_FREQ_GHZ override`,
+names its origin: `perf_event cycles`, `CPUFB_FREQ_GHZ (not measured)`,
 `ADD-chain estimate` (16 dependent register-register `ADD`s per loop, one core
-cycle each, best of three) or, last, `invariant TSC`. One warning is printed
+cycle each, best of three), `invariant TSC` or, last,
+`OS-reported frequency (not measured)`. One warning is printed
 on stderr whenever an estimate is used. The estimate assumes the scalar core
 clock also holds during the kernel, so AVX-512 kernels that reduce the clock
 read proportionally slow; counted cycles remain the reference.

@@ -5,7 +5,11 @@
 #include "table.hpp"
 struct FrequencyData {
     double theory_freq = 0;
+    // Measured clock shown as "Test Freq"; 0 when nothing could be measured.
     double caculate_freq = 0;
+    // Clock used to normalize IPC; equals caculate_freq when measured,
+    // otherwise a reported or user-supplied value.
+    double clock_ghz = 0;
     std::string counter_source = "unavailable";
     double IPC_fp32 = 0;
     double IPC_fp64 = 0;

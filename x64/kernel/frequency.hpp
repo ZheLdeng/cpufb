@@ -17,7 +17,10 @@ extern "C"
 
 struct FrequencyData {
     double theory_freq = 0;
+    // Measured clock shown as "Test Freq"; 0 when nothing could be measured.
     double caculate_freq = 0;
+    // Clock used to normalize IPC: caculate_freq, or a supplied/reported one.
+    double clock_ghz = 0;
     double tsc_freq = 0;
     std::string counter_source = "unavailable";
     double IPC_fp32 = 0;
@@ -30,7 +33,8 @@ struct FrequencyData {
 };
 void get_cpu_freq(std::vector<int> &set_of_threads,Table &table);
 // Source of the cycle rate stored in freq[0]: "perf_event cycles",
-// "CPUFB_FREQ_GHZ override", "ADD-chain estimate" or "invariant TSC".
+// "CPUFB_FREQ_GHZ (not measured)", "ADD-chain estimate", "invariant TSC" or
+// "OS-reported frequency (not measured)".
 const std::string &cpu_freq_counter_source();
 
 #endif

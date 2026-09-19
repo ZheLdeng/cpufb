@@ -153,12 +153,16 @@ accessible. Many hosts deny that by default (`perf_event_paranoid >= 3`,
 containers, VMs); cpufb then falls back, in this order, and prints the source
 in the frequency table's `Counter Source` column plus one warning on stderr:
 
-1. `CPUFB_FREQ_GHZ`, a fixed core frequency supplied by the caller (ARM64 and
-   x86-64);
-2. ARM64: the cpufreq-sysfs maximum; x86-64: an `ADD`-chain estimate (one
-   dependent register-register `ADD` retires per core cycle), which tracks
-   turbo where the invariant TSC does not;
-3. x86-64 only: the invariant TSC rate.
+1. `CPUFB_FREQ_GHZ`, a fixed core frequency supplied by the caller. It is used
+   for normalization but never shown as `Test Freq`, because it is not a
+   measurement;
+2. an `ADD`-chain estimate: one dependent register-register `ADD` retires per
+   core cycle on x86-64 and AArch64 alike, so 16 x loops / elapsed is the
+   running clock of the pinned core. It needs no privileges and tracks turbo;
+3. macOS: a `powermetrics` sample (root); x86-64: the invariant TSC rate;
+4. the OS-reported maximum frequency (cpufreq sysfs, `hw.cpufrequency_max`, or
+   the Apple Silicon power-manager DVFS table). `Test Freq` stays `-` and the
+   source reads `OS-reported frequency (not measured)`.
 
 Estimated sources assume the clock measured by the frequency probe also holds
 during the kernel; AVX-512 kernels that lower the core clock therefore read a
@@ -312,19 +316,20 @@ metrics. Remaining follow-up work is tracked in [TODO.md](TODO.md).
 On Apple Silicon, `cpufb` first attempts to read per-thread fixed counters
 (cycles and retired instructions) through the installed `kperf` framework. The
 framework is loaded dynamically, so this path is unavailable rather than a hard
-dependency when macOS denies counter access.
-
-If fixed counters cannot be read, `cpufb` falls back to a sampled P-core
-frequency from `powermetrics` and labels the resulting frequency and IPC values
-as `powermetrics estimate`. `powermetrics` requires root privileges:
+dependency when macOS denies counter access (it usually requires root):
 
 ```sh
 sudo build/macos-arm64/cpufb '--thread_pool=[0]' --mode=compute
 ```
 
-If neither source is available, the frequency/IPC fields remain `-` and the
-`Counter Source` column reports why. Do not compare a `powermetrics estimate`
-directly with PMU-derived IPC from Linux.
+Without fixed counters the frequency comes from the unprivileged `ADD`-chain
+estimate described above, then from a `powermetrics` sample, and finally from
+the nominal maximum in the power manager's IORegistry DVFS tables
+(`pmgr/voltage-states*-sram`). That last value is what `Theory Freq` always
+shows; cpufb no longer carries a per-model frequency table. When nothing can
+be measured, `Test Freq` is `-` and IPC is normalized by the reported value,
+labelled `OS-reported frequency (not measured)`. Do not compare estimated
+clocks directly with PMU-derived IPC from Linux.
 
 ## Experimental pair-issue test
 

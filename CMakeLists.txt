@@ -233,6 +233,11 @@ if(_amx_target)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_link_libraries(cpufb PRIVATE "-ldl")
+    if(CPUFB_ARCH STREQUAL "arm64")
+        # macos_counters.cpp reads the nominal DVFS table from the IORegistry.
+        target_link_libraries(cpufb PRIVATE
+            "-framework IOKit" "-framework CoreFoundation")
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------

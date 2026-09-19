@@ -91,27 +91,14 @@ static void* thread_function_freq(void* arg)
     double cycle_frequency = 0.0;
 
 #ifdef __APPLE__
-    char cpu_type[256] = {0};
-    size_t size = sizeof(cpu_type);
-    if (sysctlbyname("machdep.cpu.brand_string", cpu_type, &size, NULL, 0) == -1) {
-        perror("sysctl");
-    }
-    if (std::string(cpu_type) == "Apple M1") {
-        data->theory_freq = 3.2;
-        data->caculate_freq = 3.2;
-        cycle_frequency = tsc_frequency = 3.2e9;
-    } else if (std::string(cpu_type) == "Apple M2") {
-        data->theory_freq = 3.5;
-        data->caculate_freq = 3.5;
-        cycle_frequency = tsc_frequency = 3.5e9;
-    } else if (std::string(cpu_type) == "Apple M3") {
-        data->theory_freq = 4.06;
-        data->caculate_freq = 4.06;
-        cycle_frequency = tsc_frequency = 4.06e9;
-    }
-    if (cycle_frequency > 0.0) data->counter_source = "nominal model clock";
+    (void)arg;
+    // Intel Macs publish the nominal maximum; nothing is assumed per model.
+    uint64_t max_frequency_hz = 0;
+    size_t size = sizeof(max_frequency_hz);
+    if (sysctlbyname("hw.cpufrequency_max", &max_frequency_hz, &size, NULL,
+            0) == 0)
+        data->theory_freq = static_cast<double>(max_frequency_hz) * 1e-9;
 #endif
-
 #ifdef __linux__
     const int cpu_id = *static_cast<int*>(arg);
 
@@ -127,37 +114,49 @@ static void* thread_function_freq(void* arg)
     int max_frequency_khz = 0;
     read_data(cpu_id, &max_frequency_khz, "/cpufreq/scaling_max_freq");
     data->theory_freq = static_cast<double>(max_frequency_khz) * 1e-6;
+#endif
 
     // Count real core cycles around the always-built SSE2 kernel when the PMU
     // is accessible, and calibrate the invariant TSC in the same window.  The
     // TSC ticks at a fixed reference rate that ignores turbo and AVX licence
-    // changes, so it is only the last-resort normalizer.  LFENCE keeps both
+    // changes, so it is only the last measured normalizer.  LFENCE keeps both
     // TSC reads outside the measured kernel body.
+#ifdef __linux__
     PerfEventCycle cycle_counter(0, false);
+#endif
     cpufb_x64_frequency_fsu64(kFrequencyLoopTime);
     struct timespec start, end;
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+#ifdef __linux__
     cycle_counter.start();
+#endif
     _mm_lfence();
     const uint64_t start_tsc = __rdtsc();
     cpufb_x64_frequency_fsu64(kFrequencyLoopTime);
     _mm_lfence();
     const uint64_t end_tsc = __rdtsc();
+    long long cycles = 0;
+#ifdef __linux__
     cycle_counter.stop();
+    cycles = cycle_counter.get_cycle();
+#endif
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     const double elapsed = get_time(&start, &end);
     if (elapsed > 0.0)
         tsc_frequency = static_cast<double>(end_tsc - start_tsc) / elapsed;
     data->tsc_freq = tsc_frequency * 1e-9;
 
-    const long long cycles = cycle_counter.get_cycle();
+    // Same order as ARM64: counted cycles, an explicit user clock, then the
+    // estimates.  Only measured clocks are shown as "Test Freq".
     const double override_ghz = cpu_freq_override_ghz();
+    bool measured = true;
     if (cycles > 0 && elapsed > 0.0) {
         cycle_frequency = static_cast<double>(cycles) / elapsed;
         data->counter_source = "perf_event cycles";
     } else if (override_ghz > 0.0) {
         cycle_frequency = override_ghz * 1e9;
-        data->counter_source = "CPUFB_FREQ_GHZ override";
+        data->counter_source = "CPUFB_FREQ_GHZ (not measured)";
+        measured = false;
     } else {
         const double chain_frequency = add_chain_frequency();
         if (chain_frequency > 0.0) {
@@ -166,10 +165,14 @@ static void* thread_function_freq(void* arg)
         } else if (tsc_frequency > 0.0) {
             cycle_frequency = tsc_frequency;
             data->counter_source = "invariant TSC";
+        } else if (data->theory_freq > 0.0) {
+            cycle_frequency = data->theory_freq * 1e9;
+            data->counter_source = "OS-reported frequency (not measured)";
+            measured = false;
         }
     }
-    data->caculate_freq = cycle_frequency * 1e-9;
-#endif
+    data->clock_ghz = cycle_frequency * 1e-9;
+    data->caculate_freq = measured ? data->clock_ghz : 0.0;
 
     cpufb_x64_frequency_fsu64(kFrequencyLoopTime);
     data->IPC_fp64 = instruction_rate(
@@ -215,15 +218,18 @@ void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
             theory_freq << setprecision(2) << result->theory_freq << " GHZ";
         else
             theory_freq << "-";
-        if (result->caculate_freq > 0.0) {
+        if (result->caculate_freq > 0.0)
             measured_freq << setprecision(3) << result->caculate_freq << " GHZ";
+        else
+            measured_freq << "-";
+        if (result->clock_ghz > 0.0) {
             fsu32 << setprecision(2) << result->IPC_fp32;
             fsu64 << setprecision(2) << result->IPC_fp64;
             load << setprecision(2) << result->IPC_load;
         } else {
-            measured_freq << "-"; fsu32 << "-"; fsu64 << "-"; load << "-";
+            fsu32 << "-"; fsu64 << "-"; load << "-";
         }
-        freq[i] = result->caculate_freq;
+        freq[i] = result->clock_ghz;
         if (i == 0) freq_counter_source = result->counter_source;
 
         vector<string> row(table.getCol());

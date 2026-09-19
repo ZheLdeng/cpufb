@@ -143,8 +143,10 @@ if(CPUFB_ARCH STREQUAL "arm64" AND CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(APPEND _kernel_sources "${CPUFB_KERNEL_DIR}/macos_counters.cpp")
 endif()
 if(CPUFB_ARCH STREQUAL "arm64" OR CPUFB_ARCH STREQUAL "x64")
+    # The stream benchmark is shared; only the kernel selection is per arch.
     list(APPEND _kernel_sources
-        "${CPUFB_KERNEL_DIR}/memory_bandwidth.cpp")
+        "${CPUFB_COMMON_DIR}/memory_bandwidth.cpp"
+        "${CPUFB_KERNEL_DIR}/stream_kernel.cpp")
 endif()
 if(CPUFB_ARCH STREQUAL "x64")
     # The frequency probe is an x86-64 SSE/SSE2 baseline and must not depend

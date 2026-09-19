@@ -1,7 +1,6 @@
 #include "memory_bandwidth.hpp"
 
 #include "cache_topology.hpp"
-#include "load.hpp"
 #include "table.hpp"
 #include "thread_pool.hpp"
 
@@ -37,10 +36,6 @@
 #include <sys/sysctl.h>
 #endif
 
-#if defined(__linux__) && !defined(__APPLE__)
-#include "../runtime_features.hpp"
-#endif
-
 using cpufb_cli::CliOptions;
 using cpufb_cli::save_table_sections;
 using std::string;
@@ -50,15 +45,8 @@ namespace {
 
 constexpr std::int64_t kL3StreamPasses = 8;
 
-typedef void (*StreamKernel)(float *, int, int64_t);
-
-struct KernelSpec
-{
-    StreamKernel function;
-    string name;
-    std::uint64_t bytes_per_block;
-    std::uint64_t loads_per_block;
-};
+typedef cpufb::StreamKernelSpec KernelSpec;
+using cpufb::select_stream_kernel;
 
 struct BandwidthSample
 {
@@ -142,6 +130,16 @@ double read_linux_cpu_frequency_hz(int cpu)
 
 double read_fallback_cpu_frequency_hz(int cpu)
 {
+    // Same user-supplied clock as the frequency probe, for hosts that expose
+    // neither PMU cycles nor cpufreq data.
+    const char *override_text = std::getenv("CPUFB_FREQ_GHZ");
+    if (override_text != NULL && *override_text != '\0') {
+        char *end = NULL;
+        const double ghz = std::strtod(override_text, &end);
+        if (end != override_text && *end == '\0' && std::isfinite(ghz) &&
+            ghz > 0.0)
+            return ghz * 1e9;
+    }
     double frequency = read_linux_cpu_frequency_hz(cpu);
 #ifdef __APPLE__
     std::uint64_t sysctl_frequency = 0;
@@ -325,29 +323,6 @@ double parallel_stream_elapsed_seconds(const ParallelStreamTask &task)
             last = task.worker_end[index];
     }
     return elapsed_seconds(first, last);
-}
-
-KernelSpec select_stream_kernel()
-{
-#if defined(_SVE_) && defined(__linux__) && !defined(__APPLE__)
-    if (arm64_runtime_features().sve) {
-        const std::uint64_t vector_bytes = load_sve_vector_bytes();
-        KernelSpec spec = {
-            load_sve_ld1h_kernel,
-            "sve-ld1h(f16) " + std::to_string(vector_bytes * 8) + "-bit",
-            16 * vector_bytes,
-            16
-        };
-        return spec;
-    }
-#endif
-    KernelSpec spec = {
-        load_neon_ld1h_4x1_kernel,
-        "neon-ld1h-4x1(f16)",
-        256,
-        16
-    };
-    return spec;
 }
 
 BandwidthSample measure_once(const KernelSpec &kernel,
@@ -583,10 +558,10 @@ bool measure_stream_bandwidth(int cpu,
     string cycle_source = "perf CPU cycles";
     if (!counter.available()) {
         cycle_source = fallback_frequency_hz > 0.0 ?
-            "cpufreq estimate" : "unavailable";
+            "frequency estimate" : "unavailable";
         std::cerr << "Warning: hardware CPU cycles are unavailable; ";
         if (fallback_frequency_hz > 0.0)
-            std::cerr << "B/cycle and load IPC use a cpufreq estimate.";
+            std::cerr << "B/cycle and load IPC use a frequency estimate (CPUFB_FREQ_GHZ or cpufreq).";
         else
             std::cerr << "B/cycle and load IPC are omitted.";
         std::cerr << std::endl;
@@ -813,7 +788,7 @@ bool measure_parallel_stream_bandwidth(const vector<int> &cpus,
     report.workset_source = workset_source;
     report.cycle_source = all_samples_have_cycles ?
         "perf CPU cycles (sum over cores)" :
-        (fallback_frequency_available ? "cpufreq estimate (sum over cores)" :
+        (fallback_frequency_available ? "frequency estimate (sum over cores)" :
          "unavailable");
     report.median = samples[samples.size() / 2];
     report.minimum_gb_per_second = samples.front().gb_per_second;
@@ -881,7 +856,7 @@ void append_cache_bandwidth_failure_row(Table &table, const string &item)
 
 } // namespace
 
-bool append_arm64_cache_memory_bandwidth(const CliOptions &options,
+bool append_cache_memory_bandwidth(const CliOptions &options,
     Table &table)
 {
     const vector<int> &cpus = options.thread_pool;
@@ -937,7 +912,7 @@ bool append_arm64_cache_memory_bandwidth(const CliOptions &options,
     return true;
 }
 
-bool run_arm64_memory_bandwidth(const CliOptions &options)
+bool run_memory_bandwidth(const CliOptions &options)
 {
     const vector<int> &cpus = options.thread_pool;
     const int cpu = cpus.front();

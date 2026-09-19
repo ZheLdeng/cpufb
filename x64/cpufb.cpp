@@ -405,7 +405,7 @@ static bool cpubm_x64_cache(std::vector<int> &set_of_threads,
         cont[5] = l3.source;
         table.addOneItem(cont);
     }
-    return append_x64_cache_memory_bandwidth(options, table);
+    return append_cache_memory_bandwidth(options, table);
 }
 
 static void cpubm_x64_multiple_issue(tpool_t *tm,
@@ -955,7 +955,7 @@ int main(int argc, char *argv[])
     if (!finalize_save_options(options.save)) return 1;
     if (!validate_memory_bandwidth_options(options, true)) return 1;
     if (options.memory_bandwidth)
-        return run_x64_memory_bandwidth(options) ? 0 : 1;
+        return run_memory_bandwidth(options) ? 0 : 1;
 
     cpufb_register_isa();
     scale_benchmark_loops(options.loop_scale);

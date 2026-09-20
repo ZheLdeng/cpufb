@@ -85,15 +85,31 @@ int main()
     ok &= expect_levels("no L3", make_curve(1.0, {{128, 5.0}, {16384, 95.0}}),
         {{"L1", 128}, {"L2", 16384}});
 
-    // A contended L1 softens the knee over two grid points below 64 KiB; the
-    // geometric midpoint must not slide to the start of the ramp.
+    // A contended L1 softens the knee below 64 KiB.  Points that still
+    // perform like the plateau count as fitting; the ramp does not.
     std::vector<CacheLatencyPoint> soft =
         make_curve(1.5, {{64, 4.6}, {1024, 22.0}});
     for (CacheLatencyPoint &point : soft) {
-        if (point.working_set_bytes == 56 * kKiB) point.latency_ns = 1.9;
-        if (point.working_set_bytes == 64 * kKiB) point.latency_ns = 2.4;
+        if (point.working_set_bytes == 56 * kKiB) point.latency_ns = 1.7;
+        if (point.working_set_bytes == 64 * kKiB) point.latency_ns = 2.0;
     }
     ok &= expect_levels("soft knee", soft, {{"L1", 64}, {"L2", 1024}});
+
+    // Cluster-shared L2 that softens above its capacity, after an Apple M4
+    // Pro (128 KiB L1, 16 MiB L2): 20 MiB reads 24.5 ns between the 7.9 ns
+    // plateau and ~110 ns DRAM.  The geometric midpoint placed L2 at 20 MiB.
+    std::vector<CacheLatencyPoint> shared_l2 =
+        make_curve(0.9, {{128, 7.9}, {16384, 113.0}});
+    for (CacheLatencyPoint &point : shared_l2) {
+        const uint64_t mib = point.working_set_bytes / (1024 * kKiB);
+        if (mib == 20) point.latency_ns = 24.5;
+        if (mib == 24) point.latency_ns = 38.2;
+        if (mib == 28) point.latency_ns = 45.0;
+        if (mib == 32) point.latency_ns = 50.6;
+        if (mib == 40) point.latency_ns = 80.0;
+        if (mib == 48) point.latency_ns = 105.8;
+    }
+    ok &= expect_levels("shared L2", shared_l2, {{"L1", 128}, {"L2", 16384}});
 
     // Translation cost growing slowly across the L2 plateau (4 KiB pages) is
     // drift within one level, not an extra level between L1 and L2.

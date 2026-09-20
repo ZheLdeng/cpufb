@@ -42,7 +42,8 @@ typedef void (*CacheChaseKernel)(int iterations, int64_t *buffer);
 std::vector<uint64_t> build_cache_curve_sizes(uint64_t max_bytes);
 
 // Splits the curve into flat plateaus and places each capacity at the last
-// working set below the geometric midpoint of two adjacent plateaus.  Levels
+// working set that still performs like the lower of two adjacent plateaus
+// (one third of the way up the step on a log scale).  Levels
 // are named L1, L2, ... in order of appearance.
 std::vector<CacheLevelEstimate> estimate_cache_levels(
     const std::vector<CacheLatencyPoint> &points);

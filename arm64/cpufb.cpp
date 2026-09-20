@@ -505,7 +505,7 @@ static bool cpubm_arm_cache(
     cont[2] =
         cache_size.test_L1 > 0 ? to_string(cache_size.test_L1) + " KiB" : "-";
     cont[5] = with_agreement(cache_size.theory_L1_source, cache_size.theory_L1,
-        cache_size.test_L1, 1.5);
+        cache_size.test_L1, 1.3);
     table.addOneItem(cont);
     cont[0] = "L2/unified cache capacity";
     cont[1] = cache_size.theory_L2 > 0
@@ -514,7 +514,7 @@ static bool cpubm_arm_cache(
     cont[2] =
         cache_size.test_L2 > 0 ? to_string(cache_size.test_L2) + " KiB" : "-";
     cont[5] = with_agreement(cache_size.theory_L2_source, cache_size.theory_L2,
-        cache_size.test_L2, 1.5);
+        cache_size.test_L2, 1.3);
     table.addOneItem(cont);
     const cpufb::CacheLevelInfo l3 =
         cpufb::detect_data_cache_level(set_of_threads[0], 3);

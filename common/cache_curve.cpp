@@ -191,12 +191,17 @@ std::vector<CacheLevelEstimate> estimate_cache_levels(
         // A cyclic ring re-references every line after exactly one lap, so
         // the ideal curve is a step at the capacity.  Real curves soften on
         // either side of it: below when the level is shared with other
-        // activity, above when replacement is not strict LRU (a 768 KiB L2
-        // measured on an isolated Kunpeng 920F core reads half-way up at
-        // 896 KiB).  The geometric midpoint splits the step without depending
+        // activity, above when replacement is not strict LRU or the level is
+        // shared by a cluster (a 16 MiB Apple M4 L2 still reads 24 ns at
+        // 20 MiB, between its 8 ns plateau and 110 ns DRAM).  A working set
+        // fits a level while it still performs like that level, so the
+        // boundary is one third of the way up the step on a log scale: below
+        // the geometric midpoint, which accepted that 20 MiB point, yet far
+        // enough above the plateau to ignore its noise.  It does not depend
         // on where the upper plateau is judged to begin, which is unreliable
         // when that plateau is noisy DRAM latency.
-        const double threshold = std::sqrt(below.latency_ns * above.latency_ns);
+        const double threshold =
+            std::cbrt(below.latency_ns * below.latency_ns * above.latency_ns);
         size_t capacity_index = below.last;
         for (size_t j = below.last; j < above.first; ++j) {
             if (points[j].latency_ns < threshold)

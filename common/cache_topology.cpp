@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <limits>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -299,9 +300,16 @@ std::string describe_probe_agreement(
     if (measured <= 0.0) return "probe: not observed";
     if (reported <= 0.0) return "probe (no OS value)";
     const double ratio = measured / reported;
-    if (ratio <= tolerance && ratio >= 1.0 / tolerance)
-        return "probe (agrees with OS)";
-    return "probe (DISAGREES with OS)";
+    if (ratio == 1.0) return "probe (agrees with OS)";
+    // Always show the ratio: "agrees" within a tolerance hides how close.
+    std::ostringstream text;
+    text.setf(std::ios::fixed);
+    text.precision(2);
+    text << (ratio <= tolerance && ratio >= 1.0 / tolerance
+                    ? "probe (agrees with OS, "
+                    : "probe (DISAGREES with OS, ")
+         << ratio << "x)";
+    return text.str();
 }
 
 std::string format_cache_capacity(std::uint64_t bytes)

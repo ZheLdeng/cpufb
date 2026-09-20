@@ -29,9 +29,9 @@
 #include <sys/sysctl.h>
 #endif
 
+#include <sys/mman.h>
 #ifdef __linux__
 #include <sys/syscall.h>
-#include <sys/mman.h>
 #endif
 // Assumed line size when neither the OS nor the probe provides one.
 static constexpr int kDefaultCacheLineBytes = 64;
@@ -450,6 +450,50 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
         cpufb::probe_l1_associativity(static_cast<int>(cacheline));
 }
 
+// CPUFB_DEBUG_LOAD_COVERAGE=1: prove that one outer loop of a load kernel
+// really reads the whole workset it is credited with.  The kernel runs once
+// over freshly mapped, never-touched memory; every page it reads becomes
+// resident, and mincore() counts them.  Anything short of the full page count
+// means the kernel skips data and its bandwidth is over-reported.
+static void report_load_coverage(
+    const string &type, load_bench bench, int inner_loop, size_t data_bytes)
+{
+    const char *enabled = getenv("CPUFB_DEBUG_LOAD_COVERAGE");
+    if (enabled == nullptr || *enabled == '\0' || strcmp(enabled, "0") == 0)
+        return;
+
+    const long page_size = sysconf(_SC_PAGESIZE);
+    if (page_size <= 0) return;
+    const size_t page = static_cast<size_t>(page_size);
+    // Same guard as the timed buffer: some kernels read a little past the end.
+    const size_t mapped = (data_bytes + 4096 + page - 1) / page * page;
+    void *region = mmap(
+        nullptr, mapped, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (region == MAP_FAILED) return;
+#if defined(__linux__) && defined(MADV_NOHUGEPAGE)
+    (void)madvise(region, mapped, MADV_NOHUGEPAGE);
+#endif
+    bench(static_cast<float *>(region), inner_loop, 1);
+
+    const size_t pages = mapped / page;
+    const size_t expected = (data_bytes + page - 1) / page;
+#ifdef __APPLE__
+    vector<char> residency(pages);
+    const int status = mincore(region, mapped, residency.data());
+#else
+    vector<unsigned char> residency(pages);
+    const int status = mincore(region, mapped, residency.data());
+#endif
+    size_t touched = 0;
+    for (size_t i = 0; status == 0 && i < expected; ++i)
+        touched += (residency[i] & 1) ? 1 : 0;
+    fprintf(stderr,
+        "load coverage: %-20s read %zu of %zu pages (%zu KiB workset)%s\n",
+        type.c_str(), touched, expected, data_bytes / 1024,
+        status != 0 ? " [mincore failed]" : "");
+    munmap(region, mapped);
+}
+
 LoadBandwidth get_bandwith(
     uint64_t looptime, double data_size, string type, void *bench, tpool_t *tm)
 {
@@ -517,6 +561,7 @@ LoadBandwidth get_bandwith(
     }
 
     load_bench bench_ptr = reinterpret_cast<load_bench>(bench);
+    report_load_coverage(type, bench_ptr, inner_loop, data_bytes);
     // warm up
     run_load_bench(bench_ptr, cache_data, inner_loop, measured_looptime,
         worker_stride_bytes, tm);

@@ -27,7 +27,7 @@ vector<double> freq;
 
 static void *thread_function_freq(void *arg)
 {
-    struct FrequencyData *data = (FrequencyData *)malloc(sizeof(FrequencyData));
+    FrequencyData *data = new FrequencyData();
     double CPU_freq;
     int64_t looptime = 100000000;
     struct timespec start, end;
@@ -74,6 +74,33 @@ static void *thread_function_freq(void *arg)
     }
 
     data->caculate_freq = CPU_freq * 1e-9;
+
+#ifdef _VECTOR_
+    const size_t vector_bytes = riscv_vector_length_bytes();
+    const size_t workset_bytes = 16 * 1024;
+    const int64_t repetitions = 16384;
+    void *load_buffer = nullptr;
+    if (vector_bytes > 0 &&
+        posix_memalign(&load_buffer, 64, workset_bytes) == 0) {
+        memset(load_buffer, 1, workset_bytes);
+        vector_load_stream(load_buffer, workset_bytes, repetitions);
+        PerfEventCycle load_counter(0, false);
+        load_counter.start();
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+        vector_load_stream(load_buffer, workset_bytes, repetitions);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        load_counter.stop();
+        const double load_instructions =
+            static_cast<double>(workset_bytes) / vector_bytes * repetitions;
+        const long long load_cycles = load_counter.get_cycle();
+        const double load_seconds = get_time(&start, &end);
+        data->load_uses_perf_counter = load_cycles > 0;
+        data->IPC_load = load_cycles > 0
+            ? load_instructions / load_cycles
+            : load_instructions / (load_seconds * CPU_freq);
+        free(load_buffer);
+    }
+#endif
 #endif
 
 //  warm up
@@ -138,11 +165,14 @@ void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
         cont[3] = ss3.str();
         cont[4] = ss4.str();
         cont[5] = ss5.str();
+        cont[6] = result->load_uses_perf_counter ? "perf_event cycles" :
+            "clock/frequency estimate";
 #ifdef _SVE_
         cont[6] = ss6.str();
         cont[7] = ss7.str();
 #endif
         table.addOneItem(cont);
+    delete result;
     }
 #else
     for (int t = 0; t < num_thread; t++) {
@@ -173,5 +203,6 @@ void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
     cont[7] = ss7.str();
 #endif
     table.addOneItem(cont);
+    delete result;
 #endif
 }

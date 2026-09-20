@@ -3,6 +3,9 @@
 #include <string>
 #include <vector>
 #include "table.hpp"
+
+extern std::vector<double> freq;
+
 struct FrequencyData
 {
     double theory_freq = 0;
@@ -10,6 +13,7 @@ struct FrequencyData
     double IPC_fp32 = 0;
     double IPC_fp64 = 0;
     double IPC_load = 0;
+    bool load_uses_perf_counter = false;
 #ifdef _SVE_
     double IPC_fp32_sve = 0;
     double IPC_fp64_sve = 0;

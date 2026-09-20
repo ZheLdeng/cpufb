@@ -90,14 +90,15 @@ void add_entry(SystemInfo &info,
         source});
 }
 
-std::string read_linux_os_name()
+std::string read_linux_os_name(std::string &source)
 {
 #ifdef __ANDROID__
     char release[PROP_VALUE_MAX] = {0};
-    if (__system_property_get("ro.build.version.release", release) > 0)
+    if (__system_property_get("ro.build.version.release", release) > 0) {
+        source = "Android system property";
         return std::string("Android ") + release;
-    return "Android";
-#else
+    }
+#endif
     std::ifstream input("/etc/os-release");
     std::string line;
     while (std::getline(input, line)) {
@@ -106,13 +107,14 @@ std::string read_linux_os_name()
         std::string value = trim(line.substr(prefix.size()));
         if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
             value = value.substr(1, value.size() - 2);
+        source = "/etc/os-release";
         return value;
     }
+    source = "uname";
     return "Linux";
-#endif
 }
 
-std::string read_linux_cpu_model()
+std::string read_linux_cpu_model(std::string &source)
 {
     std::ifstream input("/proc/cpuinfo");
     std::string line;
@@ -130,9 +132,62 @@ std::string read_linux_cpu_model()
             const std::string value = trim(line.substr(separator + 1));
             if (!value.empty() && (name != "processor" ||
                     !std::all_of(value.begin(), value.end(),
-                        [](unsigned char ch) { return std::isdigit(ch); })))
+                        [](unsigned char ch) { return std::isdigit(ch); }))) {
+                source = "/proc/cpuinfo";
                 return value;
+            }
         }
+    }
+
+#ifdef __ANDROID__
+    char product_model[PROP_VALUE_MAX] = {0};
+    if (__system_property_get("ro.product.model", product_model) > 0) {
+        source = "Android system property";
+        return product_model;
+    }
+#endif
+
+    const char *fallback_paths[] = {
+        "/sys/firmware/devicetree/base/model",
+        "/proc/device-tree/model",
+        "/sys/devices/soc0/machine",
+        "/sys/devices/virtual/dmi/id/product_name",
+    };
+    for (const char *path : fallback_paths) {
+        std::string value;
+        if (!read_first_line(path, value)) continue;
+        value.erase(std::find(value.begin(), value.end(), '\0'), value.end());
+        if (value.empty()) continue;
+        std::string normalized = value;
+        std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+            [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        if (normalized == "to be filled by o.e.m." ||
+            normalized == "default string" || normalized == "unknown")
+            continue;
+        source = path;
+        return value;
+    }
+
+    input.clear();
+    input.seekg(0);
+    std::string implementer;
+    std::string part;
+    while (std::getline(input, line)) {
+        const std::size_t separator = line.find(':');
+        if (separator == std::string::npos) continue;
+        const std::string name = trim(line.substr(0, separator));
+        if (name == "CPU implementer")
+            implementer = trim(line.substr(separator + 1));
+        else if (name == "CPU part")
+            part = trim(line.substr(separator + 1));
+        if (!implementer.empty() && !part.empty()) break;
+    }
+    if (!implementer.empty() || !part.empty()) {
+        if (implementer == "0x48") implementer = "HiSilicon (0x48)";
+        source = "/proc/cpuinfo";
+        if (implementer.empty()) return "ARM part " + part;
+        if (part.empty()) return implementer;
+        return implementer + ", ARM part " + part;
     }
     return "";
 }
@@ -263,12 +318,8 @@ SystemInfo collect_system_info(const std::vector<int> &selected_cores)
     const bool have_uname = uname(&system_name) == 0;
 
 #ifdef __linux__
-    add_entry(info, "OS", read_linux_os_name(),
-#ifdef __ANDROID__
-    "Android system property");
-#else
-    "/etc/os-release");
-#endif
+    std::string os_source;
+    add_entry(info, "OS", read_linux_os_name(os_source), os_source);
 #elif defined(__APPLE__)
     std::string product_version;
     read_sysctl_string("kern.osproductversion", product_version);
@@ -285,7 +336,10 @@ SystemInfo collect_system_info(const std::vector<int> &selected_cores)
     add_entry(info, "Compiler", compiler_name(), "compile-time macros");
 
 #ifdef __linux__
-    add_entry(info, "CPU Model", read_linux_cpu_model(), "/proc/cpuinfo");
+    std::string cpu_model_source;
+    add_entry(info, "CPU Model", read_linux_cpu_model(cpu_model_source),
+        cpu_model_source.empty() ? "system interface unavailable" :
+            cpu_model_source);
 #elif defined(__APPLE__)
     std::string cpu_model;
     read_sysctl_string("machdep.cpu.brand_string", cpu_model);

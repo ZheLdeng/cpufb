@@ -26,6 +26,9 @@
 #endif
 // Assumed line size when neither the OS nor the probe provides one.
 static constexpr int kDefaultCacheLineBytes = 64;
+// Sweep limit of the capacity curve.  The plateau after the last cache level
+// needs three grid points, so this covers an L2 or L3 of up to 64 MiB.
+static constexpr uint64_t kCacheCurveMaxBytes = 128ULL * 1024 * 1024;
 
 using namespace std;
 
@@ -99,7 +102,7 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     const cpufb::CacheCurveResult curve = cpufb::measure_cache_curve(chase_ring,
         cpufb::effective_cacheline_size(cache_size->theory_cacheline,
             cache_size->test_cacheline, kDefaultCacheLineBytes),
-        64ULL * 1024 * 1024);
+        kCacheCurveMaxBytes);
     cache_size->test_L1 = 0;
     cache_size->test_L2 = 0;
     for (const cpufb::CacheLevelEstimate &level : curve.levels) {

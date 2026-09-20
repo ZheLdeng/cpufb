@@ -152,14 +152,20 @@ double measure_pointer_chase(CacheChaseKernel chase, int64_t *buffer,
     iterations = std::max<size_t>(iterations, 50000);
     iterations = std::max(iterations, line_count);
     iterations = std::min(iterations, int_max);
-    std::vector<double> samples;
-    for (int sample = 0; sample < 5; ++sample) {
+    // Everything that disturbs a sample (another core of a shared L2, an
+    // interrupt, a migration on an unpinned macOS thread) adds latency and
+    // nothing removes it, so the minimum is the estimate.  The median let
+    // single points dip or bump by several ns on an Apple M4, which moved the
+    // L2 estimate between 12 and 16 MiB from run to run.
+    double best = 0.0;
+    for (int sample = 0; sample < 7; ++sample) {
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
         chase(static_cast<int>(iterations), buffer);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-        samples.push_back(elapsed_ns(start, end) / iterations);
+        const double latency = elapsed_ns(start, end) / iterations;
+        if (latency > 0.0 && (best == 0.0 || latency < best)) best = latency;
     }
-    return median_of(samples);
+    return best;
 }
 
 } // namespace
@@ -191,12 +197,17 @@ std::vector<CacheLevelEstimate> estimate_cache_levels(
         // A cyclic ring re-references every line after exactly one lap, so
         // the ideal curve is a step at the capacity.  Real curves soften on
         // either side of it: below when the level is shared with other
-        // activity, above when replacement is not strict LRU (a 768 KiB L2
-        // measured on an isolated Kunpeng 920F core reads half-way up at
-        // 896 KiB).  The geometric midpoint splits the step without depending
+        // activity, above when replacement is not strict LRU or the level is
+        // shared by a cluster (a 16 MiB Apple M4 L2 still reads 24 ns at
+        // 20 MiB, between its 8 ns plateau and 110 ns DRAM).  A working set
+        // fits a level while it still performs like that level, so the
+        // boundary is one third of the way up the step on a log scale: below
+        // the geometric midpoint, which accepted that 20 MiB point, yet far
+        // enough above the plateau to ignore its noise.  It does not depend
         // on where the upper plateau is judged to begin, which is unreliable
         // when that plateau is noisy DRAM latency.
-        const double threshold = std::sqrt(below.latency_ns * above.latency_ns);
+        const double threshold =
+            std::cbrt(below.latency_ns * below.latency_ns * above.latency_ns);
         size_t capacity_index = below.last;
         for (size_t j = below.last; j < above.first; ++j) {
             if (points[j].latency_ns < threshold)
@@ -225,9 +236,21 @@ CacheCurveResult measure_cache_curve(
     const long page_size = sysconf(_SC_PAGESIZE);
     const size_t page_bytes =
         page_size > 0 ? static_cast<size_t>(page_size) : 4096;
+    // Page-grouped order keeps translation misses amortized when only 4 KiB
+    // pages are available.  It is not used with 16 KiB or larger pages: the
+    // TLB reach is then several MiB, and visiting a whole page at once lets a
+    // region prefetcher serve most accesses (an Apple M4 read 14 ns at 48 MiB
+    // instead of ~110 ns, non-monotonically, and L2 could not be placed).
+    const size_t kLargePageBytes = 16 * 1024;
+    const bool group_by_page = !huge_pages && page_bytes < kLargePageBytes;
     const size_t group_lines =
-        huge_pages ? 0 : std::max<size_t>(1, page_bytes / line);
-    result.translation_mode = huge_pages ? "huge pages" : "page-grouped order";
+        group_by_page ? std::max<size_t>(1, page_bytes / line) : 0;
+    if (huge_pages)
+        result.translation_mode = "huge pages";
+    else if (group_by_page)
+        result.translation_mode = "page-grouped order";
+    else
+        result.translation_mode = "large base pages";
 
     void *allocation = nullptr;
 #ifdef __linux__

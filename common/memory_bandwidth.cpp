@@ -124,17 +124,26 @@ double read_linux_cpu_frequency_hz(int cpu)
     return 0.0;
 }
 
-double read_fallback_cpu_frequency_hz(int cpu)
+// Clock used for B/cycle and load IPC when PMU cycles are unavailable, best
+// first: the user-supplied CPUFB_FREQ_GHZ, the ADD dependency-chain estimate of
+// the calling thread's core (no privileges needed, so it also works on macOS
+// and Android), then the OS-reported frequency.  `source` names the choice.
+double read_fallback_cpu_frequency_hz(int cpu, string &source)
 {
-    // Same user-supplied clock as the frequency probe, for hosts that expose
-    // neither PMU cycles nor cpufreq data.
     const char *override_text = std::getenv("CPUFB_FREQ_GHZ");
     if (override_text != nullptr && *override_text != '\0') {
         char *end = nullptr;
         const double ghz = std::strtod(override_text, &end);
         if (end != override_text && *end == '\0' && std::isfinite(ghz) &&
-            ghz > 0.0)
+            ghz > 0.0) {
+            source = "CPUFB_FREQ_GHZ";
             return ghz * 1e9;
+        }
+    }
+    const double chain_hz = cpufb::estimate_core_clock_hz();
+    if (chain_hz > 0.0) {
+        source = "ADD-chain estimate";
+        return chain_hz;
     }
     double frequency = read_linux_cpu_frequency_hz(cpu);
 #ifdef __APPLE__
@@ -144,6 +153,7 @@ double read_fallback_cpu_frequency_hz(int cpu)
         0)
         frequency = static_cast<double>(sysctl_frequency);
 #endif
+    source = frequency > 0.0 ? "OS-reported frequency" : "unavailable";
     return frequency;
 }
 
@@ -508,16 +518,17 @@ bool measure_stream_bandwidth(int cpu, const KernelSpec &kernel,
     kernel.function(data, inner_loop, 1);
 
     CycleCounter counter;
-    const double fallback_frequency_hz =
-        counter.available() ? 0.0 : read_fallback_cpu_frequency_hz(cpu);
     string cycle_source = "perf CPU cycles";
+    string fallback_source;
+    const double fallback_frequency_hz = counter.available()
+        ? 0.0
+        : read_fallback_cpu_frequency_hz(cpu, fallback_source);
     if (!counter.available()) {
-        cycle_source =
-            fallback_frequency_hz > 0.0 ? "frequency estimate" : "unavailable";
+        cycle_source = fallback_source;
         std::cerr << "Warning: hardware CPU cycles are unavailable; ";
         if (fallback_frequency_hz > 0.0)
-            std::cerr
-                << "B/cycle and load IPC use a frequency estimate (CPUFB_FREQ_GHZ or cpufreq).";
+            std::cerr << "B/cycle and load IPC use elapsed time x "
+                      << fallback_source << ".";
         else
             std::cerr << "B/cycle and load IPC are omitted.";
         std::cerr << std::endl;
@@ -656,8 +667,12 @@ bool measure_parallel_stream_bandwidth(const vector<int> &cpus,
 
     double fallback_frequency_hz = 0.0;
     bool fallback_frequency_available = true;
+    string fallback_source;
     for (const int cpu : cpus) {
-        const double frequency_hz = read_fallback_cpu_frequency_hz(cpu);
+        // The ADD-chain estimate is taken on the calling thread, so it
+        // stands for every core of a homogeneous pool.
+        const double frequency_hz =
+            read_fallback_cpu_frequency_hz(cpu, fallback_source);
         if (frequency_hz <= 0.0) {
             fallback_frequency_available = false;
             break;
@@ -728,7 +743,7 @@ bool measure_parallel_stream_bandwidth(const vector<int> &cpus,
     report.workset_source = workset_source;
     report.cycle_source = all_samples_have_cycles
         ? "perf CPU cycles (sum over cores)"
-        : (fallback_frequency_available ? "frequency estimate (sum over cores)"
+        : (fallback_frequency_available ? fallback_source + " (sum over cores)"
                                         : "unavailable");
     report.median = samples[samples.size() / 2];
     report.minimum_gb_per_second = samples.front().gb_per_second;

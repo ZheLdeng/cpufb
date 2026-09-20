@@ -105,6 +105,7 @@ struct cpubm_t
     // cache level (1 or 2) whose capacity sizes the workset.
     CacheKernel cache_kernel;
     int cache_level;
+    int bytes_per_load; // Bytes moved by one load instruction of the kernel.
 #ifdef __linux__
     std::atomic<uint64_t> *cycle_count;
     std::atomic<int> *cycle_samples;
@@ -156,6 +157,7 @@ static void reg_new_isa(std::string isa, std::string type, std::string dim,
     new_one.kind = benchmark_kind_from_metric(dim);
     new_one.cache_kernel = nullptr;
     new_one.cache_level = 0;
+    new_one.bytes_per_load = 0;
 #ifdef __linux__
     new_one.cycle_count = nullptr;
     new_one.cycle_samples = nullptr;
@@ -167,11 +169,12 @@ static void reg_new_isa(std::string isa, std::string type, std::string dim,
 // An L1/L2-resident load row.  label is "L1 Cache"/"L2 Cache" for the first
 // row of a level and "--------" for the rest; the level is explicit.
 static void reg_load_kernel(const std::string &label, const std::string &type,
-    int cache_level, CacheKernel kernel)
+    int cache_level, CacheKernel kernel, int bytes_per_load)
 {
     reg_new_isa(label, type, "Byte/Cycle", 0x186A00LL, 0, nullptr, nullptr);
     bm_list.back().cache_kernel = kernel;
     bm_list.back().cache_level = cache_level;
+    bm_list.back().bytes_per_load = bytes_per_load;
 }
 
 // instructions_per_loop counts the inner loop including its loop control.
@@ -359,6 +362,17 @@ static void cpubm_x64_load(cpubm_t &item, Table &table)
     cont[2] = per_cycle.str();
     cont[5] = per_second.str();
     cont[6] = to_string(bandwidth.workset_bytes / 1024) + " KB";
+    // Load instructions per cycle: tells a bandwidth-bound row from one
+    // limited by how fast loads can be issued.
+    if (bandwidth.bytes_per_cycle > 0.0 && item.bytes_per_load > 0) {
+        stringstream load_ipc;
+        load_ipc << setprecision(3)
+                 << bandwidth.bytes_per_cycle / item.bytes_per_load;
+        cont[7] = load_ipc.str();
+    } else {
+        cont[7] = "-";
+    }
+    cont[8] = to_string(item.bytes_per_load) + " B";
     table.addOneItem(cont);
 }
 
@@ -391,13 +405,13 @@ static bool cpubm_x64_cache(
     cont[1] = format_reported_value(cache_size.theory_L1, " KB");
     cont[2] = format_reported_value(cache_size.test_L1, " KB");
     cont[5] = cpufb::describe_probe_agreement(
-        cache_size.theory_L1, cache_size.test_L1, 1.5);
+        cache_size.theory_L1, cache_size.test_L1, 1.3);
     table.addOneItem(cont);
     cont[0] = "L2 cache size";
     cont[1] = format_reported_value(cache_size.theory_L2, " KB");
     cont[2] = format_reported_value(cache_size.test_L2, " KB");
     cont[5] = cpufb::describe_probe_agreement(
-        cache_size.theory_L2, cache_size.test_L2, 1.5);
+        cache_size.theory_L2, cache_size.test_L2, 1.3);
     table.addOneItem(cont);
     const cpufb::CacheLevelInfo l3 =
         cpufb::detect_data_cache_level(set_of_threads[0], 3);
@@ -501,7 +515,7 @@ static void init_table(vector<Table *> &tables)
     tables[0]->setColumnNum(ti.size());
     tables[0]->addOneItem(ti);
 
-    ti.resize(7);
+    ti.resize(9);
     ti[0] = "Cache Level";
     ti[1] = "Core Instruction";
     ti[2] = "Bandwidth (per core)";
@@ -509,6 +523,8 @@ static void init_table(vector<Table *> &tables)
     ti[4] = "Test Size";
     ti[5] = "Bandwidth (GB/s)";
     ti[6] = "Workset";
+    ti[7] = "Load IPC";
+    ti[8] = "Bytes/Load";
     tables[1]->setColumnNum(ti.size());
     tables[1]->addOneItem(ti);
 
@@ -879,17 +895,17 @@ static void cpufb_register_isa()
         string label = level == 1 ? "L1 Cache" : "L2 Cache";
         if (runtime_features.avx) {
             reg_load_kernel(
-                label, "vmovups.ymm(f32)", level, load_vmovups_kernel);
+                label, "vmovups.ymm(f32)", level, load_vmovups_kernel, 32);
             label = "--------";
         }
         reg_load_kernel(
-            label, "movss.scalar(f32)", level, load_movss_stream_kernel);
+            label, "movss.scalar(f32)", level, load_movss_stream_kernel, 4);
         reg_load_kernel(
-            "--------", "movups.xmm(f32)", level, load_movups_xmm_kernel);
+            "--------", "movups.xmm(f32)", level, load_movups_xmm_kernel, 16);
 #ifdef _AVX512F_
         if (runtime_features.avx512f)
-            reg_load_kernel(
-                "--------", "vmovups.zmm(f32)", level, load_vmovups_zmm_kernel);
+            reg_load_kernel("--------", "vmovups.zmm(f32)", level,
+                load_vmovups_zmm_kernel, 64);
 #endif
     }
 
@@ -961,8 +977,7 @@ int main(int argc, char *argv[])
     if (!validate_memory_bandwidth_options(options, true)) return 1;
     initialize_system_information(options.thread_pool);
     print_system_information();
-    if (options.memory_bandwidth)
-        return run_memory_bandwidth(options) ? 0 : 1;
+    if (options.memory_bandwidth) return run_memory_bandwidth(options) ? 0 : 1;
 
     cpufb_register_isa();
     scale_benchmark_loops(options.loop_scale);

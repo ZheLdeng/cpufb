@@ -24,6 +24,11 @@ struct StreamKernelSpec
 // <arch>/kernel/stream_kernel.cpp.
 StreamKernelSpec select_stream_kernel();
 
+// Running clock of the calling thread's core from the architecture's ADD
+// dependency chain (one dependent register-register ADD per cycle), or 0 when
+// the architecture has none.  Also implemented in stream_kernel.cpp.
+double estimate_core_clock_hz();
+
 } // namespace cpufb
 
 // --memory-bandwidth: one sequential-read stream per selected CPU.

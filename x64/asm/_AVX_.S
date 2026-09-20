@@ -47,6 +47,7 @@ avx_add_mul_f32f32_f32:
     vaddps %ymm15, %ymm15, %ymm15
     sub $0x1, %rdi
     jne .avx.add.mul.f32f32.f32.L1
+    vzeroupper
     ret
 
 avx_add_mul_f64f64_f64:
@@ -85,6 +86,7 @@ avx_add_mul_f64f64_f64:
     vaddpd %ymm15, %ymm15, %ymm15
     sub $0x1, %rdi
     jne .avx.add.mul.f64f64.f64.L1
+    vzeroupper
     ret
 
 avx_add_mul_f32f32_f32_latency:

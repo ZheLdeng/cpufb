@@ -32,12 +32,12 @@ struct cpufb_x86_cpuid
     uint32_t edx;
 };
 
-static inline void cpufb_x86_cpuid_exec(uint32_t leaf, uint32_t subleaf,
-    struct cpufb_x86_cpuid *result)
+static inline void cpufb_x86_cpuid_exec(
+    uint32_t leaf, uint32_t subleaf, struct cpufb_x86_cpuid *result)
 {
-    __asm__ volatile ("cpuid"
-        : "=a"(result->eax), "=b"(result->ebx),
-          "=c"(result->ecx), "=d"(result->edx)
+    __asm__ volatile("cpuid"
+        : "=a"(result->eax), "=b"(result->ebx), "=c"(result->ecx),
+        "=d"(result->edx)
         : "0"(leaf), "2"(subleaf));
 }
 
@@ -45,7 +45,7 @@ static inline uint64_t cpufb_x86_xgetbv(uint32_t index)
 {
     uint32_t eax;
     uint32_t edx;
-    __asm__ volatile ("xgetbv" : "=a"(eax), "=d"(edx) : "c"(index));
+    __asm__ volatile("xgetbv" : "=a"(eax), "=d"(edx) : "c"(index));
     return ((uint64_t)edx << 32) | eax;
 }
 
@@ -86,8 +86,7 @@ cpufb_x86_detect_runtime_features(void)
     features.avx512f = avx512_state && ((leaf7_0.ebx >> 16) & 1);
     features.avx512_ifma = features.avx512f && ((leaf7_0.ebx >> 21) & 1);
     features.avx512_vbmi = features.avx512f && ((leaf7_0.ecx >> 1) & 1);
-    features.avx512_vpopcntdq = features.avx512f &&
-        ((leaf7_0.ecx >> 14) & 1);
+    features.avx512_vpopcntdq = features.avx512f && ((leaf7_0.ecx >> 14) & 1);
     features.avx512_vnni = features.avx512f && ((leaf7_0.ecx >> 11) & 1);
     features.avx512_fp16 = features.avx512f && ((leaf7_0.edx >> 23) & 1);
     features.avx_vnni = features.avx && ((leaf7_1.eax >> 4) & 1);

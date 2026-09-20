@@ -96,7 +96,7 @@ The output binary is at `build/<preset>/cpufb`.
 | ---------------- | -------------------------------------------------------- |
 | `native-release` | Build for the host arch (Linux x64, arm64, riscv64; macOS arm64). |
 | `native-debug`   | Same, with `CMAKE_BUILD_TYPE=Debug`.                     |
-| `macos-arm64`    | Apple Silicon, matches legacy `build_arm64.sh` quirks.   |
+| `macos-arm64`    | Apple Silicon native build.                              |
 | `aarch64-cross`  | Cross-compile to `aarch64-linux-gnu` (Android deploy).   |
 | `riscv64-cross`  | Cross-compile to `riscv64-linux-gnu`.                    |
 
@@ -128,11 +128,12 @@ cmake --build --preset aarch64-cross --target run_android_core0
 
 You must ensure that the device can be reached via `adb shell` during build.
 
-### Legacy shell scripts (deprecated)
+### Legacy shell scripts
 
-The old `build_x64.sh`, `build_arm64.sh`, `build_android.sh`, `build_riscv64.sh`
-and `clean.sh` are kept for reference only and will print a `[DEPRECATED]`
-notice. New code should use the CMake build above.
+The old `build_x64.sh`, `build_arm64.sh`, `build_android.sh`,
+`build_riscv64.sh` and `clean.sh` have been removed; they no longer listed the
+shared sources and could not link. `QUICK_START.md` maps each one to its CMake
+preset.
 
 ## How to benchmark
 
@@ -147,9 +148,27 @@ notice. New code should use the CMake build above.
 ./cpufb --thread_pool='[96-127]' --memory-bandwidth --memory-size-mib=64
 ```
 
-On Linux hosts where unprivileged PMU cycle counters are unavailable, set
-`CPUFB_FREQ_GHZ` to the documented fixed core frequency before a
-cycle-normalized run.  It takes precedence over the cpufreq-sysfs fallback:
+Cycle-normalized columns (IPC, latency, Byte/Cycle) use hardware core cycles
+counted with `perf_event_open` around each kernel whenever the PMU is
+accessible. Many hosts deny that by default (`perf_event_paranoid >= 3`,
+containers, VMs); cpufb then falls back, in this order, and prints the source
+in the frequency table's `Counter Source` column plus one warning on stderr:
+
+1. `CPUFB_FREQ_GHZ`, a fixed core frequency supplied by the caller. It is used
+   for normalization but never shown as `Test Freq`, because it is not a
+   measurement;
+2. an `ADD`-chain estimate: one dependent register-register `ADD` retires per
+   core cycle on x86-64 and AArch64 alike, so 16 x loops / elapsed is the
+   running clock of the pinned core. It needs no privileges and tracks turbo;
+3. macOS: a `powermetrics` sample (root); x86-64: the invariant TSC rate;
+4. the OS-reported maximum frequency (cpufreq sysfs, `hw.cpufrequency_max`, or
+   the Apple Silicon power-manager DVFS table). `Test Freq` stays `-` and the
+   source reads `OS-reported frequency (not measured)`.
+
+Estimated sources assume the clock measured by the frequency probe also holds
+during the kernel; AVX-512 kernels that lower the core clock therefore read a
+little slow (for example 4.6 instead of 4 cycles of FMA latency). Use counted
+cycles for publishable IPC/latency numbers:
 
 ```bash
 CPUFB_FREQ_GHZ=3.3 ./cpufb --thread_pool='[96]' --include-test=load
@@ -189,16 +208,48 @@ the L3 workset is fixed below the shared L3 and split evenly between streams;
 the L3 row is omitted once a per-stream share would fit in private L2. The same
 table always includes a DRAM sequential-read row. Each selected CPU has its
 own DRAM stream whose default workset is `max(256 MiB, 4 x detected
-last-level cache)`. Keep a multi-core L3 run within one LLC/NUMA domain. If no
-L3 is reported (common on Apple Silicon), the L3 rows are omitted and only the
-memory row is added.
+last-level cache)`; with many selected CPUs the per-stream share is reduced so
+that the aggregate stays within half of the currently available memory, and
+the row is skipped with a warning when even 32 MiB per stream does not fit.
+Every stream buffer is first-touched, warmed and measured by the same pinned
+worker, so its pages stay on that worker's NUMA node. Keep a multi-core L3 run
+within one LLC/NUMA domain. If no L3 is reported (common on Apple Silicon), the
+L3 rows are omitted and only the memory row is added. A failed stream is
+reported as `not measured` and does not abort the remaining categories.
+
+The empirical probes never consume the OS-reported value they are compared
+against, and a probe result is printed as measured even when it disagrees; the
+last column only labels the agreement (`probe (agrees with OS)`,
+`probe (DISAGREES with OS)`, `probe: not observed`):
+
+- cache-line size: a cold and a reuse pointer chain half a stride apart; the
+  cold chain sits above the reuse chain and windows are four strides apart,
+  so a forward adjacent-line prefetch cannot make a 64-byte line look like
+  128 bytes;
+- L1 associativity: a same-set pointer ring against a control ring that
+  touches the same pages but different sets, which cancels the DTLB conflicts
+  that a bare power-of-two stride otherwise reports as cache ways;
+- L1/L2 capacity: the dependent-load latency curve on a fixed quarter-octave
+  grid up to 64 MiB; plateaus are detected from the curve alone and each
+  capacity is the last working set below the geometric midpoint of two
+  adjacent plateaus. Without transparent huge pages the ring is shuffled page
+  by page so translation misses cannot form a spurious level. The result is
+  the effective capacity seen by the pinned core, so a busy SMT sibling or a
+  co-tenant lowers it.
 
 The `load` category remains the instruction-level L1/L2 cache-bandwidth table.
 It obtains L1/L2 capacity directly from Linux cache-topology sysfs or macOS
 cache sysctl, then uses half that capacity (up to 32 MiB) as its bandwidth
-workset. A topology failure uses conservative 64 KiB (L1) and 1 MiB (L2)
-defaults. The old pointer-chase loop is a capacity probe, not a published
-cache-latency result; it is therefore not run by `--include-test=load`.
+workset (x86-64 caps the workset at 2 MiB). A topology failure uses the
+empirical probe when the `cache` category ran, otherwise conservative 64 KiB
+(L1) and 1 MiB (L2) defaults on ARM64 and no row value on x86-64. The capacity
+probe is not run by `--include-test=load`.
+
+`Byte/Cycle` is always per core. For a multi-core ARM64 pool the aggregate
+traffic is shown in the `Bandwidth (GB/s)` column (1 GB = 1e9 bytes), with the
+worker count. Load buffers are 64-byte (x86-64) or page (ARM64) aligned, the
+load kernels run on the pinned pool workers, and each worker keeps the same
+buffer slice for warm-up and measurement.
 
   --thread_pool: [xxx] is the list of cpu thread to benchmarking, from setting affinities. Please reference the result of lstopo command. For example, [0,3,5-8,13-15].
 
@@ -214,7 +265,11 @@ default is 0 for all.
   capacity and latency; `compute` runs compute/IPC benchmarks; `all` runs both
   groups and the existing cache-bandwidth kernels. The default is `all`. An
   explicit `--mode=all` clears any `--include-test` restriction so all five
-  output tables are restored; `--exclude-test` is still applied.
+  output tables are restored; `--exclude-test` is still applied, and the
+  discarded `--include-test` names are still validated.
+
+  Unknown options and malformed numeric values are errors; nothing is silently
+  ignored.
 
   --include-test / --exclude-test: comma-separated arm64 or x86-64 benchmark types. Supported types are compute, load, cache, freq, multi_issue.
 
@@ -254,27 +309,28 @@ and AVX-512 VPOPCNTDQ tests when supported. Latency variants are paired with
 their throughput rows and are omitted from `--list-instructions`.
 
 See [X86_BENCHMARK_ACCOUNTING.md](X86_BENCHMARK_ACCOUNTING.md) for the audited
-operation counts and the exact meaning of TSC-based instruction rate and
-latency metrics. Remaining follow-up work is tracked in [TODO.md](TODO.md).
+operation counts and the exact meaning of the instruction rate and latency
+metrics. Remaining follow-up work is tracked in [TODO.md](TODO.md).
 
 ### macOS counter backends
 
 On Apple Silicon, `cpufb` first attempts to read per-thread fixed counters
 (cycles and retired instructions) through the installed `kperf` framework. The
 framework is loaded dynamically, so this path is unavailable rather than a hard
-dependency when macOS denies counter access.
-
-If fixed counters cannot be read, `cpufb` falls back to a sampled P-core
-frequency from `powermetrics` and labels the resulting frequency and IPC values
-as `powermetrics estimate`. `powermetrics` requires root privileges:
+dependency when macOS denies counter access (it usually requires root):
 
 ```sh
 sudo build/macos-arm64/cpufb '--thread_pool=[0]' --mode=compute
 ```
 
-If neither source is available, the frequency/IPC fields remain `-` and the
-`Counter Source` column reports why. Do not compare a `powermetrics estimate`
-directly with PMU-derived IPC from Linux.
+Without fixed counters the frequency comes from the unprivileged `ADD`-chain
+estimate described above, then from a `powermetrics` sample, and finally from
+the nominal maximum in the power manager's IORegistry DVFS tables
+(`pmgr/voltage-states*-sram`). That last value is what `Theory Freq` always
+shows; cpufb no longer carries a per-model frequency table. When nothing can
+be measured, `Test Freq` is `-` and IPC is normalized by the reported value,
+labelled `OS-reported frequency (not measured)`. Do not compare estimated
+clocks directly with PMU-derived IPC from Linux.
 
 ## Experimental pair-issue test
 

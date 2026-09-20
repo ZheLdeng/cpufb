@@ -1,15 +1,17 @@
-#ifndef _MACOS_COUNTERS_HPP
-#define _MACOS_COUNTERS_HPP
+#ifndef CPUFB_ARM64_MACOS_COUNTERS_HPP
+#define CPUFB_ARM64_MACOS_COUNTERS_HPP
 
 #include <cstdint>
 #include <string>
 
-struct MacosCounterSnapshot {
+struct MacosCounterSnapshot
+{
     uint64_t cycles = 0;
     uint64_t instructions = 0;
 };
 
-class MacosCounters {
+class MacosCounters
+{
 public:
     MacosCounters();
     ~MacosCounters();
@@ -25,7 +27,13 @@ private:
     std::string error_;
 };
 
+// Highest CPU DVFS frequency published by the power manager in the
+// IORegistry (pmgr "voltage-states*-sram"), in GHz, or 0 when unavailable.
+// This is the OS-reported nominal maximum, not a measurement.
+double macos_reported_max_frequency_ghz();
+
 // powermetrics is a root-only, sampled fallback. The returned value is MHz.
-bool sample_powermetrics_frequency_mhz(double &frequency_mhz, std::string &error);
+bool sample_powermetrics_frequency_mhz(
+    double &frequency_mhz, std::string &error);
 
 #endif

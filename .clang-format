@@ -1,0 +1,47 @@
+# cpufb C/C++ style.  Matches what the code base already mostly does:
+# 4 spaces, Allman braces for functions and types, K&R for control flow,
+# 4-space continuation lines, single-line guard clauses.
+# Assembly (.S) is not formatted.
+BasedOnStyle: LLVM
+Language: Cpp
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 80
+ContinuationIndentWidth: 4
+AccessModifierOffset: -4
+AlignAfterOpenBracket: DontAlign
+AlignOperands: DontAlign
+AlignTrailingComments: true
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+BinPackArguments: true
+BinPackParameters: true
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterClass: true
+  AfterStruct: true
+  AfterUnion: true
+  AfterEnum: false
+  AfterFunction: true
+  AfterNamespace: false
+  AfterControlStatement: Never
+  AfterExternBlock: true
+  BeforeElse: false
+  BeforeCatch: false
+  SplitEmptyFunction: true
+BreakStringLiterals: false
+IndentCaseLabels: false
+IndentPPDirectives: None
+KeepEmptyLinesAtTheStartOfBlocks: false
+MaxEmptyLinesToKeep: 1
+NamespaceIndentation: None
+PointerAlignment: Right
+ReflowComments: false
+# Include order is significant in a few files (feature macros, extern "C").
+SortIncludes: Never
+SpaceAfterCStyleCast: false
+Standard: c++17

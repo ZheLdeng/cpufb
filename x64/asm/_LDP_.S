@@ -26,6 +26,7 @@ load_movups_kernel:
     vmovups (%r9), %ymm14
     vmovups (%r9), %ymm15
     jne .load.movups.kernel.L1
+    vzeroupper
     ret
 
 load_vmovups_kernel:
@@ -57,6 +58,7 @@ load_vmovups_kernel:
 
     sub $0x1, %r10
     jne .load.vmovups.kernel.L2
+    vzeroupper
     ret
 
 load_movss_stream_kernel:

@@ -66,7 +66,9 @@ find_package(Threads REQUIRED)
 # common/ as an OBJECT library
 # ---------------------------------------------------------------------------
 add_library(cpufb_common OBJECT
+    "${CPUFB_COMMON_DIR}/cache_curve.cpp"
     "${CPUFB_COMMON_DIR}/cache_topology.cpp"
+    "${CPUFB_COMMON_DIR}/associativity_probe.cpp"
     "${CPUFB_COMMON_DIR}/cacheline_probe.cpp"
     "${CPUFB_COMMON_DIR}/cli.cpp"
     "${CPUFB_COMMON_DIR}/table.cpp"
@@ -141,8 +143,10 @@ if(CPUFB_ARCH STREQUAL "arm64" AND CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(APPEND _kernel_sources "${CPUFB_KERNEL_DIR}/macos_counters.cpp")
 endif()
 if(CPUFB_ARCH STREQUAL "arm64" OR CPUFB_ARCH STREQUAL "x64")
+    # The stream benchmark is shared; only the kernel selection is per arch.
     list(APPEND _kernel_sources
-        "${CPUFB_KERNEL_DIR}/memory_bandwidth.cpp")
+        "${CPUFB_COMMON_DIR}/memory_bandwidth.cpp"
+        "${CPUFB_KERNEL_DIR}/stream_kernel.cpp")
 endif()
 if(CPUFB_ARCH STREQUAL "x64")
     # The frequency probe is an x86-64 SSE/SSE2 baseline and must not depend
@@ -164,24 +168,12 @@ if(CPUFB_ARCH STREQUAL "arm64" AND CMAKE_SYSTEM_NAME STREQUAL "Darwin"
     set(_amx_target cpufb_amx)
 endif()
 
-# Per-source overrides matching the legacy scripts' optimization choices.
-if(CPUFB_ARCH STREQUAL "x64")
-    set_source_files_properties("${CPUFB_KERNEL_DIR}/frequency.cpp"
-        PROPERTIES COMPILE_FLAGS "-g -O0")
-    set_source_files_properties("${CPUFB_KERNEL_DIR}/load.cpp"
-        PROPERTIES COMPILE_FLAGS "-g -O0")
-elseif(CPUFB_ARCH STREQUAL "arm64")
-    set_source_files_properties("${CPUFB_KERNEL_DIR}/frequency.cpp"
-        PROPERTIES COMPILE_FLAGS "-O2 -g -w")
-    # Match legacy build_arm64.sh: load.cpp is compiled with no explicit -O
-    # (i.e. -O0). The benchmarked work is in the asm load_ptr() loop, but the
-    # Fisher-Yates init and other setup code in this TU is sensitive to the
-    # optimization level and we want runtime to match the legacy script.
-    # The trailing -O0 here overrides the target-level -O2 because GCC/Clang
-    # honor the last -O flag on the command line.
-    set_source_files_properties("${CPUFB_KERNEL_DIR}/load.cpp"
-        PROPERTIES COMPILE_FLAGS "-O0 -g -w")
-endif()
+# No per-source -O0 overrides: every timed region is either an assembly kernel
+# or a dependent-load loop that needs optimization to stay register-resident
+# (at -O0 each pointer-chase step round-trips through the stack and adds
+# store-forwarding latency to the measured access).  The legacy scripts built
+# load.cpp and frequency.cpp unoptimized only by omission; that also masked
+# assembly kernels which clobbered callee-saved d8-d15, since fixed.
 
 # ---------------------------------------------------------------------------
 # Main executable
@@ -204,12 +196,7 @@ elseif(CPUFB_ARCH STREQUAL "riscv64")
     target_compile_options(cpufb PRIVATE -O3 -march=rv64gcv_zfh)
     target_link_options(cpufb PRIVATE -z noexecstack)
 elseif(CPUFB_ARCH STREQUAL "arm64")
-    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-        # macOS Apple Silicon: legacy build_arm64.sh used -O0 here on purpose.
-        target_compile_options(cpufb PRIVATE -O0 -g -w)
-    else()
-        target_compile_options(cpufb PRIVATE -O2 -g -w)
-    endif()
+    target_compile_options(cpufb PRIVATE -O2 -g -w)
     if(CPUFB_MARCH_FLAG)
         target_compile_options(cpufb PRIVATE ${CPUFB_MARCH_FLAG})
     endif()
@@ -231,6 +218,11 @@ if(_amx_target)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_link_libraries(cpufb PRIVATE "-ldl")
+    if(CPUFB_ARCH STREQUAL "arm64")
+        # macos_counters.cpp reads the nominal DVFS table from the IORegistry.
+        target_link_libraries(cpufb PRIVATE
+            "-framework IOKit" "-framework CoreFoundation")
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------
@@ -268,6 +260,19 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
         COMMAND cpufb_cache_topology_test
     )
     set_tests_properties(cpufb_cache_topology PROPERTIES
+        LABELS "unit"
+        TIMEOUT 30
+    )
+
+    add_executable(cpufb_cache_curve_test
+        "${CMAKE_SOURCE_DIR}/tests/test_cache_curve.cpp"
+    )
+    target_link_libraries(cpufb_cache_curve_test PRIVATE cpufb_common)
+    add_test(
+        NAME cpufb_cache_curve
+        COMMAND cpufb_cache_curve_test
+    )
+    set_tests_properties(cpufb_cache_curve PROPERTIES
         LABELS "unit"
         TIMEOUT 30
     )

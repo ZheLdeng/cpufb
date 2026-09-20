@@ -333,9 +333,9 @@ build_and_run_variant sve2 sve2_sqrdmlah_vv_s16s16s16 \
 configure_variant sme2 _SME2_ \
     _SME2_ _ASIMD_ _LDP_ _ISSUE_ _SME_
 if compiler_accepts_sme2; then
-    build_and_run_variant sme2 sme2_fmla_mvv_f32f32f32 \
+    build_and_run_variant sme2 sme2_fmla4_mvv_f32f32f32 \
         sve_bfmmla_f32bf16bf16 \
-        _SME2_ "sme2_fmla.mvv(f32,f32,f32)"
+        _SME2_ "sme2_fmla4.mvv(f32,f32,f32)"
 else
     echo "SKIP sme2 build/run: configured compiler does not accept +sme2"
 fi

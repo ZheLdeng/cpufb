@@ -38,6 +38,7 @@ avx_vnni_int8_dp4a_s32s8s8:
     vpdpbssd %ymm15, %ymm15, %ymm15
     sub $0x1, %rdi
     jne .avx.vnni.int8.dp4a.s32s8s8.L1
+    vzeroupper
     ret
 
 avx_vnni_int8_dp4a_s32s8u8:
@@ -76,6 +77,7 @@ avx_vnni_int8_dp4a_s32s8u8:
     vpdpbsud %ymm15, %ymm15, %ymm15
     sub $0x1, %rdi
     jne .avx.vnni.int8.dp4a.s32s8u8.L1
+    vzeroupper
     ret
 
 avx_vnni_int8_dp4a_s32u8u8:
@@ -114,5 +116,6 @@ avx_vnni_int8_dp4a_s32u8u8:
     vpdpbuud %ymm15, %ymm15, %ymm15
     sub $0x1, %rdi
     jne .avx.vnni.int8.dp4a.s32u8u8.L1
+    vzeroupper
     ret
 

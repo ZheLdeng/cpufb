@@ -59,11 +59,10 @@ cmake --preset aarch64-cross \
     -DCPUFB_SIMD_FEATURES_OVERRIDE="_BF16_;_I8MM_;_SVE_;_SVE2_"
 ```
 
-## Legacy scripts (deprecated)
+## Legacy scripts (removed)
 
-`build_x64.sh`, `build_arm64.sh`, `build_android.sh`, `build_riscv64.sh` and
-`clean.sh` still exist for reference but print a `[DEPRECATED]` notice. Use
-the CMake build above.
+The per-architecture shell scripts no longer listed the shared sources and
+could not link, so they were removed. Their replacements:
 
 | Old command            | New command                                              |
 | ---------------------- | -------------------------------------------------------- |

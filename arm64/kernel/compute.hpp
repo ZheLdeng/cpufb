@@ -1,5 +1,5 @@
-#ifndef _COMPUTE_HPP
-#define _COMPUTE_HPP
+#ifndef CPUFB_ARM64_COMPUTE_HPP
+#define CPUFB_ARM64_COMPUTE_HPP
 
 extern "C"
 {
@@ -128,23 +128,23 @@ extern "C"
     void asimd_fcmla_vv_f32f32f32_180(int64_t);
     void asimd_fcmla_vv_f32f32f32_270(int64_t);
     void asimd_fcmla_pair_vv_f32f32f32(int64_t);
-  #ifdef _ASIMD_HP_
+#ifdef _ASIMD_HP_
     void asimd_fcmla_vv_f16f16f16_0(int64_t);
     void asimd_fcmla_vv_f16f16f16_90(int64_t);
     void asimd_fcmla_vv_f16f16f16_180(int64_t);
     void asimd_fcmla_vv_f16f16f16_270(int64_t);
-  #endif
+#endif
     // Latency variants.
     void asimd_fcmla_vv_f32f32f32_0_latency(int64_t);
     void asimd_fcmla_vv_f32f32f32_90_latency(int64_t);
     void asimd_fcmla_vv_f32f32f32_180_latency(int64_t);
     void asimd_fcmla_vv_f32f32f32_270_latency(int64_t);
-  #ifdef _ASIMD_HP_
+#ifdef _ASIMD_HP_
     void asimd_fcmla_vv_f16f16f16_0_latency(int64_t);
     void asimd_fcmla_vv_f16f16f16_90_latency(int64_t);
     void asimd_fcmla_vv_f16f16f16_180_latency(int64_t);
     void asimd_fcmla_vv_f16f16f16_270_latency(int64_t);
-  #endif
+#endif
 #endif
 
 #ifdef _ASIMD_REDUCE_
@@ -152,9 +152,9 @@ extern "C"
     void asimd_fmaxv_v_f32(int64_t);
     void asimd_saddlv_v_s8(int64_t);
     void asimd_smaxv_v_s32(int64_t);
-  #ifdef _ASIMD_HP_
+#ifdef _ASIMD_HP_
     void asimd_fmaxv_v_f16(int64_t);
-  #endif
+#endif
     // Latency variant for faddp only (Pattern A'). Scalar-output reductions
     // skipped per plan because they require dup-back feedback.
     void asimd_faddp_v_f32_latency(int64_t);
@@ -163,15 +163,15 @@ extern "C"
 #ifdef _ASIMD_RECIP_
     void asimd_frecpe_recps_v_f32(int64_t);
     void asimd_frsqrte_rsqrts_v_f32(int64_t);
-  #ifdef _ASIMD_HP_
+#ifdef _ASIMD_HP_
     void asimd_frecpe_recps_v_f16(int64_t);
-  #endif
+#endif
     // Latency variants (Pattern B: dst fed back through both ops).
     void asimd_frecpe_recps_v_f32_latency(int64_t);
     void asimd_frsqrte_rsqrts_v_f32_latency(int64_t);
-  #ifdef _ASIMD_HP_
+#ifdef _ASIMD_HP_
     void asimd_frecpe_recps_v_f16_latency(int64_t);
-  #endif
+#endif
 #endif
 
 #ifdef _ASIMD_INT_MAC_
@@ -285,12 +285,9 @@ extern "C"
     void sme2_bfdot4_vv_f32bf16bf16(int64_t);
     void sme2_bfdot_mvv_f32bf16bf16(int64_t);
     void sme2_bfdot4_mvv_f32bf16bf16(int64_t);
-    
-    void sme2_fmla_vs_f32f32f32(int64_t);
+
     void sme2_fmla4_vs_f32f32f32(int64_t);
-    void sme2_fmla_vv_f32f32f32(int64_t);
     void sme2_fmla4_vv_f32f32f32(int64_t);
-    void sme2_fmla_mvv_f32f32f32(int64_t);
     void sme2_fmla2_mvv_f32f32f32(int64_t);
 
     void sme2_fmla4_mvv_f32f32f32(int64_t);
@@ -299,37 +296,26 @@ extern "C"
     void sme2_fmlal4_vs_f32f16f16(int64_t);
     void sme2_fmlal_vv_f32f16f16(int64_t);
     void sme2_fmlal4_vv_f32f16f16(int64_t);
-    void sme2_fmlal_mvv_f32f16f16(int64_t);
     void sme2_fmlal4_mvv_f32f16f16(int64_t);
 
     void sme2_fvdot_vs_f32f16f16(int64_t);
     void sme2_fvdot2_vs_f32f16f16(int64_t);
 
-    void sme2_fdot_vs_f32f16f16(int64_t);
     void sme2_fdot4_vs_f32f16f16(int64_t);
-    void sme2_fdot_vv_f32f16f16(int64_t);
     void sme2_fdot4_vv_f32f16f16(int64_t);
-    void sme2_fdot_mvv_f32f16f16(int64_t);
     void sme2_fdot4_mvv_f32f16f16(int64_t);
 #endif
 #ifdef _SMEf64_
     void sme_fmopa_vv_f64f64f64(int64_t);
     void sme_fmopa2_vv_f64f64f64(int64_t);
 
-    void sme2_fmla_vs_f64f64f64(int64_t);
     void sme2_fmla2_vs_f64f64f64(int64_t);
     void sme2_fmla4_vs_f64f64f64(int64_t);
-    void sme2_fmla_vv_f64f64f64(int64_t);
     void sme2_fmla2_vv_f64f64f64(int64_t);
 
     void sme2_fmla4_vv_f64f64f64(int64_t);
-    void sme2_fmla_mvv_f64f64f64(int64_t);
     void sme2_fmla4_mvv_f64f64f64(int64_t);
 #endif
-
-
 }
-
-
 
 #endif

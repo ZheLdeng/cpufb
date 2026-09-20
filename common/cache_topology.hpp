@@ -37,6 +37,14 @@ std::uint64_t recommended_stream_workset_bytes(const LastLevelCacheInfo &cache);
 
 std::string format_cache_capacity(std::uint64_t bytes);
 
+// One-phrase verdict for a probe result next to the OS-reported value.  The
+// probe value is always printed as measured; this only labels agreement.
+// tolerance is the largest measured/reported ratio, in either direction, that
+// counts as agreement: 1.0 for discrete values, about 1.5 for capacities,
+// which the sweeps sample on a coarse grid and which are effective sizes.
+std::string describe_probe_agreement(
+    double reported, double measured, double tolerance);
+
 } // namespace cpufb
 
 #endif

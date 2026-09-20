@@ -39,6 +39,7 @@ fma_f32f32f32:
     vfmadd231ps %ymm15, %ymm15, %ymm15
     sub $0x1, %rdi
     jne .fma.f32f32f32.L1
+    vzeroupper
     ret
 
 fma_f64f64f64:
@@ -77,6 +78,7 @@ fma_f64f64f64:
     vfmadd231pd %ymm15, %ymm15, %ymm15
     sub $0x1, %rdi
     jne .fma.f64f64f64.L1
+    vzeroupper
     ret
 
 fma_f32f32f32_latency:

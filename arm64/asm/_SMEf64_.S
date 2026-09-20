@@ -105,42 +105,6 @@
     ret
 
 ####
-    PROLOGUE sme2_fmla_vs_f64f64f64
-    preserve_caller_vec
-    smstart
-    SME_INIT
-
-.sme2_fmla_vs_f64f64f64L1:
-    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w9, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w10, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w11, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w8, 4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w9, 4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w10, 4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w11, 4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w9, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w10, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w11, 0], { z0.D-z3.D }, z4.D[0]
-    subs x0, x0, #1
-    FMLA ZA.D[w8, 4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w9, 4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w10, 4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w11, 4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w9, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w10, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w11, 0], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w8, 4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w9, 4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w10, 4], { z0.D-z3.D }, z4.D[0]
-    FMLA ZA.D[w11, 4], { z0.D-z3.D }, z4.D[0]
-    bne .sme2_fmla_vs_f64f64f64L1
-    smstop
-    restore_caller_vec
-    ret
-####
     PROLOGUE sme2_fmla2_vs_f64f64f64
     preserve_caller_vec
     smstart
@@ -213,42 +177,6 @@
     restore_caller_vec
     ret
 ####
-    PROLOGUE sme2_fmla_vv_f64f64f64
-    preserve_caller_vec
-    smstart
-    SME_INIT
-
-.sme2_fmla_vv_f64f64f64L1:
-    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w9, 0], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w10, 0], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w11, 0], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w8, 4], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w9, 4], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w10, 4], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w11, 4], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w9, 0], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w10, 0], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w11, 0], { z0.D-z3.D }, z4.D
-    subs x0, x0, #1
-    FMLA ZA.D[w8, 4], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w9, 4], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w10, 4], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w11, 4], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w8, 0], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w9, 0], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w10, 0], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w11, 0], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w8, 4], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w9, 4], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w10, 4], { z0.D-z3.D }, z4.D
-    FMLA ZA.D[w11, 4], { z0.D-z3.D }, z4.D
-    bne .sme2_fmla_vv_f64f64f64L1
-    smstop
-    restore_caller_vec
-    ret
-####
     PROLOGUE sme2_fmla2_vv_f64f64f64
     preserve_caller_vec
     smstart
@@ -317,42 +245,6 @@
     FMLA ZA.D[w10, 4, VGx4], { z0.D-z3.D }, z4.D
     FMLA ZA.D[w11, 4, VGx4], { z0.D-z3.D }, z4.D
     bne .sme2_fmla4_vv_f64f64f64L1
-    smstop
-    restore_caller_vec
-    ret
-####
-    PROLOGUE sme2_fmla_mvv_f64f64f64
-    preserve_caller_vec
-    smstart
-    SME_INIT
-
-.sme2_fmla_mvv_f64f64f64L1:
-    FMLA ZA.D[w8, 0], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w9, 0], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w10, 0], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w11, 0], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w8, 4], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w9, 4], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w10, 4], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w11, 4], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w8, 0], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w9, 0], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w10, 0], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w11, 0], {z0.d-z3.d}, {z0.d-z3.d}
-    subs x0, x0, #1
-    FMLA ZA.D[w8, 4], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w9, 4], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w10, 4], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w11, 4], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w8, 0], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w9, 0], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w10, 0], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w11, 0], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w8, 4], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w9, 4], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w10, 4], {z0.d-z3.d}, {z0.d-z3.d}
-    FMLA ZA.D[w11, 4], {z0.d-z3.d}, {z0.d-z3.d}
-    bne .sme2_fmla_mvv_f64f64f64L1
     smstop
     restore_caller_vec
     ret

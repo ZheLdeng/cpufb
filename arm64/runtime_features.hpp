@@ -1,9 +1,11 @@
-#pragma once
+#ifndef CPUFB_ARM64_RUNTIME_FEATURES_HPP
+#define CPUFB_ARM64_RUNTIME_FEATURES_HPP
 
 #include <string>
 #include <vector>
 
-struct Arm64RuntimeFeatures {
+struct Arm64RuntimeFeatures
+{
     bool asimd = false;
     bool fp16 = false;
     bool dotprod = false;
@@ -36,3 +38,5 @@ struct Arm64RuntimeFeatures {
 };
 
 const Arm64RuntimeFeatures &arm64_runtime_features();
+
+#endif // CPUFB_ARM64_RUNTIME_FEATURES_HPP

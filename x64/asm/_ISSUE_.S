@@ -3,7 +3,11 @@
 .global multiple_issue_avx512
 
 multiple_issue:
-
+    # Zero the accumulators: caller garbage would turn the self-multiply
+    # chains into NaN/denormal work with data-dependent timing.
+    .irp reg,8,9,10,11,12,13,14,15
+        xorps %xmm\reg, %xmm\reg
+    .endr
     mov %rdx, %r10
 .multiple.issue.L2:
     mov %rdi, %r8
@@ -53,6 +57,9 @@ multiple_issue:
     ret
 
 multiple_issue_avx:
+    .irp reg,8,9,10,11,12,13,14,15
+        vxorps %ymm\reg, %ymm\reg, %ymm\reg
+    .endr
     mov %rdx, %r10
 .Lissue_avx_outer:
     mov %rdi, %r8
@@ -84,6 +91,9 @@ multiple_issue_avx:
     ret
 
 multiple_issue_avx512:
+    .irp reg,8,9,10,11,12,13,14,15
+        vpxord %zmm\reg, %zmm\reg, %zmm\reg
+    .endr
     mov %rdx, %r10
 .Lissue_avx512_outer:
     mov %rdi, %r8

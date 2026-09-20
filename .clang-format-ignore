@@ -1,0 +1,4 @@
+# Scratch experiments and the vendored Apple AMX macro header are not ours
+# to restyle.
+tmp/*
+arm64/kernel/amx.hpp

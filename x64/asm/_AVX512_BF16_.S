@@ -38,6 +38,7 @@ avx512_bf16_dp2a_f32bf16bf16:
     vdpbf16ps %zmm16, %zmm16, %zmm15
     sub $0x1, %rdi
     jne .avx512.bf16.dp2a.fp32bf16bf16.L1
+    vzeroupper
     ret
 
 avx512_bf16_dp2a_f32bf16bf16_latency:

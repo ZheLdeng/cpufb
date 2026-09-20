@@ -15,13 +15,12 @@
 
 using namespace std;
 
-namespace cpufb_cli {
+namespace cpufb::cli {
 
 namespace {
 
 const char *const kTestCategories[] = {
-    "compute", "load", "cache", "freq", "multi_issue"
-};
+    "compute", "load", "cache", "freq", "multi_issue"};
 const size_t kTestCategoryCount =
     sizeof(kTestCategories) / sizeof(kTestCategories[0]);
 
@@ -35,9 +34,8 @@ void parse_filter_list(const char *value, set<string> &target)
     }
 }
 
-bool filter_allows_value(const set<string> &include,
-    const set<string> &exclude,
-    const string &value)
+bool filter_allows_value(
+    const set<string> &include, const set<string> &exclude, const string &value)
 {
     if (exclude.find(value) != exclude.end()) return false;
     return include.empty() || include.find(value) != include.end();
@@ -57,11 +55,10 @@ bool parse_save_format(const char *value, SaveFormat &format)
     return false;
 }
 
-bool parse_positive_integer(const char *value,
-    const char *option,
-    uint64_t &parsed)
+bool parse_positive_integer(
+    const char *value, const char *option, uint64_t &parsed)
 {
-    if (value == NULL || *value == '\0') {
+    if (value == nullptr || *value == '\0') {
         cerr << "Error: " << option << " must be a positive integer." << endl;
         return false;
     }
@@ -72,7 +69,7 @@ bool parse_positive_integer(const char *value,
             return false;
         }
     }
-    char *end = NULL;
+    char *end = nullptr;
     errno = 0;
     unsigned long long result = strtoull(value, &end, 10);
     if (errno != 0 || end == value || *end != '\0' || result == 0) {
@@ -92,8 +89,8 @@ bool ends_with_case_insensitive(const string &value, const string &suffix)
 
 SaveFormat infer_save_format_from_path(const string &path)
 {
-    return ends_with_case_insensitive(path, ".csv") ?
-        SAVE_FORMAT_CSV : SAVE_FORMAT_TXT;
+    return ends_with_case_insensitive(path, ".csv") ? SAVE_FORMAT_CSV
+                                                    : SAVE_FORMAT_TXT;
 }
 
 const char *save_format_name(SaveFormat format)
@@ -101,8 +98,8 @@ const char *save_format_name(SaveFormat format)
     return format == SAVE_FORMAT_CSV ? "csv" : "txt";
 }
 
-vector<int> find_compute_instruction_matches(const string &instruction,
-    const BenchmarkCatalog &catalog)
+vector<int> find_compute_instruction_matches(
+    const string &instruction, const BenchmarkCatalog &catalog)
 {
     vector<int> exact_matches;
     vector<int> partial_matches;
@@ -121,8 +118,8 @@ vector<int> find_compute_instruction_matches(const string &instruction,
     return exact_matches.empty() ? partial_matches : exact_matches;
 }
 
-int find_latency_pair_index(const BenchmarkCatalog &catalog,
-    int benchmark_index)
+int find_latency_pair_index(
+    const BenchmarkCatalog &catalog, int benchmark_index)
 {
     const BenchmarkInfo &selected = catalog[benchmark_index];
     if (selected.pair_index >= 0 &&
@@ -135,13 +132,10 @@ int find_latency_pair_index(const BenchmarkCatalog &catalog,
 } // namespace
 
 BenchmarkInfo::BenchmarkInfo(const string &isa_value,
-    const string &instruction_value,
-    const string &metric_value) :
-    isa(isa_value),
-    instruction(instruction_value),
-    metric(metric_value),
-    is_latency(ends_with_case_insensitive(instruction_value, "_latency")),
-    pair_index(-1)
+    const string &instruction_value, const string &metric_value)
+    : isa(isa_value), instruction(instruction_value), metric(metric_value),
+      is_latency(ends_with_case_insensitive(instruction_value, "_latency")),
+      pair_index(-1)
 {
 }
 
@@ -150,8 +144,7 @@ void pair_benchmark_latencies(BenchmarkCatalog &catalog)
     for (BenchmarkInfo &item : catalog) item.pair_index = -1;
 
     for (int benchmark_index = 0;
-         benchmark_index < static_cast<int>(catalog.size());
-         ++benchmark_index) {
+        benchmark_index < static_cast<int>(catalog.size()); ++benchmark_index) {
         BenchmarkInfo &benchmark = catalog[benchmark_index];
         if (benchmark.is_latency ||
             get_benchmark_test_type(benchmark.metric) != "compute")
@@ -162,8 +155,8 @@ void pair_benchmark_latencies(BenchmarkCatalog &catalog)
         int latency_index = -1;
 
         for (int candidate_index = 0;
-             candidate_index < static_cast<int>(catalog.size());
-             ++candidate_index) {
+            candidate_index < static_cast<int>(catalog.size());
+            ++candidate_index) {
             const BenchmarkInfo &candidate = catalog[candidate_index];
             if (!candidate.is_latency ||
                 get_benchmark_test_type(candidate.metric) != "compute" ||
@@ -185,29 +178,53 @@ void pair_benchmark_latencies(BenchmarkCatalog &catalog)
     }
 }
 
-SaveOptions::SaveOptions() :
-    enabled(false),
-    format_set(false),
-    format(SAVE_FORMAT_TXT)
+SaveOptions::SaveOptions()
+    : enabled(false), format_set(false), format(SAVE_FORMAT_TXT)
 {
 }
 
-CliOptions::CliOptions() :
-    idle_time(0),
-    list_categories(false),
-    list_instructions(false),
-    memory_bandwidth(false),
-    memory_size_mib(0),
-    memory_repetitions(5),
-    memory_size_set(false),
-    memory_repetitions_set(false),
-    thread_pool_set(false),
-    mode(BENCH_MODE_ALL),
-    mode_explicit(false),
-    include_test_explicit(false),
-    loop_scale(1),
-    bench_limit(0)
+CliOptions::CliOptions()
+    : idle_time(0), list_categories(false), list_instructions(false),
+      memory_bandwidth(false), memory_size_mib(0), memory_repetitions(5),
+      memory_size_set(false), memory_repetitions_set(false),
+      thread_pool_set(false), mode(BENCH_MODE_ALL), mode_explicit(false),
+      include_test_explicit(false), loop_scale(1), bench_limit(0)
 {
+}
+
+// Strict unsigned parse for options where 0 is meaningful.  atoi() would
+// turn "-1" into a 4-billion-second sleep and "abc" into a silent 0.
+static bool parse_uint32_option(
+    const char *value, const char *option, uint32_t &parsed)
+{
+    bool digits_only = value != nullptr && *value != '\0';
+    for (const char *cursor = value; digits_only && *cursor != '\0'; ++cursor)
+        digits_only = isdigit(static_cast<unsigned char>(*cursor)) != 0;
+    errno = 0;
+    const unsigned long long result =
+        digits_only ? strtoull(value, nullptr, 10) : 0;
+    if (!digits_only || errno != 0 ||
+        result > numeric_limits<uint32_t>::max()) {
+        cerr << "Error: " << option << " must be a non-negative integer."
+             << endl;
+        return false;
+    }
+    parsed = static_cast<uint32_t>(result);
+    return true;
+}
+
+static bool validate_test_categories(const set<string> &values)
+{
+    for (const string &value : values) {
+        bool known = false;
+        for (size_t i = 0; i < kTestCategoryCount; ++i)
+            known = known || value == kTestCategories[i];
+        if (!known) {
+            cerr << "Error: unknown test category '" << value << "'." << endl;
+            return false;
+        }
+    }
+    return true;
 }
 
 bool parse_cli_options(int argc, char *argv[], CliOptions &options)
@@ -221,13 +238,19 @@ bool parse_cli_options(int argc, char *argv[], CliOptions &options)
             }
             options.thread_pool_set = true;
         } else if (strncmp(argv[i], "--idle_time=", 12) == 0) {
-            options.idle_time = static_cast<uint32_t>(atoi(argv[i] + 12));
+            if (!parse_uint32_option(
+                    argv[i] + 12, "--idle_time", options.idle_time))
+                return false;
         } else if (strncmp(argv[i], "--loop_scale=", 13) == 0) {
-            const uint32_t requested_scale =
-                static_cast<uint32_t>(atoi(argv[i] + 13));
+            uint32_t requested_scale = 1;
+            if (!parse_uint32_option(
+                    argv[i] + 13, "--loop_scale", requested_scale))
+                return false;
             options.loop_scale = requested_scale > 0 ? requested_scale : 1;
         } else if (strncmp(argv[i], "--bench_limit=", 14) == 0) {
-            options.bench_limit = static_cast<uint32_t>(atoi(argv[i] + 14));
+            if (!parse_uint32_option(
+                    argv[i] + 14, "--bench_limit", options.bench_limit))
+                return false;
         } else if (strncmp(argv[i], "--mode=", 7) == 0) {
             options.mode_explicit = true;
             const string requested_mode = argv[i] + 7;
@@ -238,8 +261,7 @@ bool parse_cli_options(int argc, char *argv[], CliOptions &options)
             } else if (requested_mode == "all") {
                 options.mode = BENCH_MODE_ALL;
             } else {
-                cerr << "Error: --mode must be cache, compute or all."
-                     << endl;
+                cerr << "Error: --mode must be cache, compute or all." << endl;
                 return false;
             }
         } else if (strncmp(argv[i], "--include-isa=", 14) == 0) {
@@ -263,17 +285,15 @@ bool parse_cli_options(int argc, char *argv[], CliOptions &options)
             options.memory_bandwidth = true;
         } else if (strncmp(argv[i], "--memory-size-mib=", 18) == 0) {
             uint64_t parsed = 0;
-            if (!parse_positive_integer(argv[i] + 18,
-                    "--memory-size-mib",
-                    parsed))
+            if (!parse_positive_integer(
+                    argv[i] + 18, "--memory-size-mib", parsed))
                 return false;
             options.memory_size_mib = parsed;
             options.memory_size_set = true;
         } else if (strncmp(argv[i], "--memory-repetitions=", 21) == 0) {
             uint64_t parsed = 0;
-            if (!parse_positive_integer(argv[i] + 21,
-                    "--memory-repetitions",
-                    parsed))
+            if (!parse_positive_integer(
+                    argv[i] + 21, "--memory-repetitions", parsed))
                 return false;
             if (parsed > numeric_limits<uint32_t>::max()) {
                 cerr << "Error: --memory-repetitions is too large." << endl;
@@ -301,15 +321,24 @@ bool parse_cli_options(int argc, char *argv[], CliOptions &options)
                 return false;
             }
             options.save.format_set = true;
+        } else {
+            // A misspelled filter (--include_test=...) would otherwise be
+            // dropped and silently run the full suite.
+            cerr << "Error: unknown option '" << argv[i] << "'." << endl;
+            return false;
         }
     }
 
     // An explicit all mode restores every category even if a reused command
-    // line still contains a narrower include-test filter.
+    // line still contains a narrower include-test filter.  The discarded
+    // filter is still validated so a typo cannot hide behind the override.
     if (options.mode_explicit && options.mode == BENCH_MODE_ALL) {
+        if (!validate_test_categories(options.filter.include_test))
+            return false;
         options.filter.include_test.clear();
         options.include_test_explicit = false;
-    } else if (!options.include_test_explicit && options.mode != BENCH_MODE_ALL) {
+    } else if (!options.include_test_explicit &&
+        options.mode != BENCH_MODE_ALL) {
         if (options.mode == BENCH_MODE_CACHE) {
             options.filter.include_test.insert("cache");
         } else {
@@ -321,14 +350,18 @@ bool parse_cli_options(int argc, char *argv[], CliOptions &options)
     return true;
 }
 
-bool validate_memory_bandwidth_options(const CliOptions &options,
-    bool architecture_supported)
+bool validate_memory_bandwidth_options(
+    const CliOptions &options, bool architecture_supported)
 {
     if (!options.memory_bandwidth) {
         if (options.memory_size_set || options.memory_repetitions_set) {
-            const bool explicit_cache_test =
+            // An explicit --mode=all clears include-test but still runs the
+            // cache category, so the memory options remain meaningful.
+            const bool cache_included =
                 options.filter.include_test.find("cache") !=
-                    options.filter.include_test.end() &&
+                    options.filter.include_test.end() ||
+                (options.mode_explicit && options.mode == BENCH_MODE_ALL);
+            const bool explicit_cache_test = cache_included &&
                 options.filter.exclude_test.find("cache") ==
                     options.filter.exclude_test.end();
             if (!explicit_cache_test) {
@@ -392,29 +425,36 @@ string normalize_filter_value(string value)
     return value;
 }
 
+BenchmarkKind benchmark_kind_from_metric(const string &metric)
+{
+    if (metric.find("Byte/") != string::npos) return BENCHMARK_LOAD;
+    if (metric.find("IPC") != string::npos) return BENCHMARK_MULTI_ISSUE;
+    return BENCHMARK_COMPUTE;
+}
+
 string get_benchmark_test_type(const string &metric)
 {
-    if (metric.find("Byte/") != string::npos) return "load";
-    if (metric.find("IPC") != string::npos) return "multi_issue";
+    switch (benchmark_kind_from_metric(metric)) {
+    case BENCHMARK_LOAD: return "load";
+    case BENCHMARK_MULTI_ISSUE: return "multi_issue";
+    case BENCHMARK_COMPUTE: break;
+    }
     return "compute";
 }
 
 bool should_run_test(const BenchmarkFilter &filter, const string &test_type)
 {
-    return filter_allows_value(filter.include_test,
-        filter.exclude_test,
-        test_type);
+    return filter_allows_value(
+        filter.include_test, filter.exclude_test, test_type);
 }
 
-bool should_run_benchmark(const BenchmarkFilter &filter,
-    const string &isa,
-    const string &metric)
+bool should_run_benchmark(
+    const BenchmarkFilter &filter, const string &isa, const string &metric)
 {
     string test_type = get_benchmark_test_type(metric);
     if (!should_run_test(filter, test_type)) return false;
     if (test_type == "compute") {
-        return filter_allows_value(filter.include_isa,
-            filter.exclude_isa,
+        return filter_allows_value(filter.include_isa, filter.exclude_isa,
             normalize_filter_value(isa));
     }
     return true;
@@ -478,11 +518,11 @@ void print_benchmark_instructions(const BenchmarkCatalog &catalog)
     table.print();
 }
 
-bool validate_benchmark_filter(const BenchmarkFilter &filter,
-    const BenchmarkCatalog &catalog)
+bool validate_benchmark_filter(
+    const BenchmarkFilter &filter, const BenchmarkCatalog &catalog)
 {
-    set<string> valid_tests(kTestCategories,
-        kTestCategories + kTestCategoryCount);
+    set<string> valid_tests(
+        kTestCategories, kTestCategories + kTestCategoryCount);
     set<string> valid_isas;
     for (const BenchmarkInfo &item : catalog) {
         if (get_benchmark_test_type(item.metric) == "compute")
@@ -490,24 +530,23 @@ bool validate_benchmark_filter(const BenchmarkFilter &filter,
     }
 
     const set<string> *test_sets[] = {
-        &filter.include_test, &filter.exclude_test
-    };
+        &filter.include_test, &filter.exclude_test};
     for (size_t i = 0; i < 2; ++i) {
         for (const string &value : *test_sets[i]) {
             if (valid_tests.find(value) == valid_tests.end()) {
-                cerr << "Error: unknown test category '" << value << "'." << endl;
+                cerr << "Error: unknown test category '" << value << "'."
+                     << endl;
                 return false;
             }
         }
     }
 
-    const set<string> *isa_sets[] = {
-        &filter.include_isa, &filter.exclude_isa
-    };
+    const set<string> *isa_sets[] = {&filter.include_isa, &filter.exclude_isa};
     for (size_t i = 0; i < 2; ++i) {
         for (const string &value : *isa_sets[i]) {
             if (valid_isas.find(value) == valid_isas.end()) {
-                cerr << "Error: unavailable ISA category '" << value << "'." << endl;
+                cerr << "Error: unavailable ISA category '" << value << "'."
+                     << endl;
                 return false;
             }
         }
@@ -516,7 +555,7 @@ bool validate_benchmark_filter(const BenchmarkFilter &filter,
 }
 
 bool save_table_sections(const SaveOptions &options,
-    const vector<pair<string, const Table*> > &sections)
+    const vector<pair<string, const Table *>> &sections)
 {
     if (!options.enabled) return true;
     ofstream out(options.path.c_str());
@@ -542,15 +581,14 @@ bool save_table_sections(const SaveOptions &options,
 }
 
 bool print_and_save_benchmark_tables(const BenchmarkFilter &filter,
-    const SaveOptions &options,
-    const vector<Table*> &tables)
+    const SaveOptions &options, const vector<Table *> &tables)
 {
     if (tables.size() < kTestCategoryCount) {
         cerr << "Error: incomplete benchmark output table set." << endl;
         return false;
     }
 
-    vector<pair<string, const Table*> > sections;
+    vector<pair<string, const Table *>> sections;
     for (size_t i = 0; i < kTestCategoryCount; ++i) {
         if (!should_run_test(filter, kTestCategories[i])) continue;
         tables[i]->print();
@@ -599,37 +637,26 @@ string format_percent_value(double value)
     return ss.str();
 }
 
-SweepSample::SweepSample() :
-    performance(0.0),
-    ipc(0.0),
-    latency("-")
+SweepSample::SweepSample() : performance(0.0), ipc(0.0), latency("-") {}
+
+SweepConfig::SweepConfig()
+    : ipc_column("IPC"), latency_column("Latency"), print_banner(false),
+      include_metadata(false)
 {
 }
 
-SweepConfig::SweepConfig() :
-    ipc_column("IPC"),
-    latency_column("Latency"),
-    print_banner(false),
-    include_metadata(false)
-{
-}
-
-bool run_instruction_sweep(const vector<int> &threads,
-    std::uint32_t idle_time,
-    const string &instruction,
-    const BenchmarkCatalog &catalog,
-    const SaveOptions &save_options,
-    const SweepConfig &config,
-    SweepPrepareCallback prepare,
-    SweepMeasureCallback measure,
-    void *context)
+bool run_instruction_sweep(const vector<int> &threads, std::uint32_t idle_time,
+    const string &instruction, const BenchmarkCatalog &catalog,
+    const SaveOptions &save_options, const SweepConfig &config,
+    SweepPrepareCallback prepare, SweepMeasureCallback measure, void *context)
 {
     if (catalog.empty()) {
         cout << "Sorry, there's no any supported SIMD isa." << endl;
         return false;
     }
 
-    vector<int> matches = find_compute_instruction_matches(instruction, catalog);
+    vector<int> matches =
+        find_compute_instruction_matches(instruction, catalog);
     if (matches.empty()) {
         cerr << "Error: no compute instruction matched '" << instruction << "'."
              << endl;
@@ -661,7 +688,7 @@ bool run_instruction_sweep(const vector<int> &threads,
         cout << endl;
     }
 
-    if (prepare != NULL && !prepare(threads, benchmark_index, context))
+    if (prepare != nullptr && !prepare(threads, benchmark_index, context))
         return false;
 
     Table table;
@@ -682,12 +709,9 @@ bool run_instruction_sweep(const vector<int> &threads,
         vector<int> active_threads(threads.begin(), threads.begin() + cores);
 
         SweepSample sample;
-        if (measure == NULL || !measure(active_threads,
-                idle_time,
-                benchmark_index,
-                latency_index,
-                sample,
-                context)) {
+        if (measure == nullptr ||
+            !measure(active_threads, idle_time, benchmark_index, latency_index,
+                sample, context)) {
             cerr << "Error: instruction sweep measurement failed." << endl;
             return false;
         }
@@ -701,14 +725,14 @@ bool run_instruction_sweep(const vector<int> &threads,
         row[3] = format_perf_value(sample.performance / cores, selected.metric);
         row[4] = format_ratio_value(speedup);
         row[5] = format_percent_value(efficiency);
-        row[6] = to_string(sample.ipc);
+        row[6] = sample.ipc > 0.0 ? to_string(sample.ipc) : "-";
         row[7] = sample.latency.empty() ? "-" : sample.latency;
         table.addOneItem(row);
     }
     table.print();
 
     Table metadata;
-    vector<pair<string, const Table*> > sections;
+    vector<pair<string, const Table *>> sections;
     if (config.include_metadata && save_options.enabled) {
         vector<string> metadata_row(2);
         metadata_row[0] = "Item";
@@ -733,4 +757,4 @@ bool run_instruction_sweep(const vector<int> &threads,
     return save_table_sections(save_options, sections);
 }
 
-} // namespace cpufb_cli
+} // namespace cpufb::cli

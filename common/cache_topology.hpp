@@ -37,6 +37,11 @@ std::uint64_t recommended_stream_workset_bytes(const LastLevelCacheInfo &cache);
 
 std::string format_cache_capacity(std::uint64_t bytes);
 
+// Probe cell of the L3 row.  The latency curve either found a third level,
+// or climbed from L2 straight to memory latency (no L3: Kunpeng 920F, Apple
+// Silicon), or never reached memory latency, in which case it cannot tell.
+std::string format_probed_l3(int l3_kib, bool hierarchy_complete);
+
 // One-phrase verdict for a probe result next to the OS-reported value.  The
 // probe value is always printed as measured; this only labels agreement.
 // tolerance is the largest measured/reported ratio, in either direction, that

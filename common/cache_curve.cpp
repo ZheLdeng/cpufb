@@ -28,6 +28,13 @@ const size_t kMinimumPlateauPoints = 3;
 // while the smallest real step observed so far (L1 to L2) is 2.8x.
 const double kMinimumLevelRatio = 1.75;
 const double kMinimumLevelDeltaNs = 0.20;
+// Random DRAM access is 3-10x slower than the slowest cache level, so half of
+// the measured memory latency separates the two with margin on both sides.
+const double kMemoryLatencyFraction = 0.5;
+// The memory reference walks this many lines spread over a region far larger
+// than any cache: 4M lines are 256 MiB of distinct cache lines.
+const size_t kMemoryReferenceLines = 4u << 20;
+const uint64_t kMemoryReferenceBytes = 1ULL << 30;
 
 double elapsed_ns(const timespec &start, const timespec &end)
 {
@@ -168,6 +175,53 @@ double measure_pointer_chase(CacheChaseKernel chase, int64_t *buffer,
     return best;
 }
 
+// Dependent-load latency of main memory: a ring over lines scattered through
+// `bytes` of memory, too many and too far apart for any cache to hold.  One
+// cold lap is enough, since nothing here can become cache resident.
+double measure_memory_latency(
+    CacheChaseKernel chase, int64_t *buffer, uint64_t bytes, uint64_t seed)
+{
+    const size_t stride =
+        std::max<size_t>(64, bytes / kMemoryReferenceLines) / 64 * 64;
+    const size_t line_count = bytes / stride;
+    const size_t stride_words = stride / sizeof(int64_t);
+    const std::vector<size_t> order = build_ring_order(line_count, 0, seed);
+    for (size_t i = 0; i < line_count; ++i)
+        buffer[order[i] * stride_words] =
+            static_cast<int64_t>(order[(i + 1) % line_count] * stride_words);
+
+    const int steps = static_cast<int>(std::min<size_t>(
+        line_count / 4, static_cast<size_t>(std::numeric_limits<int>::max())));
+    double best = 0.0;
+    for (int sample = 0; sample < 3; ++sample) {
+        timespec start, end;
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+        chase(steps, buffer);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        const double latency = elapsed_ns(start, end) / steps;
+        if (latency > 0.0 && (best == 0.0 || latency < best)) best = latency;
+    }
+    return best;
+}
+
+// Size of the mapping: the sweep itself, grown to the memory-reference region
+// when a quarter of the available memory allows it.
+uint64_t choose_region_bytes(uint64_t max_bytes)
+{
+#if defined(_SC_AVPHYS_PAGES) && defined(_SC_PAGESIZE)
+    const long pages = sysconf(_SC_AVPHYS_PAGES);
+    const long page = sysconf(_SC_PAGESIZE);
+    if (pages > 0 && page > 0 &&
+        static_cast<uint64_t>(pages) * page / 4 >= kMemoryReferenceBytes)
+        return std::max(max_bytes, kMemoryReferenceBytes);
+    return max_bytes;
+#else
+    // No cheap way to ask (macOS): 1 GiB is small next to any Apple Silicon
+    // configuration.
+    return std::max(max_bytes, kMemoryReferenceBytes);
+#endif
+}
+
 } // namespace
 
 std::vector<uint64_t> build_cache_curve_sizes(uint64_t max_bytes)
@@ -183,16 +237,29 @@ std::vector<uint64_t> build_cache_curve_sizes(uint64_t max_bytes)
 }
 
 std::vector<CacheLevelEstimate> estimate_cache_levels(
-    const std::vector<CacheLatencyPoint> &points)
+    const std::vector<CacheLatencyPoint> &points, double memory_latency_ns,
+    bool *reached_memory)
 {
     std::vector<CacheLevelEstimate> levels;
+    if (reached_memory != nullptr) *reached_memory = false;
     const std::vector<Plateau> plateaus = find_plateaus(points);
+    // A plateau is main memory, not a cache level, when it is as slow as a
+    // working set that cannot fit in any cache.  Without that reference every
+    // plateau but the last is taken to be a cache.
+    auto is_memory = [&](const Plateau &plateau) {
+        return memory_latency_ns > 0.0 &&
+            plateau.latency_ns >= kMemoryLatencyFraction * memory_latency_ns;
+    };
     for (size_t i = 0; i + 1 < plateaus.size(); ++i) {
         const Plateau &below = plateaus[i];
         const Plateau &above = plateaus[i + 1];
+        // Steps between two memory plateaus are translation or NUMA effects.
+        if (is_memory(below)) break;
         if (above.latency_ns < below.latency_ns * kMinimumLevelRatio ||
             above.latency_ns - below.latency_ns < kMinimumLevelDeltaNs)
             continue;
+        if (is_memory(above) && reached_memory != nullptr)
+            *reached_memory = true;
 
         // A cyclic ring re-references every line after exactly one lap, so
         // the ideal curve is a step at the capacity.  Real curves soften on
@@ -252,11 +319,12 @@ CacheCurveResult measure_cache_curve(
     else
         result.translation_mode = "large base pages";
 
+    const uint64_t region_bytes = choose_region_bytes(max_bytes);
     void *allocation = nullptr;
 #ifdef __linux__
     const size_t huge_page_size = 2ULL * 1024 * 1024;
     const size_t mapping_bytes =
-        static_cast<size_t>(max_bytes) + huge_page_size;
+        static_cast<size_t>(region_bytes) + huge_page_size;
     void *mapping = mmap(nullptr, mapping_bytes, PROT_READ | PROT_WRITE,
         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (mapping == MAP_FAILED) return result;
@@ -266,14 +334,19 @@ CacheCurveResult measure_cache_curve(
     allocation = reinterpret_cast<void *>(aligned);
     if (huge_pages)
         (void)madvise(
-            allocation, static_cast<size_t>(max_bytes), MADV_HUGEPAGE);
+            allocation, static_cast<size_t>(region_bytes), MADV_HUGEPAGE);
 #else
     if (posix_memalign(&allocation, std::max(page_bytes, line),
-            static_cast<size_t>(max_bytes)) != 0)
+            static_cast<size_t>(region_bytes)) != 0)
         return result;
 #endif
-    std::memset(allocation, 0, static_cast<size_t>(max_bytes));
+    std::memset(allocation, 0, static_cast<size_t>(region_bytes));
     int64_t *buffer = static_cast<int64_t *>(allocation);
+
+    // Measured first, while nothing of the region is cache resident.
+    if (region_bytes > max_bytes * 2)
+        result.memory_latency_ns = measure_memory_latency(
+            chase, buffer, region_bytes, 0x4d454d4f52595245ULL);
 
     const std::vector<uint64_t> sizes = build_cache_curve_sizes(max_bytes);
     for (size_t i = 0; i < sizes.size(); ++i) {
@@ -288,7 +361,8 @@ CacheCurveResult measure_cache_curve(
 #else
     std::free(allocation);
 #endif
-    result.levels = estimate_cache_levels(result.points);
+    result.levels = estimate_cache_levels(
+        result.points, result.memory_latency_ns, &result.reached_memory);
     return result;
 }
 

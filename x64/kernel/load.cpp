@@ -105,15 +105,21 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
         kCacheCurveMaxBytes);
     cache_size->test_L1 = 0;
     cache_size->test_L2 = 0;
+    cache_size->test_L3 = 0;
     for (const cpufb::CacheLevelEstimate &level : curve.levels) {
         const int size_kb = static_cast<int>(level.capacity_bytes / 1024);
         if (level.level == "L1")
             cache_size->test_L1 = size_kb;
         else if (level.level == "L2")
             cache_size->test_L2 = size_kb;
+        else if (level.level == "L3")
+            cache_size->test_L3 = size_kb;
     }
+    cache_size->memory_latency_ns = curve.memory_latency_ns;
+    cache_size->hierarchy_complete = curve.reached_memory;
     if (getenv("CPUFB_DEBUG_CACHE_CURVE") != nullptr) {
-        fprintf(stderr, "cache curve (%s):\n", curve.translation_mode.c_str());
+        fprintf(stderr, "cache curve (%s), memory reference %.1f ns:\n",
+            curve.translation_mode.c_str(), curve.memory_latency_ns);
         for (const cpufb::CacheLatencyPoint &point : curve.points)
             fprintf(stderr, "  %8llu KB %8.3f ns/load\n",
                 static_cast<unsigned long long>(point.working_set_bytes / 1024),

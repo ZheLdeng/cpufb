@@ -378,7 +378,11 @@ cpufb::CacheCurveResult measure_cache_hierarchy(
             cache_data->test_L1 = size_kb;
         else if (level.level == "L2")
             cache_data->test_L2 = size_kb;
+        else if (level.level == "L3")
+            cache_data->test_L3 = size_kb;
     }
+    cache_data->memory_latency_ns = result.memory_latency_ns;
+    cache_data->hierarchy_complete = result.reached_memory;
     return result;
 }
 

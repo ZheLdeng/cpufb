@@ -46,6 +46,11 @@ struct CacheData
     std::string theory_L2_source;
     int test_L1 = 0;
     int test_L2 = 0;
+    // Third level from the latency curve, 0 when there is none, and whether
+    // the curve reached memory latency (so the level list is complete).
+    int test_L3 = 0;
+    double memory_latency_ns = 0;
+    bool hierarchy_complete = false;
     int theory_way = 0;
     int test_way = 0;
     int theory_cacheline = 0;

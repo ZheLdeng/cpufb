@@ -531,15 +531,19 @@ static bool cpubm_arm_cache(
     table.addOneItem(cont);
     const cpufb::CacheLevelInfo l3 =
         cpufb::detect_data_cache_level(set_of_threads[0], 3);
-    if (l3.bytes > 0) {
-        cont[0] = "L3/unified cache capacity";
-        cont[1] = cpufb::format_cache_capacity(l3.bytes);
-        cont[2] = "-";
-        cont[3].clear();
-        cont[4].clear();
-        cont[5] = l3.source;
-        table.addOneItem(cont);
-    }
+    // Always shown: "none" is a result too, and it is how a machine without
+    // an L3 is told apart from one whose L3 the OS merely does not report.
+    cont[0] = "L3/unified cache capacity";
+    cont[1] = l3.bytes > 0 ? cpufb::format_cache_capacity(l3.bytes) : "-";
+    cont[2] = cpufb::format_probed_l3(
+        cache_size.test_L3, cache_size.hierarchy_complete);
+    cont[3].clear();
+    cont[4].clear();
+    cont[5] = cache_size.test_L3 > 0
+        ? cpufb::describe_probe_agreement(
+              l3.bytes / 1024.0, cache_size.test_L3, 1.3)
+        : l3.source;
+    table.addOneItem(cont);
     cont[0] = "L1 ways of associativity";
     cont[1] =
         cache_size.theory_way > 0 ? to_string(cache_size.theory_way) : "-";

@@ -30,6 +30,12 @@ struct CacheCurveResult
 {
     std::vector<CacheLatencyPoint> points;
     std::vector<CacheLevelEstimate> levels;
+    // Latency of a working set that no cache can hold (0 when not measured),
+    // and whether the sweep climbed up to it.  When it did, `levels` is the
+    // complete hierarchy: a machine without an L3 yields exactly L1 and L2.
+    // When it did not, the last level is larger than the sweep.
+    double memory_latency_ns = 0;
+    bool reached_memory = false;
     // "huge pages", "page-grouped order" or "large base pages"; see
     // measure_cache_curve().
     std::string translation_mode;
@@ -43,10 +49,13 @@ std::vector<uint64_t> build_cache_curve_sizes(uint64_t max_bytes);
 
 // Splits the curve into flat plateaus and places each capacity at the last
 // working set that still performs like the lower of two adjacent plateaus
-// (one third of the way up the step on a log scale).  Levels
-// are named L1, L2, ... in order of appearance.
+// (one third of the way up the step on a log scale).  Levels are named L1,
+// L2, ... in order of appearance.  With a memory reference latency, plateaus
+// at least half as slow as memory are memory rather than cache levels; that
+// is what tells an L3 from DRAM on a machine that has no L3.
 std::vector<CacheLevelEstimate> estimate_cache_levels(
-    const std::vector<CacheLatencyPoint> &points);
+    const std::vector<CacheLatencyPoint> &points,
+    double memory_latency_ns = 0.0, bool *reached_memory = nullptr);
 
 // Measures the curve on the calling thread (the caller pins it).  With
 // transparent huge pages, or base pages of 16 KiB and more, the ring order is

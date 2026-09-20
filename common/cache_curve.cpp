@@ -152,14 +152,20 @@ double measure_pointer_chase(CacheChaseKernel chase, int64_t *buffer,
     iterations = std::max<size_t>(iterations, 50000);
     iterations = std::max(iterations, line_count);
     iterations = std::min(iterations, int_max);
-    std::vector<double> samples;
-    for (int sample = 0; sample < 5; ++sample) {
+    // Everything that disturbs a sample (another core of a shared L2, an
+    // interrupt, a migration on an unpinned macOS thread) adds latency and
+    // nothing removes it, so the minimum is the estimate.  The median let
+    // single points dip or bump by several ns on an Apple M4, which moved the
+    // L2 estimate between 12 and 16 MiB from run to run.
+    double best = 0.0;
+    for (int sample = 0; sample < 7; ++sample) {
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
         chase(static_cast<int>(iterations), buffer);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-        samples.push_back(elapsed_ns(start, end) / iterations);
+        const double latency = elapsed_ns(start, end) / iterations;
+        if (latency > 0.0 && (best == 0.0 || latency < best)) best = latency;
     }
-    return median_of(samples);
+    return best;
 }
 
 } // namespace

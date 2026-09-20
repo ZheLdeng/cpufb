@@ -421,6 +421,37 @@ case "${test_case}" in
                 if (rows != 1) exit 4
             }
         ' "${cache_output}" || fail "cache memory bandwidth CSV row is invalid"
+        # The line-size and associativity probes fail silently: a buffer that
+        # is too small or a criterion that is too strict just yields "-" with
+        # "probe: not observed" (both happened on Apple M4).  A missing or
+        # disagreeing value is therefore treated as a regression.  The probes
+        # time single cache misses, so load on the test core can spoil one run
+        # (seen once on a Kunpeng 920F straight after a 32-way build); a real
+        # regression fails every attempt, so one retry separates the two.
+        # Capacities are not asserted: a busy SMT sibling or a co-tenant
+        # legitimately lowers them.
+        probes_agree()
+        {
+            awk -F',' '
+                $1 == "cache" && ($2 == "cacheline size" ||
+                        $2 == "L1 ways of associativity") {
+                    rows++
+                    if ($4 == "" || $4 == "-" || $0 ~ /not observed/) exit 5
+                    if ($0 ~ /DISAGREES/) exit 6
+                }
+                END {
+                    if (rows != 2) exit 7
+                }
+            ' "${cache_output}"
+        }
+        if ! probes_agree; then
+            first_attempt="$(grep -E 'cacheline size|ways of associativity' \
+                "${cache_output}" | tr '\n' ' ')"
+            run_success "${binary}" "${thread_arg}" --include-test=cache \
+                --memory-size-mib=4 --memory-repetitions=1 \
+                --save="${cache_output}" >/dev/null
+            probes_agree || fail "cache-line or associativity probe did not report a value that agrees with the OS, twice: ${first_attempt}| $(grep -E 'cacheline size|ways of associativity' "${cache_output}" | tr '\n' ' ')"
+        fi
         ;;
 
     *)

@@ -225,9 +225,21 @@ CacheCurveResult measure_cache_curve(
     const long page_size = sysconf(_SC_PAGESIZE);
     const size_t page_bytes =
         page_size > 0 ? static_cast<size_t>(page_size) : 4096;
+    // Page-grouped order keeps translation misses amortized when only 4 KiB
+    // pages are available.  It is not used with 16 KiB or larger pages: the
+    // TLB reach is then several MiB, and visiting a whole page at once lets a
+    // region prefetcher serve most accesses (an Apple M4 read 14 ns at 48 MiB
+    // instead of ~110 ns, non-monotonically, and L2 could not be placed).
+    const size_t kLargePageBytes = 16 * 1024;
+    const bool group_by_page = !huge_pages && page_bytes < kLargePageBytes;
     const size_t group_lines =
-        huge_pages ? 0 : std::max<size_t>(1, page_bytes / line);
-    result.translation_mode = huge_pages ? "huge pages" : "page-grouped order";
+        group_by_page ? std::max<size_t>(1, page_bytes / line) : 0;
+    if (huge_pages)
+        result.translation_mode = "huge pages";
+    else if (group_by_page)
+        result.translation_mode = "page-grouped order";
+    else
+        result.translation_mode = "large base pages";
 
     void *allocation = nullptr;
 #ifdef __linux__

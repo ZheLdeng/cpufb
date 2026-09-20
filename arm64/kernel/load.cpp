@@ -35,6 +35,9 @@
 #endif
 // Assumed line size when neither the OS nor the probe provides one.
 static constexpr int kDefaultCacheLineBytes = 64;
+// Sweep limit of the capacity curve.  The plateau after the last cache level
+// needs three grid points, so this covers an L2 or L3 of up to 64 MiB.
+static constexpr uint64_t kCacheCurveMaxBytes = 128ULL * 1024 * 1024;
 
 using namespace std;
 
@@ -336,7 +339,7 @@ cpufb::CacheCurveResult measure_cache_hierarchy(
     // and select the jump nearest to them, which made the "measured" capacity
     // agree with the OS by construction and left it empty without topology
     // data (Android).
-    const uint64_t max_bytes = 64ULL * 1024 * 1024;
+    const uint64_t max_bytes = kCacheCurveMaxBytes;
     const int line_size = cpufb::effective_cacheline_size(
         cache_data->theory_cacheline, cache_data->test_cacheline, 64);
     result = cpufb::measure_cache_curve(load_ptr, line_size, max_bytes);

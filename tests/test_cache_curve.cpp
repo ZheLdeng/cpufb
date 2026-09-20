@@ -1,3 +1,4 @@
+#include "cache_bandwidth.hpp"
 #include "cache_curve.hpp"
 
 #include <cstdint>
@@ -192,7 +193,48 @@ int main()
     }
     ok &= expect_levels("Kunpeng 920F", kunpeng, {{"L1", 32}, {"L2", 768}});
 
+    // Telling an L3 from memory.  With the latency of a working set that no
+    // cache can hold as reference, the 920F curve ends in memory right after
+    // L2: there is no L3, and the hierarchy is known to be complete.
+    bool reached_memory = false;
+    std::vector<CacheLevelEstimate> levels =
+        estimate_cache_levels(kunpeng, 135.0, &reached_memory);
+    if (levels.size() != 2 || !reached_memory) {
+        std::cerr << "Kunpeng 920F with memory reference: expected exactly "
+                     "L1 and L2 followed by memory\n";
+        ok = false;
+    }
+
+    // A real third level is slower than L2 but far faster than memory.
+    levels = estimate_cache_levels(
+        make_curve(1.3, {{48, 4.5}, {1280, 20.0}, {16384, 90.0}}), 95.0,
+        &reached_memory);
+    if (levels.size() != 3 || levels[2].level != "L3" ||
+        levels[2].capacity_bytes != 16384 * kKiB || !reached_memory) {
+        std::cerr << "L3 before memory was not recognised\n";
+        ok = false;
+    }
+
+    // A last level larger than the sweep: the curve never gets near memory
+    // latency, so the list must not be reported as complete.
+    levels = estimate_cache_levels(
+        make_curve(1.3, {{48, 4.5}, {1280, 20.0}}), 95.0, &reached_memory);
+    if (levels.size() != 2 || reached_memory) {
+        std::cerr
+            << "a sweep that ends inside L3 must not claim completeness\n";
+        ok = false;
+    }
+
     ok &= expect_levels("flat curve", make_curve(2.0, {}), {});
+
+    // Bandwidth worksets live in a level but not in the one below it.
+    if (cpufb::cache_level_workset(0, 32 * kKiB) != 16 * kKiB ||
+        cpufb::cache_level_workset(32 * kKiB, 512 * kKiB) != 128 * kKiB ||
+        cpufb::cache_level_workset(0, 0) != 0 ||
+        cpufb::cache_level_workset(64 * kKiB, 32 * kKiB) != 16 * kKiB) {
+        std::cerr << "cache_level_workset placed a working set wrongly\n";
+        ok = false;
+    }
 
     const std::vector<uint64_t> sizes =
         build_cache_curve_sizes(8 * 1024 * kKiB);

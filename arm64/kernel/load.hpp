@@ -63,20 +63,4 @@ cpufb::CacheCurveResult measure_cache_hierarchy(
 void get_cache_capacities(struct CacheData *cache_size, int cpu_id);
 void get_multiway(struct CacheData *cache_size, int cpu_id);
 void get_cacheline(struct CacheData *cache_size, int cpu_id);
-// Cache-resident load bandwidth.  bytes_per_cycle is the per-core mean and is
-// 0 when no cycle count or frequency is available; gb_per_second (1e9 B/s) is
-// the aggregate over thread_num workers and never depends on the clock probe.
-struct LoadBandwidth
-{
-    double gb_per_second = 0.0;
-    double bytes_per_cycle = 0.0;
-    uint64_t workset_bytes = 0;
-    size_t thread_num = 1;
-    std::string cycle_source;
-    // Bytes per load instruction; bytes_per_cycle / bytes_per_load is the
-    // load-instruction rate.  0 when unknown.
-    double bytes_per_load = 0.0;
-};
-LoadBandwidth get_bandwith(uint64_t looptime, double data_size,
-    std::string type, void *bench, tpool_t *tm);
 #endif

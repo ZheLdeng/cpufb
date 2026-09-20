@@ -68,6 +68,11 @@ static void *tpool_worker(void *arg)
     tpool_t *tm = targs->tm;
     size_t cpu_id = targs->cpuid;
     current_worker_index = targs->index;
+#ifdef __APPLE__
+    // macOS cannot pin threads; the highest QoS class is what keeps a worker
+    // on a performance core.
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+#endif
     free(targs);
     bool affinity_failed = false;
 #ifdef __linux__

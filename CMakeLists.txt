@@ -66,6 +66,7 @@ find_package(Threads REQUIRED)
 # common/ as an OBJECT library
 # ---------------------------------------------------------------------------
 add_library(cpufb_common OBJECT
+    "${CPUFB_COMMON_DIR}/cache_bandwidth.cpp"
     "${CPUFB_COMMON_DIR}/cache_curve.cpp"
     "${CPUFB_COMMON_DIR}/cache_topology.cpp"
     "${CPUFB_COMMON_DIR}/associativity_probe.cpp"

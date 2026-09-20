@@ -29,6 +29,7 @@
 #include <frequency.hpp>
 #include <multiple_issue.hpp>
 #include <common.hpp>
+#include <cache_bandwidth.hpp>
 #include <cache_topology.hpp>
 #include <cmath>
 
@@ -46,6 +47,19 @@ extern vector<double> freq;
 static struct CacheData cache_size;
 static constexpr int kFallbackL1CacheKiB = 64;
 static constexpr int kFallbackL2CacheKiB = 1024;
+// The load kernels come in a few shapes that differ in what their count
+// argument means and in how many bytes one load instruction moves; see
+// resolve_load_kernel().
+enum LoadForm {
+    LOAD_NONE,
+    LOAD_LDP,
+    LOAD_NEON_4_REGISTERS,
+    LOAD_NEON_16_BYTES,
+    LOAD_SVE,
+    LOAD_SME_1_VECTOR,
+    LOAD_SME_4_VECTORS
+};
+
 // How a row's registered operation count scales with the streaming vector
 // length.
 enum SmeScale {
@@ -63,7 +77,8 @@ struct cpubm_t
     int64_t comp_pl; // Mathematical/element operations per outer asm loop.
     int64_t inst_pl; // Benchmarked instructions per outer asm loop.
     BenchmarkKind kind;
-    int cache_level; // 1 or 2 for BENCHMARK_LOAD rows, otherwise 0.
+    int cache_level;    // 1 or 2 for BENCHMARK_LOAD rows, otherwise 0.
+    LoadForm load_form; // Which byte accounting a BENCHMARK_LOAD row uses.
     bool scales_with_sve_bytes;
     SmeScale sme_scale;
     int sme_element_bytes; // Accumulator element size for outer products.
@@ -135,11 +150,6 @@ static void classify_vector_scale(cpubm_t &item)
         item.sme_scale = SME_SCALE_VECTOR_BYTES;
 }
 
-// Load rows are registered as one "L1 Cache" / "L2 Cache" header row followed
-// by "--------" continuation rows; remember the level of the current group
-// so that each row carries it instead of depending on execution order.
-static int registration_cache_level = 0;
-
 static void reg_new_isa(string isa, string type, string dim, int64_t loop_time,
     int64_t comp_pl, void *bench, int64_t inst_pl = kComputeInstructionsPerLoop)
 {
@@ -152,18 +162,21 @@ static void reg_new_isa(string isa, string type, string dim, int64_t loop_time,
     new_one.inst_pl = inst_pl;
     new_one.kind = benchmark_kind_from_metric(dim);
     new_one.cache_level = 0;
-    if (new_one.kind == BENCHMARK_LOAD) {
-        if (isa == "L1 Cache")
-            registration_cache_level = 1;
-        else if (isa == "L2 Cache")
-            registration_cache_level = 2;
-        new_one.cache_level = registration_cache_level;
-    }
+    new_one.load_form = LOAD_NONE;
     classify_vector_scale(new_one);
     new_one.bench = (void *)bench;
     new_one.required_feature = registration_required_feature;
 
     bm_list.push_back(new_one);
+}
+
+// A cache-resident load row; see resolve_load_kernel() for the forms.
+static void reg_load_kernel(const string &label, const string &type,
+    int cache_level, int64_t loop_time, void *kernel, LoadForm form)
+{
+    reg_new_isa(label, type, "Byte/Cycle", loop_time, 0, kernel);
+    bm_list.back().cache_level = cache_level;
+    bm_list.back().load_form = form;
 }
 #ifdef __linux__
 // Core cycles counted around the compute kernel itself, summed over the pool
@@ -399,67 +412,121 @@ static void cpubm_arm64_one(
     table.addOneItem(cont);
 }
 
+// What one load kernel reads, by form.  `count` is the kernel's second
+// argument: loop bodies for the NEON/SVE kernels, float elements for the SME
+// ones.
+//
+//   form             bytes per count   loop body      bytes per load
+//   ldp q,q                512            512               32
+//   ld1 {4 registers}      256            256               64
+//   16-byte loads          256            256               16
+//   SVE ld1                16 x VL        16 x VL           VL
+//   SME, one vector          4            16 x SVL          SVL
+//   SME2, four vectors       4            16 x SVL        4 x SVL
+//
+// Vector lengths are read here, at run time, because only a row that passed
+// its feature check may execute SVE or SME instructions.
+static cpufb::LoadKernel resolve_load_kernel(const cpubm_t &item)
+{
+    cpufb::LoadKernel kernel;
+    kernel.name = item.type;
+    kernel.function =
+        reinterpret_cast<void (*)(float *, int, int64_t)>(item.bench);
+    switch (item.load_form) {
+    case LOAD_LDP:
+        kernel.bytes_per_count = kernel.block_bytes = 512;
+        kernel.bytes_per_load = 32;
+        break;
+    case LOAD_NEON_4_REGISTERS:
+        kernel.bytes_per_count = kernel.block_bytes = 256;
+        kernel.bytes_per_load = 64;
+        break;
+    case LOAD_NEON_16_BYTES:
+        kernel.bytes_per_count = kernel.block_bytes = 256;
+        kernel.bytes_per_load = 16;
+        break;
+#ifdef _SVE_
+    case LOAD_SVE:
+        kernel.bytes_per_load = load_sve_vector_bytes();
+        kernel.bytes_per_count = kernel.block_bytes =
+            16 * kernel.bytes_per_load;
+        break;
+#endif
+#ifdef _SME_
+    case LOAD_SME_1_VECTOR:
+    case LOAD_SME_4_VECTORS:
+        kernel.bytes_per_count = sizeof(float);
+        kernel.block_bytes = 16 * load_sme_vector_bytes();
+        kernel.bytes_per_load = load_sme_vector_bytes() *
+            (item.load_form == LOAD_SME_4_VECTORS ? 4 : 1);
+        break;
+#endif
+    default: break;
+    }
+    return kernel;
+}
+
+// Formats value with `digits` significant digits and a unit, or "-".
+static string format_or_dash(double value, int digits, const string &unit)
+{
+    if (value <= 0.0) return "-";
+    stringstream text;
+    text << setprecision(digits) << value << unit;
+    return text.str();
+}
+
+// One row of the L1/L2 load table; the method is in cache_bandwidth.hpp.
 static void cpubm_arm_load(tpool_t *tm, cpubm_t &item, Table &table)
 {
-    vector<string> cont;
-    cont.resize(table.getCol());
-
-    // The level travels with the row; it used to be inferred from the header
-    // row's label and carried to the "--------" rows through a global.
+    // Level capacities: the OS topology when exposed, the probe otherwise.
+    auto capacity_kib = [](int reported, int measured) {
+        return static_cast<size_t>(reported > 0 ? reported : measured);
+    };
+    const size_t l1_kib =
+        capacity_kib(cache_size.theory_L1, cache_size.test_L1);
+    const size_t l2_kib =
+        capacity_kib(cache_size.theory_L2, cache_size.test_L2);
     const bool is_l1 = item.cache_level == 1;
+    const size_t workset = is_l1
+        ? cpufb::cache_level_workset(0, l1_kib * 1024)
+        : cpufb::cache_level_workset(l1_kib * 1024, l2_kib * 1024);
+
     const int reported = is_l1 ? cache_size.theory_L1 : cache_size.theory_L2;
-    const int measured = is_l1 ? cache_size.test_L1 : cache_size.test_L2;
     const string &reported_source =
         is_l1 ? cache_size.theory_L1_source : cache_size.theory_L2_source;
-    const int64_t load_pl = reported > 0 ? reported : measured;
-    const string load_capacity_source = reported > 0
+    const string capacity_source = reported > 0
         ? (reported_source.empty() ? "OS topology" : reported_source)
-        : (measured > 0 ? "cache probe" : "fallback");
+        : "cache probe";
 
-    const int64_t workset_kib = min<int64_t>(load_pl / 2, 32 * 1024);
-    cont[3] = to_string(load_pl) + " KiB";
-    cont[4] = to_string(workset_kib) + " KiB";
-    cont[5] = load_capacity_source;
+    // Fallback clock: the mean over the measured cores (macOS fills one).
+    double clock_hz = 0.0;
+    int clocks = 0;
+    for (const double ghz : freq)
+        if (ghz > 0.0) {
+            clock_hz += ghz * 1e9;
+            ++clocks;
+        }
+    if (clocks > 0) clock_hz /= clocks;
 
-    // Always run on the pinned pool workers, also for a single core: the
-    // calling thread is only pinned as a side effect of the cache probes, so
-    // a load-only run would measure whichever core the scheduler picked.
-    const LoadBandwidth bandwidth = get_bandwith(
-        item.loop_time, (double)load_pl, item.type, item.bench, tm);
+    const cpufb::LoadKernel kernel = resolve_load_kernel(item);
+    const cpufb::CacheBandwidth bandwidth =
+        cpufb::measure_cache_bandwidth(kernel, workset, tm, clock_hz);
 
-    stringstream ss1, ss2;
+    string gb_per_second = format_or_dash(bandwidth.gb_per_second, 5, " GB/s");
+    if (bandwidth.worker_count > 1)
+        gb_per_second += " (" + to_string(bandwidth.worker_count) + " cores)";
 
-    if (bandwidth.bytes_per_cycle > 0)
-        ss1 << setprecision(5) << bandwidth.bytes_per_cycle << " " << item.dim;
-    else
-        ss1 << "-";
-    if (bandwidth.gb_per_second > 0) {
-        ss2 << setprecision(5) << bandwidth.gb_per_second << " GB/s";
-        if (bandwidth.thread_num > 1)
-            ss2 << " (" << bandwidth.thread_num << " cores)";
-    } else {
-        ss2 << "-";
-    }
-
+    vector<string> cont(table.getCol());
     cont[0] = item.isa;
     cont[1] = item.type;
-    cont[2] = ss1.str();
-    cont[6] = ss2.str();
+    cont[2] = format_or_dash(bandwidth.bytes_per_cycle, 5, " " + item.dim);
+    cont[3] = to_string(is_l1 ? l1_kib : l2_kib) + " KiB";
+    cont[4] = to_string(bandwidth.workset_bytes / 1024) + " KiB";
+    cont[5] = capacity_source;
+    cont[6] = gb_per_second;
     cont[7] = bandwidth.cycle_source.empty() ? "-" : bandwidth.cycle_source;
-    // Load instructions per cycle: tells a bandwidth-bound row (rate falls
-    // from L1 to L2) from an issue-rate-bound one (rate stays put).
-    if (bandwidth.bytes_per_cycle > 0 && bandwidth.bytes_per_load > 0) {
-        stringstream ss3, ss4;
-        ss3 << setprecision(3)
-            << bandwidth.bytes_per_cycle / bandwidth.bytes_per_load;
-        ss4 << setprecision(4) << bandwidth.bytes_per_load << " B";
-        cont[8] = ss3.str();
-        cont[9] = ss4.str();
-    } else {
-        cont[8] = "-";
-        cont[9] = "-";
-    }
-
+    cont[8] = format_or_dash(bandwidth.load_ipc, 3, "");
+    cont[9] = to_string(kernel.bytes_per_load) + " B";
     table.addOneItem(cont);
 }
 
@@ -1522,86 +1589,50 @@ static void cpufb_register_isa()
     reg_new_isa("SMEf64", "sme2_fmla4.mvv(f64,f64,f64)", "FLOPS",
         kComputeLoopTime, 24LL, (void *)sme2_fmla4_mvv_f64f64f64);
 #endif
-    require_feature("_LDP_");
-    reg_new_isa("L1 Cache", "ldp(f32)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)load_ldp_kernel);
-    reg_new_isa("--------", "neon-ld1b(u8)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)load_neon_ld1b_kernel);
-    reg_new_isa("--------", "neon-ld1h-x4(f16)", "Byte/Cycle", kLoadLoopTime,
-        32LL, (void *)load_neon_ld1h_kernel);
-    reg_new_isa("--------", "neon-ld1h-4x1(f16)", "Byte/Cycle", kLoadLoopTime,
-        32LL, (void *)load_neon_ld1h_4x1_kernel);
-    reg_new_isa("--------", "ldr.q(f32)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)load_ldrq_4x1_offset_kernel);
-    reg_new_isa("--------", "neon-ld1w(f32)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)load_neon_ld1w_kernel);
-    reg_new_isa("--------", "neon-ld1d(f64)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)load_neon_ld1d_kernel);
+    // L1 and L2 load rows: the same kernels at both levels.  Only the first
+    // row of a level carries its label.
+    for (int level = 1; level <= 2; ++level) {
+        require_feature("_LDP_");
+        reg_load_kernel(level == 1 ? "L1 Cache" : "L2 Cache", "ldp(f32)", level,
+            kLoadLoopTime, (void *)load_ldp_kernel, LOAD_LDP);
+        reg_load_kernel("--------", "neon-ld1b(u8)", level, kLoadLoopTime,
+            (void *)load_neon_ld1b_kernel, LOAD_NEON_4_REGISTERS);
+        reg_load_kernel("--------", "neon-ld1h-x4(f16)", level, kLoadLoopTime,
+            (void *)load_neon_ld1h_kernel, LOAD_NEON_4_REGISTERS);
+        reg_load_kernel("--------", "neon-ld1h-4x1(f16)", level, kLoadLoopTime,
+            (void *)load_neon_ld1h_4x1_kernel, LOAD_NEON_16_BYTES);
+        reg_load_kernel("--------", "ldr.q(f32)", level, kLoadLoopTime,
+            (void *)load_ldrq_4x1_offset_kernel, LOAD_NEON_16_BYTES);
+        reg_load_kernel("--------", "neon-ld1w(f32)", level, kLoadLoopTime,
+            (void *)load_neon_ld1w_kernel, LOAD_NEON_4_REGISTERS);
+        reg_load_kernel("--------", "neon-ld1d(f64)", level, kLoadLoopTime,
+            (void *)load_neon_ld1d_kernel, LOAD_NEON_4_REGISTERS);
 #ifdef _SVE_
-    require_feature("_SVE_");
-    reg_new_isa("--------", "sve-ld1b(u8)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)load_sve_ld1b_kernel);
-    reg_new_isa("--------", "sve-ld1h(f16)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)load_sve_ld1h_kernel);
-    reg_new_isa("--------", "sve-ld1w(f32)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)load_ld1w_kernel);
-    reg_new_isa("--------", "sve-ld1d(f64)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)load_sve_ld1d_kernel);
+        require_feature("_SVE_");
+        reg_load_kernel("--------", "sve-ld1b(u8)", level, kLoadLoopTime,
+            (void *)load_sve_ld1b_kernel, LOAD_SVE);
+        reg_load_kernel("--------", "sve-ld1h(f16)", level, kLoadLoopTime,
+            (void *)load_sve_ld1h_kernel, LOAD_SVE);
+        reg_load_kernel("--------", "sve-ld1w(f32)", level, kLoadLoopTime,
+            (void *)load_ld1w_kernel, LOAD_SVE);
+        reg_load_kernel("--------", "sve-ld1d(f64)", level, kLoadLoopTime,
+            (void *)load_sve_ld1d_kernel, LOAD_SVE);
 #endif
 #ifdef _SME_
-    require_feature("_SME_");
-    reg_new_isa("--------", "ldrZA(f32)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)sme_ldr_kernel);
-    reg_new_isa("--------", "ld1wZAV(f32)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)sme_ld1wV_kernel);
-    reg_new_isa("--------", "ld1wZAH(f32)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)sme_ld1wH_kernel);
+        require_feature("_SME_");
+        reg_load_kernel("--------", "ldrZA(f32)", level, kLoadLoopTime,
+            (void *)sme_ldr_kernel, LOAD_SME_1_VECTOR);
+        reg_load_kernel("--------", "ld1wZAV(f32)", level, kLoadLoopTime,
+            (void *)sme_ld1wV_kernel, LOAD_SME_1_VECTOR);
+        reg_load_kernel("--------", "ld1wZAH(f32)", level, kLoadLoopTime,
+            (void *)sme_ld1wH_kernel, LOAD_SME_1_VECTOR);
 #endif
 #ifdef _SME2_
-    require_feature("_SME2_");
-    reg_new_isa("--------", "ld1w(f32)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)sme_ld1w_kernel);
+        require_feature("_SME2_");
+        reg_load_kernel("--------", "ld1w(f32)", level, kLoadLoopTime,
+            (void *)sme_ld1w_kernel, LOAD_SME_4_VECTORS);
 #endif
-    require_feature("_LDP_");
-    reg_new_isa("L2 Cache", "ldp(f32)", "Byte/Cycle", kLoadLoopTime, 128LL,
-        (void *)load_ldp_kernel);
-    reg_new_isa("--------", "neon-ld1b(u8)", "Byte/Cycle", kLoadLoopTime, 128LL,
-        (void *)load_neon_ld1b_kernel);
-    reg_new_isa("--------", "neon-ld1h-x4(f16)", "Byte/Cycle", kLoadLoopTime,
-        128LL, (void *)load_neon_ld1h_kernel);
-    reg_new_isa("--------", "neon-ld1h-4x1(f16)", "Byte/Cycle", kLoadLoopTime,
-        128LL, (void *)load_neon_ld1h_4x1_kernel);
-    reg_new_isa("--------", "ldr.q(f32)", "Byte/Cycle", kLoadLoopTime, 128LL,
-        (void *)load_ldrq_4x1_offset_kernel);
-    reg_new_isa("--------", "neon-ld1w(f32)", "Byte/Cycle", kLoadLoopTime,
-        128LL, (void *)load_neon_ld1w_kernel);
-    reg_new_isa("--------", "neon-ld1d(f64)", "Byte/Cycle", kLoadLoopTime,
-        128LL, (void *)load_neon_ld1d_kernel);
-#ifdef _SVE_
-    require_feature("_SVE_");
-    reg_new_isa("--------", "sve-ld1b(u8)", "Byte/Cycle", kLoadLoopTime, 128LL,
-        (void *)load_sve_ld1b_kernel);
-    reg_new_isa("--------", "sve-ld1h(f16)", "Byte/Cycle", kLoadLoopTime, 128LL,
-        (void *)load_sve_ld1h_kernel);
-    reg_new_isa("--------", "sve-ld1w(f32)", "Byte/Cycle", kLoadLoopTime, 128LL,
-        (void *)load_ld1w_kernel);
-    reg_new_isa("--------", "sve-ld1d(f64)", "Byte/Cycle", kLoadLoopTime, 128LL,
-        (void *)load_sve_ld1d_kernel);
-#endif
-#ifdef _SME_
-    require_feature("_SME_");
-    reg_new_isa("--------", "ldrZA(f32)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)sme_ldr_kernel);
-    reg_new_isa("--------", "ld1wZAV(f32)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)sme_ld1wV_kernel);
-    reg_new_isa("--------", "ld1wZAH(f32)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)sme_ld1wH_kernel);
-#endif
-#ifdef _SME2_
-    require_feature("_SME2_");
-    reg_new_isa("--------", "ld1w(f32)", "Byte/Cycle", kLoadLoopTime, 32LL,
-        (void *)sme_ld1w_kernel);
-#endif
+    }
 #ifdef __APPLE__
     // Apple AMX rows (kernels in kernel/amx_kernel.cpp) are kept here but
     // disabled: AMX is undocumented and there is no runtime detection for it

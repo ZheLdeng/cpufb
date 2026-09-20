@@ -24,6 +24,7 @@
 #ifdef __APPLE__
 #include <sys/sysctl.h>
 #include "macos_counters.hpp"
+#include "system_info.hpp"
 #endif
 
 #ifdef __linux__
@@ -109,7 +110,7 @@ static void *thread_function_freq(void *arg)
     const int64_t looptime = 20000000;
     (void)arg;
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
-    data->theory_freq = macos_reported_max_frequency_ghz();
+    data->theory_freq = cpufb::macos_reported_max_frequency_ghz();
 #else
     const int64_t looptime = 100000000;
     const int cpuid = *static_cast<int *>(arg);

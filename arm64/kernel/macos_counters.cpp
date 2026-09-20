@@ -1,7 +1,5 @@
 #include "macos_counters.hpp"
 
-#include <CoreFoundation/CoreFoundation.h>
-#include <IOKit/IOKitLib.h>
 #include <dlfcn.h>
 
 #include <cstdio>
@@ -101,53 +99,4 @@ bool sample_powermetrics_frequency_mhz(
     }
     frequency_mhz = std::stod(match[1].str());
     return frequency_mhz > 0;
-}
-
-double macos_reported_max_frequency_ghz()
-{
-    io_iterator_t iterator = IO_OBJECT_NULL;
-    // Port 0 is the default main port on every macOS release.
-    if (IOServiceGetMatchingServices(0, IOServiceMatching("AppleARMIODevice"),
-            &iterator) != KERN_SUCCESS)
-        return 0.0;
-
-    double best_hz = 0.0;
-    io_registry_entry_t entry;
-    while ((entry = IOIteratorNext(iterator)) != IO_OBJECT_NULL) {
-        io_name_t name;
-        if (IORegistryEntryGetName(entry, name) == KERN_SUCCESS &&
-            std::strcmp(name, "pmgr") == 0) {
-            // Each table is an array of {frequency, voltage} uint32 pairs.
-            // CPU cluster tables hold the highest frequencies on the SoC, so
-            // the overall maximum is the performance-core maximum.
-            for (int index = 0; index < 32; ++index) {
-                char key[48];
-                std::snprintf(key, sizeof(key), "voltage-states%d-sram", index);
-                CFStringRef cf_key = CFStringCreateWithCString(
-                    kCFAllocatorDefault, key, kCFStringEncodingUTF8);
-                if (cf_key == nullptr) continue;
-                CFTypeRef property = IORegistryEntryCreateCFProperty(
-                    entry, cf_key, kCFAllocatorDefault, 0);
-                CFRelease(cf_key);
-                if (property == nullptr) continue;
-                if (CFGetTypeID(property) == CFDataGetTypeID()) {
-                    CFDataRef table = static_cast<CFDataRef>(property);
-                    const UInt8 *bytes = CFDataGetBytePtr(table);
-                    const CFIndex length = CFDataGetLength(table);
-                    for (CFIndex offset = 0; offset + 8 <= length;
-                        offset += 8) {
-                        uint32_t raw = 0;
-                        std::memcpy(&raw, bytes + offset, sizeof(raw));
-                        // M1-M3 publish Hz, later parts kHz.
-                        const double hz = raw >= 100000000u ? raw : raw * 1e3;
-                        if (hz > best_hz && hz < 2e10) best_hz = hz;
-                    }
-                }
-                CFRelease(property);
-            }
-        }
-        IOObjectRelease(entry);
-    }
-    IOObjectRelease(iterator);
-    return best_hz * 1e-9;
 }

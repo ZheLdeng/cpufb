@@ -28,11 +28,6 @@ private:
     mutable std::string error_;
 };
 
-// Highest CPU DVFS frequency published by the power manager in the
-// IORegistry (pmgr "voltage-states*-sram"), in GHz, or 0 when unavailable.
-// This is the OS-reported nominal maximum, not a measurement.
-double macos_reported_max_frequency_ghz();
-
 // powermetrics is a root-only, sampled fallback. The returned value is MHz.
 bool sample_powermetrics_frequency_mhz(
     double &frequency_mhz, std::string &error);

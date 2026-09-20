@@ -77,6 +77,12 @@ add_library(cpufb_common OBJECT
     "${CPUFB_COMMON_DIR}/thread_pool.cpp"
 )
 target_include_directories(cpufb_common PUBLIC "${CPUFB_COMMON_DIR}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    # system_info.cpp reads the nominal CPU frequency from the IORegistry.
+    # INTERFACE so that every target linking the object library gets them.
+    target_link_libraries(cpufb_common INTERFACE
+        "-framework IOKit" "-framework CoreFoundation")
+endif()
 target_compile_options(cpufb_common PRIVATE -O2)
 if(NOT CPUFB_ARCH STREQUAL "x64")
     # arm64 / riscv64 originally compiled common with -g -w
@@ -220,11 +226,6 @@ if(_amx_target)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_link_libraries(cpufb PRIVATE "-ldl")
-    if(CPUFB_ARCH STREQUAL "arm64")
-        # macos_counters.cpp reads the nominal DVFS table from the IORegistry.
-        target_link_libraries(cpufb PRIVATE
-            "-framework IOKit" "-framework CoreFoundation")
-    endif()
 endif()
 
 # ---------------------------------------------------------------------------

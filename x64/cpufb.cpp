@@ -384,9 +384,11 @@ static bool cpubm_x64_cache(
 {
     vector<string> cont;
     cont.resize(table.getCol());
+    // The capacity curve runs first: the line probe sizes its eviction buffer
+    // from the last level the curve found.
+    get_cachesize(&cache_size, set_of_threads[0]);
     get_cacheline(&cache_size, set_of_threads[0]);
     get_multiway(&cache_size, set_of_threads[0]);
-    get_cachesize(&cache_size, set_of_threads[0]);
     // The probe column always shows what was measured.  A result that
     // disagrees with the OS topology is flagged, never replaced, so the
     // report cannot agree with the reported value by construction.

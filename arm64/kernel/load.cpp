@@ -240,9 +240,12 @@ void get_cacheline(struct CacheData *cache_data, int cpu_id)
 #else
         kDefaultCacheLineBytes;
 #endif
-    cache_data->test_cacheline =
-        cpufb::probe_cacheline_size(cache_data->theory_cacheline,
-            flush_cache_line, finish_cache_line_flush);
+    cache_data->test_cacheline = cpufb::probe_cacheline_size(
+        cache_data->theory_cacheline, flush_cache_line, finish_cache_line_flush,
+        // Largest level the latency curve found (measured, not reported).
+        1024 *
+            static_cast<size_t>(std::max({cache_data->test_L1,
+                cache_data->test_L2, cache_data->test_L3})));
     cacheline = cpufb::effective_cacheline_size(cache_data->theory_cacheline,
         cache_data->test_cacheline, fallback_cacheline);
 }

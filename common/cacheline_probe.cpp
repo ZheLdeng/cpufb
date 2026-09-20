@@ -36,9 +36,12 @@
 // The cache-maintenance instruction (clflush, dc civac) removes a line from
 // every level, which gives the strongest contrast, but Apple Silicon executes
 // dc civac at EL0 without evicting anything.  So the probe also reads an
-// eviction buffer far larger than any L1 before each cold walk: that pushes
-// the pairs out of L1 by capacity, and an L1 miss against an L1 hit is
-// already a 5-10x difference.
+// eviction buffer before each cold walk, which pushes the pairs out by
+// capacity.  That buffer has to exceed the LAST-level cache, not just L1: on
+// an Apple M4 an L2 hit costs only 2-5x an L1 hit, and with an 8 MiB buffer
+// (pairs pushed into the 16 MiB L2) the ratio rose by a mere 1.23x at the
+// line size; with 64 MiB (pairs pushed to memory) it rises 6-8x.  The caller
+// passes the largest capacity its own latency curve found.
 
 namespace cpufb {
 
@@ -56,13 +59,21 @@ const size_t kMinimumPitch = 256;
 // Unknown line size: flush at the finest granularity a line can have.
 const size_t kFlushGranularity = 16;
 const int kRepeats = 31;
-// Read between repeats to push the pairs out of L1 by capacity.  8 MiB is
-// 40 times the largest L1 in use today and costs a fraction of a millisecond.
-const size_t kEvictionBytes = 8 * 1024 * 1024;
-// A pair that stops sharing a line turns a hit into a miss: the ratio rises
-// several-fold.  1.5x and +0.10 reject timing noise without missing that.
-const double kMinimumGain = 1.50;
-const double kMinimumDelta = 0.10;
+// Eviction buffer: four times the last-level cache, within these bounds, and
+// the default when that capacity is unknown.  Reading it is bandwidth bound:
+// a few milliseconds per repeat.
+const size_t kMinimumEvictionBytes = 64ULL * 1024 * 1024;
+const size_t kMaximumEvictionBytes = 512ULL * 1024 * 1024;
+const size_t kDefaultEvictionBytes = 256ULL * 1024 * 1024;
+// A pair that stops sharing a line turns a hit into a miss, so the ratio
+// climbs towards 1.  The boundary is the first rise of at least 0.20 that ends
+// at 0.30 or more.  A relative criterion does not work here: once eviction is
+// effective the low plateau sits near 0.03, where noise alone (0.03 -> 0.15
+// was seen on an Apple M4) is a five-fold "step".  The smallest real step
+// seen so far is 0.06 -> 0.41 on a Kunpeng 920F, whose prefetcher still
+// serves part of the adjacent line.
+const double kMinimumRise = 0.20;
+const double kMinimumRatioAfter = 0.30;
 
 volatile uintptr_t g_cacheline_probe_sink = 0;
 
@@ -89,10 +100,10 @@ uintptr_t *make_chain(unsigned char *buffer, const std::vector<size_t> &order,
 
 // Reads one byte of every 16 so that whatever the line size, every line of
 // the eviction buffer is brought in and displaces what L1 held before.
-void evict_by_capacity(const unsigned char *eviction)
+void evict_by_capacity(const std::vector<unsigned char> &eviction)
 {
     unsigned sum = 0;
-    for (size_t i = 0; i < kEvictionBytes; i += kFlushGranularity)
+    for (size_t i = 0; i < eviction.size(); i += kFlushGranularity)
         sum += eviction[i];
     g_cacheline_probe_sink ^= sum;
 }
@@ -110,10 +121,10 @@ double time_chain(uintptr_t *next, size_t steps)
 
 // reuse/cold time ratio for one pair per window: the cold address at
 // `cold_offset`, the reuse address at `reuse_offset`.
-double reuse_ratio(unsigned char *buffer, const unsigned char *eviction,
-    size_t pitch, size_t cold_offset, size_t reuse_offset,
-    cacheline_flush_fn flush_line, cacheline_fence_fn finish_flush,
-    std::mt19937 &generator)
+double reuse_ratio(unsigned char *buffer,
+    const std::vector<unsigned char> &eviction, size_t pitch,
+    size_t cold_offset, size_t reuse_offset, cacheline_flush_fn flush_line,
+    cacheline_fence_fn finish_flush, std::mt19937 &generator)
 {
     // A random visiting order keeps stride prefetchers off both chains.
     std::vector<size_t> order(kNodes);
@@ -153,7 +164,7 @@ bool debug_enabled()
 } // namespace
 
 int probe_cacheline_size(int theory_cacheline, cacheline_flush_fn flush_line,
-    cacheline_fence_fn finish_flush)
+    cacheline_fence_fn finish_flush, size_t last_level_cache_bytes)
 {
     if (flush_line == nullptr || finish_flush == nullptr) return 0;
 
@@ -164,17 +175,21 @@ int probe_cacheline_size(int theory_cacheline, cacheline_flush_fn flush_line,
     if (posix_memalign(&allocation, 4096, bytes) != 0) return 0;
     unsigned char *buffer = static_cast<unsigned char *>(allocation);
     std::memset(buffer, 0, bytes);
-    std::vector<unsigned char> eviction(kEvictionBytes, 1);
+    size_t eviction_bytes = kDefaultEvictionBytes;
+    if (last_level_cache_bytes > 0)
+        eviction_bytes = std::min(kMaximumEvictionBytes,
+            std::max(kMinimumEvictionBytes, last_level_cache_bytes * 4));
+    std::vector<unsigned char> eviction(eviction_bytes, 1);
 
     std::mt19937 generator(0x43505546U);
     std::vector<double> ratios, below_ratios, above_ratios;
     for (size_t stride : kStrides) {
         const size_t pitch = std::max(stride * 4, kMinimumPitch);
         // Reuse address below the cold one: immune to forward prefetch.
-        const double below = reuse_ratio(buffer, eviction.data(), pitch,
+        const double below = reuse_ratio(buffer, eviction, pitch,
             stride + stride / 2, stride, flush_line, finish_flush, generator);
         // Reuse address above the cold one: immune to backward prefetch.
-        const double above = reuse_ratio(buffer, eviction.data(), pitch, stride,
+        const double above = reuse_ratio(buffer, eviction, pitch, stride,
             stride + stride / 2, flush_line, finish_flush, generator);
         below_ratios.push_back(below);
         above_ratios.push_back(above);
@@ -185,9 +200,8 @@ int probe_cacheline_size(int theory_cacheline, cacheline_flush_fn flush_line,
     // The line size is the last stride before the first pronounced rise.
     int measured = 0;
     for (size_t i = 0; i + 1 < ratios.size(); ++i) {
-        if (ratios[i] <= 0.0 || !std::isfinite(ratios[i + 1])) continue;
-        if (ratios[i + 1] / ratios[i] >= kMinimumGain &&
-            ratios[i + 1] - ratios[i] >= kMinimumDelta) {
+        if (ratios[i + 1] - ratios[i] >= kMinimumRise &&
+            ratios[i + 1] >= kMinimumRatioAfter) {
             measured = static_cast<int>(kStrides[i]);
             break;
         }
@@ -198,8 +212,8 @@ int probe_cacheline_size(int theory_cacheline, cacheline_flush_fn flush_line,
         for (size_t i = 0; i < ratios.size(); ++i)
             std::fprintf(stderr, " %zu=%.3f|%.3f", kStrides[i], below_ratios[i],
                 above_ratios[i]);
-        std::fprintf(
-            stderr, " measured=%d theory=%d\n", measured, theory_cacheline);
+        std::fprintf(stderr, " eviction=%zuMiB measured=%d theory=%d\n",
+            eviction_bytes >> 20, measured, theory_cacheline);
     }
     // Reported as measured even when it disagrees with the OS: substituting
     // the OS value would make the two columns agree by construction.

@@ -562,7 +562,6 @@ static bool cpubm_arm_cache(
     vector<string> cont;
 
     cont.resize(table.getCol());
-    probe_arm_cache(set_of_threads);
 
     // One capacity measurement feeds both the summary rows and the curve
     // tables below.  Probe results are printed as measured and only labelled
@@ -571,6 +570,9 @@ static bool cpubm_arm_cache(
     get_reported_cache_info(&cache_size, cpu_id);
     cpufb::CacheCurveResult curve =
         measure_cache_hierarchy(&cache_size, cpu_id);
+    // After the curve: the line probe sizes its eviction buffer from the last
+    // level the curve found.
+    probe_arm_cache(set_of_threads);
     auto with_agreement = [](const string &source, int reported, int measured,
                               double tolerance) {
         const string verdict =

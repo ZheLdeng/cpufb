@@ -56,9 +56,12 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
     read_data(cpu_id, &cache_size->theory_cacheline,
         "/cache/index0/coherency_line_size");
 #endif
-    cache_size->test_cacheline =
-        cpufb::probe_cacheline_size(cache_size->theory_cacheline,
-            flush_cache_line, finish_cache_line_flush);
+    cache_size->test_cacheline = cpufb::probe_cacheline_size(
+        cache_size->theory_cacheline, flush_cache_line, finish_cache_line_flush,
+        // Largest level the latency curve found (measured, not reported).
+        1024 *
+            static_cast<size_t>(std::max({cache_size->test_L1,
+                cache_size->test_L2, cache_size->test_L3})));
 }
 
 void get_theory_cache(struct CacheData *cache_size, int cpu_id)

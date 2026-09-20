@@ -27,6 +27,57 @@
     vsetvl x7, x6, x5
 .endm
 
+.globl riscv_vector_length_bytes
+riscv_vector_length_bytes:
+    vsetvli a0, x0, e8, m1
+    ret
+
+.globl riscv_cache_chase
+riscv_cache_chase:
+    li x5, 0
+.riscv.cache.chase.loop:
+    slli x6, x5, 3
+    add x6, a1, x6
+    ld x5, (x6)
+    addi a0, a0, -1
+    bnez a0, .riscv.cache.chase.loop
+    ret
+
+.globl vector_load_stream
+vector_load_stream:
+    preserve_caller_vec
+    vsetvli x28, x0, e8, m1
+    add x29, a0, a1
+.vector.load.stream.outer:
+    mv x30, a0
+.vector.load.stream.inner:
+    vle8.v v0, (x30)
+    add x30, x30, x28
+    bltu x30, x29, .vector.load.stream.inner
+    addi a2, a2, -1
+    bnez a2, .vector.load.stream.outer
+    restore_caller_vec
+    ret
+
+.globl vector_load_fma_stream
+vector_load_fma_stream:
+    preserve_caller_vec
+    vsetvli x28, x0, e32, m1
+    slli x31, x28, 2
+    add x29, a0, a1
+    vxor.vv v8, v8, v8
+.vector.load.fma.stream.outer:
+    mv x30, a0
+.vector.load.fma.stream.inner:
+    vle32.v v0, (x30)
+    vfmacc.vv v8, v0, v0
+    add x30, x30, x31
+    bltu x30, x29, .vector.load.fma.stream.inner
+    addi a2, a2, -1
+    bnez a2, .vector.load.fma.stream.outer
+    restore_caller_vec
+    ret
+
 #ifdef __APPLE__
 .globl _vector_vfmacc_vf_f16f16f16
 _vector_vfmacc_vf_f16f16f16:

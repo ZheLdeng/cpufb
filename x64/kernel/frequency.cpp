@@ -34,6 +34,57 @@ const double kInstructionsPerLoop = 16.0;
 
 typedef void (*FrequencyKernel)(int64_t);
 
+struct RatedFrequency {
+    double base_ghz = 0.0;
+    double turbo_ghz = 0.0;
+};
+
+#ifdef __linux__
+static uint16_t read_u16_le(const unsigned char* data)
+{
+    return static_cast<uint16_t>(data[0]) |
+        (static_cast<uint16_t>(data[1]) << 8);
+}
+
+static RatedFrequency read_smbios_frequency()
+{
+    RatedFrequency frequency;
+    std::ifstream input("/sys/firmware/dmi/entries/4-0/raw",
+        std::ios::in | std::ios::binary);
+    unsigned char record[24] = {0};
+    if (!input.read(reinterpret_cast<char*>(record), sizeof(record)) ||
+        record[0] != 4 || record[1] < sizeof(record))
+        return frequency;
+
+    frequency.turbo_ghz = read_u16_le(record + 0x14) * 1e-3;
+    frequency.base_ghz = read_u16_le(record + 0x16) * 1e-3;
+    return frequency;
+}
+
+static RatedFrequency read_rated_frequency(int cpu_id)
+{
+    int base_frequency_khz = 0;
+    int turbo_frequency_khz = 0;
+    read_data(cpu_id, &base_frequency_khz, "/cpufreq/base_frequency");
+    read_data(cpu_id, &turbo_frequency_khz, "/cpufreq/cpuinfo_max_freq");
+    if (turbo_frequency_khz == 0)
+        read_data(cpu_id, &turbo_frequency_khz,
+            "/cpufreq/scaling_max_freq");
+
+    RatedFrequency frequency;
+    frequency.base_ghz = base_frequency_khz * 1e-6;
+    frequency.turbo_ghz = turbo_frequency_khz * 1e-6;
+    if (frequency.base_ghz == 0.0 || frequency.turbo_ghz == 0.0) {
+        const RatedFrequency smbios = read_smbios_frequency();
+        if (frequency.base_ghz == 0.0)
+            frequency.base_ghz = smbios.base_ghz;
+        if (frequency.turbo_ghz == 0.0)
+            frequency.turbo_ghz = smbios.turbo_ghz;
+    }
+    return frequency;
+}
+#endif
+
 static double measure_kernel(FrequencyKernel kernel, int64_t loop_time)
 {
     struct timespec start, end;

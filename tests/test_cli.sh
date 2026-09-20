@@ -233,8 +233,11 @@ case "${test_case}" in
         if [[ ! -s "${txt_output}" ]]; then
             fail "TXT output was not created"
         fi
-        if [[ "$(grep -Ec '^\[[^]]+\]$' "${txt_output}")" -ne 1 ]]; then
-            fail "filtered TXT output must contain exactly one section"
+        if [[ "$(grep -Ec '^\[[^]]+\]$' "${txt_output}")" -ne 2 ]]; then
+            fail "filtered TXT output must contain system and compute sections"
+        fi
+        if ! grep -Fxq "[system]" "${txt_output}"; then
+            fail "filtered TXT output omitted the system section"
         fi
         if ! grep -Fxq "[compute]" "${txt_output}"; then
             fail "filtered TXT output omitted the compute section"
@@ -270,22 +273,43 @@ case "${test_case}" in
         command_output="$(run_success "${binary}" "${thread_arg}" --include-test=freq \
             --save="${csv_output}")"
         require_contains "${command_output}" "Saved csv output:"
+        require_contains "${command_output}" "System Information:"
         if [[ ! -s "${csv_output}" ]]; then
             fail "CSV output was not created"
         fi
         awk -F',' -v expected_core="${test_core}" -v arch="${arch}" '
-            NR == 1 {
-                columns = NF
-                if ($1 != "section" || $2 != "Core ID") exit 2
+            $1 == "section" && $2 == "Item" && $3 == "Value" {
+                system_header = 1
                 next
             }
-            {
+            $1 == "system" {
+                system_rows++
+                if (!system_header || NF != 4) exit 2
+                if ($2 == "OS") os_seen = 1
+                if ($2 == "Kernel") kernel_seen = 1
+                if ($2 == "Compiler") compiler_seen = 1
+                if ($2 == "CPU Model") cpu_seen = 1
+                if ($2 == "Core Selection" && $3 == "[" expected_core "]") cores_seen = 1
+                if ($2 == "CPU Frequency") frequency_seen = 1
+                if ($2 == "L1 Data/Unified Cache") l1_seen = 1
+                if ($2 == "L2 Data/Unified Cache") l2_seen = 1
+                if ($2 == "L3 Data/Unified Cache") l3_seen = 1
+                next
+            }
+            $1 == "section" && $2 == "Core ID" {
+                columns = NF
+                frequency_header = 1
+                next
+            }
+            $1 == "freq" {
                 rows++
-                if (NF != columns || $1 != "freq" || $2 == "") exit 3
+                if (!frequency_header || NF != columns || $2 == "") exit 3
                 if (arch == "x64" && $2 != expected_core) exit 4
             }
             END {
-                if (rows != 1) exit 5
+                if (rows != 1 || system_rows < 9 || !os_seen || !kernel_seen ||
+                    !compiler_seen || !cpu_seen || !cores_seen || !frequency_seen ||
+                    !l1_seen || !l2_seen || !l3_seen) exit 5
             }
         ' "${csv_output}" || fail "CSV frequency output has an invalid structure"
         ;;
@@ -343,15 +367,15 @@ case "${test_case}" in
         require_contains "${command_output}" "Load IPC"
         require_contains "${command_output}" "Saved csv output:"
         awk -F',' -v expected_core="${test_core}" '
-            NR == 1 {
+            $1 == "section" && $2 == "Core ID" && $5 == "Median GB/s" {
                 columns = NF
-                if ($1 != "section" || $2 != "Core ID" ||
-                    $5 != "Median GB/s" || $7 != "Load IPC") exit 2
+                header_seen = 1
+                if ($7 != "Load IPC") exit 2
                 next
             }
-            {
+            $1 == "memory_bandwidth" {
                 rows++
-                if (NF != columns || $1 != "memory_bandwidth" ||
+                if (!header_seen || NF != columns ||
                     $2 != expected_core || $3 != "4 MiB" ||
                     $5 + 0 <= 0) exit 3
             }
@@ -378,14 +402,15 @@ case "${test_case}" in
             fail "cache CSV output was not created"
         fi
         awk -F',' -v expected_core="core ${test_core}" '
-            NR == 1 {
-                if ($1 != "section" || $2 != "Item" ||
-                    $5 != "Median Bandwidth" || $6 != "Workset") exit 2
+            $1 == "section" && $2 == "Item" &&
+                $5 == "Median Bandwidth" && $6 == "Workset" {
+                header_seen = 1
                 next
             }
             $1 == "cache" && $2 == "Memory sequential read bandwidth" {
                 rows++
-                if ($3 != expected_core || $5 + 0 <= 0 || $6 != "4 MiB") exit 3
+                if (!header_seen || $3 != expected_core ||
+                    $5 + 0 <= 0 || $6 != "4 MiB") exit 3
             }
             END {
                 if (rows != 1) exit 4

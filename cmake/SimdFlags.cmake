@@ -77,7 +77,7 @@ function(cpufb_simd_asm_flags arch feature out_var)
         endif()
     elseif(arch STREQUAL "riscv64")
         # All riscv64 .S files are assembled with the same flag today
-        set(flag "-march=rv64gcv_zfh")
+        set(flag "-march=rv64gcv_zfh_zicbom")
     endif()
     # x64: no per-file march flags; assembler picks features from the directives
     # inside the .S file itself.
@@ -99,7 +99,7 @@ function(cpufb_compute_march_flag arch features_list out_var)
         # which implements SME but not SVE.
         set(march "-march=armv8-a")
     elseif(arch STREQUAL "riscv64")
-        set(march "-march=rv64gcv_zfh")
+        set(march "-march=rv64gcv_zfh_zicbom")
     endif()
     set(${out_var} "${march}" PARENT_SCOPE)
 endfunction()

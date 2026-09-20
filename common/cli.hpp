@@ -79,6 +79,9 @@ bool finalize_save_options(SaveOptions &options);
 bool validate_memory_bandwidth_options(
     const CliOptions &options, bool architecture_supported);
 
+void initialize_system_information(const std::vector<int> &selected_cores);
+void print_system_information();
+
 std::string trim_arg_value(const std::string &value);
 std::string normalize_filter_value(std::string value);
 // What a registered row measures.  The metric string is only a display unit;

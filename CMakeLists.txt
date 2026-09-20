@@ -71,6 +71,7 @@ add_library(cpufb_common OBJECT
     "${CPUFB_COMMON_DIR}/associativity_probe.cpp"
     "${CPUFB_COMMON_DIR}/cacheline_probe.cpp"
     "${CPUFB_COMMON_DIR}/cli.cpp"
+    "${CPUFB_COMMON_DIR}/system_info.cpp"
     "${CPUFB_COMMON_DIR}/table.cpp"
     "${CPUFB_COMMON_DIR}/thread_pool.cpp"
 )
@@ -193,7 +194,7 @@ if(CPUFB_ARCH STREQUAL "x64")
     target_compile_options(cpufb PRIVATE -g -O2)
     target_link_options(cpufb PRIVATE -z noexecstack)
 elseif(CPUFB_ARCH STREQUAL "riscv64")
-    target_compile_options(cpufb PRIVATE -O3 -march=rv64gcv_zfh)
+    target_compile_options(cpufb PRIVATE -O3 -march=rv64gcv_zfh_zicbom)
     target_link_options(cpufb PRIVATE -z noexecstack)
 elseif(CPUFB_ARCH STREQUAL "arm64")
     target_compile_options(cpufb PRIVATE -O2 -g -w)

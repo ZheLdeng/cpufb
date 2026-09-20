@@ -283,6 +283,12 @@ default is 0 for all.
 
   --save / --output: save displayed benchmark data to a compact file. `.csv` paths default to CSV; other paths default to tab-delimited txt.
 
+  Every benchmark run prints a system-information table. Saved TXT and CSV
+  files begin with a `system` section containing the OS, kernel, compiler, CPU
+  model, selected cores, system-reported CPU frequency, and L1/L2/L3 cache
+  capacities. Each hardware value includes its source, such as Linux sysfs,
+  `/proc/cpuinfo`, SMBIOS, or macOS sysctl.
+
   --save-format / --output-format: override save format with `csv` or `txt`.
 
 Examples:

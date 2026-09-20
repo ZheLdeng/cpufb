@@ -1,6 +1,9 @@
 #ifndef CPUFB_RISCV64_COMPUTE_HPP
 #define CPUFB_RISCV64_COMPUTE_HPP
 
+#include <cstddef>
+#include <cstdint>
+
 extern "C"
 {
 #ifdef _IME_
@@ -12,6 +15,10 @@ extern "C"
 #endif
 
 #ifdef _VECTOR_
+    void riscv_cache_chase(int, int64_t *);
+    size_t riscv_vector_length_bytes();
+    void vector_load_stream(void *, size_t, int64_t);
+    void vector_load_fma_stream(void *, size_t, int64_t);
     void vector_vfmacc_vf_f16f16f16(int64_t);
     void vector_vfmacc_vv_f16f16f16(int64_t);
     void vector_vfmacc_vf_f32f32f32(int64_t);

@@ -959,7 +959,10 @@ int main(int argc, char *argv[])
     }
     if (!finalize_save_options(options.save)) return 1;
     if (!validate_memory_bandwidth_options(options, true)) return 1;
-    if (options.memory_bandwidth) return run_memory_bandwidth(options) ? 0 : 1;
+    initialize_system_information(options.thread_pool);
+    print_system_information();
+    if (options.memory_bandwidth)
+        return run_memory_bandwidth(options) ? 0 : 1;
 
     cpufb_register_isa();
     scale_benchmark_loops(options.loop_scale);

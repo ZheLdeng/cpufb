@@ -3,7 +3,6 @@
 
 #include <cstdint>
 #include <vector>
-extern std::vector<double> freq;
 
 struct CacheData
 {

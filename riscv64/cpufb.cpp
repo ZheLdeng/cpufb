@@ -342,6 +342,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    initialize_system_information(set_of_threads);
+    print_system_information();
     cpufb_register_isa();
     return cpubm_do_bench(options.thread_pool, options.idle_time) ? 0 : 1;
 }

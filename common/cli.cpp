@@ -1,5 +1,6 @@
 #include "cli.hpp"
 
+#include "system_info.hpp"
 #include "thread_pool.hpp"
 
 #include <algorithm>
@@ -23,6 +24,8 @@ const char *const kTestCategories[] = {
     "compute", "load", "cache", "freq", "multi_issue"};
 const size_t kTestCategoryCount =
     sizeof(kTestCategories) / sizeof(kTestCategories[0]);
+cpufb::SystemInfo system_info;
+bool system_info_initialized = false;
 
 void parse_filter_list(const char *value, set<string> &target)
 {
@@ -409,6 +412,21 @@ bool finalize_save_options(SaveOptions &options)
     return true;
 }
 
+void initialize_system_information(const vector<int> &selected_cores)
+{
+    system_info = cpufb::collect_system_info(selected_cores);
+    system_info_initialized = true;
+}
+
+void print_system_information()
+{
+    if (!system_info_initialized) return;
+    cout << "System Information:" << endl;
+    Table table;
+    cpufb::populate_system_info_table(system_info, table);
+    table.print();
+}
+
 string trim_arg_value(const string &value)
 {
     size_t start = value.find_first_not_of(" \t\n\r");
@@ -565,14 +583,23 @@ bool save_table_sections(const SaveOptions &options,
         return false;
     }
 
+    Table system_table;
+    vector<pair<string, const Table*> > output_sections;
+    if (system_info_initialized) {
+        cpufb::populate_system_info_table(system_info, system_table);
+        output_sections.push_back(make_pair(string("system"), &system_table));
+    }
+    output_sections.insert(output_sections.end(), sections.begin(), sections.end());
+
     if (options.format == SAVE_FORMAT_CSV) {
-        for (size_t i = 0; i < sections.size(); ++i)
-            sections[i].second->writeCompact(out, ',', sections[i].first);
+        for (size_t i = 0; i < output_sections.size(); ++i)
+            output_sections[i].second->writeCompact(out, ',',
+                output_sections[i].first);
     } else {
-        for (size_t i = 0; i < sections.size(); ++i) {
+        for (size_t i = 0; i < output_sections.size(); ++i) {
             if (i != 0) out << '\n';
-            out << "[" << sections[i].first << "]\n";
-            sections[i].second->writeCompact(out, '\t');
+            out << "[" << output_sections[i].first << "]\n";
+            output_sections[i].second->writeCompact(out, '\t');
         }
     }
     cout << "Saved " << save_format_name(options.format)

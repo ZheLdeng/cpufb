@@ -199,6 +199,35 @@ static inline int get_load_bytes_per_inner_loop(const string &type)
     return 512;
 }
 
+// Bytes moved by ONE load instruction of the kernel, read off the assembly:
+//   ldp q,q                32        ld1 {4 regs}           64
+//   ld1 {1 reg} (4x1)      16        ldr q                  16
+//   sve ld1b/h/w/d         VL        ldr za / ld1w ZAnH/V   SVL
+//   SME2 ld1w {4 vectors}  4 x SVL
+// Dividing Byte/Cycle by this gives load instructions per cycle, which shows
+// whether a row is limited by bandwidth or by how fast loads can be issued:
+// an SME unit that accepts about one load per cycle moves 64 B per cycle
+// with single-vector loads and 256 B per cycle with four-vector loads,
+// whatever cache level holds the data.
+static inline double get_load_bytes_per_instruction(const string &type)
+{
+#ifdef _SVE_
+    if (type.find("sve-ld1") != string::npos)
+        return static_cast<double>(load_sve_vector_bytes());
+#endif
+#ifdef _SME_
+    if (type.find("ZA") != string::npos)
+        return static_cast<double>(load_sme_vector_bytes());
+    if (type == "ld1w(f32)")
+        return 4.0 * static_cast<double>(load_sme_vector_bytes());
+#endif
+    if (type.find("4x1") != string::npos) return 16.0;
+    if (type.find("neon-ld1") != string::npos) return 64.0;
+    if (type.find("ldr.q") != string::npos) return 16.0;
+    if (type.find("ldp") != string::npos) return 32.0;
+    return 0.0;
+}
+
 static inline size_t get_load_workset_alignment(const string &type)
 {
 #ifdef _SME_
@@ -588,6 +617,7 @@ LoadBandwidth get_bandwith(
     // aggregate traffic of a multi-core pool is carried by GB/s.
     const double bytes_per_worker = (double)measured_looptime * data_bytes;
     perf.workset_bytes = data_bytes;
+    perf.bytes_per_load = get_load_bytes_per_instruction(type);
     perf.thread_num = thread_num;
     if (best_time_used > 0.0)
         perf.gb_per_second =

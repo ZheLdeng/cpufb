@@ -446,6 +446,19 @@ static void cpubm_arm_load(tpool_t *tm, cpubm_t &item, Table &table)
     cont[2] = ss1.str();
     cont[6] = ss2.str();
     cont[7] = bandwidth.cycle_source.empty() ? "-" : bandwidth.cycle_source;
+    // Load instructions per cycle: tells a bandwidth-bound row (rate falls
+    // from L1 to L2) from an issue-rate-bound one (rate stays put).
+    if (bandwidth.bytes_per_cycle > 0 && bandwidth.bytes_per_load > 0) {
+        stringstream ss3, ss4;
+        ss3 << setprecision(3)
+            << bandwidth.bytes_per_cycle / bandwidth.bytes_per_load;
+        ss4 << setprecision(4) << bandwidth.bytes_per_load << " B";
+        cont[8] = ss3.str();
+        cont[9] = ss4.str();
+    } else {
+        cont[8] = "-";
+        cont[9] = "-";
+    }
 
     table.addOneItem(cont);
 }
@@ -678,7 +691,7 @@ static void init_table(vector<Table *> &tables)
     tables[0]->setColumnNum(ti.size());
     tables[0]->addOneItem(ti);
 
-    ti.resize(8);
+    ti.resize(10);
     ti[0] = "Cache Level";
     ti[1] = "Core Instruction";
     ti[2] = "Bandwidth (per core)";
@@ -687,6 +700,8 @@ static void init_table(vector<Table *> &tables)
     ti[5] = "Capacity Source";
     ti[6] = "Bandwidth (GB/s)";
     ti[7] = "Cycle Source";
+    ti[8] = "Load IPC";
+    ti[9] = "Bytes/Load";
     tables[1]->setColumnNum(ti.size());
     tables[1]->addOneItem(ti);
 
@@ -1732,8 +1747,7 @@ int main(int argc, char *argv[])
     if (!validate_memory_bandwidth_options(options, true)) return 1;
     initialize_system_information(options.thread_pool);
     print_system_information();
-    if (options.memory_bandwidth)
-        return run_memory_bandwidth(options) ? 0 : 1;
+    if (options.memory_bandwidth) return run_memory_bandwidth(options) ? 0 : 1;
 
     cpufb_register_isa();
     scale_benchmark_loops(options.loop_scale);

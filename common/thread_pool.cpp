@@ -57,6 +57,38 @@ static tpool_work_t *tpool_work_get(tpool_t *tm)
 
 static thread_local size_t current_worker_index = SIZE_MAX;
 
+struct cpu_observation
+{
+    int before;
+    int after;
+};
+
+static int current_cpu()
+{
+#ifdef __linux__
+    return sched_getcpu();
+#else
+    return -1;
+#endif
+}
+
+static void record_cpu_observation(tpool_t *tm, size_t requested_cpu,
+    const cpu_observation &observation)
+{
+#ifdef __linux__
+    if (observation.before < 0 || observation.after < 0) return;
+    tm->cpu_observation_cnt++;
+    if (observation.before != observation.after) tm->cpu_migration_cnt++;
+    if (observation.before != static_cast<int>(requested_cpu) ||
+        observation.after != static_cast<int>(requested_cpu))
+        tm->cpu_mismatch_cnt++;
+#else
+    (void)tm;
+    (void)requested_cpu;
+    (void)observation;
+#endif
+}
+
 size_t tpool_worker_index(void)
 {
     return current_worker_index;
@@ -119,8 +151,11 @@ static void *tpool_worker(void *arg)
             if (tm->stop) break;
 
             pthread_mutex_unlock(&(tm->work_mutex));
+            cpu_observation observation = {current_cpu(), -1};
             parallel_func(parallel_arg);
+            observation.after = current_cpu();
             pthread_mutex_lock(&(tm->work_mutex));
+            record_cpu_observation(tm, cpu_id, observation);
 
             tm->parallel_done_cnt++;
             if (tm->parallel_done_cnt == tm->thread_num)
@@ -133,7 +168,12 @@ static void *tpool_worker(void *arg)
         pthread_mutex_unlock(&(tm->work_mutex));
 
         if (work != nullptr) {
+            cpu_observation observation = {current_cpu(), -1};
             work->func(work->arg);
+            observation.after = current_cpu();
+            pthread_mutex_lock(&(tm->work_mutex));
+            record_cpu_observation(tm, cpu_id, observation);
+            pthread_mutex_unlock(&(tm->work_mutex));
             tpool_work_destroy(work);
         }
 
@@ -219,6 +259,23 @@ tpool_t *tpool_create(vector<int> set_of_threads)
         return nullptr;
     }
     return tm;
+}
+
+tpool_migration_info tpool_get_migration_info(tpool_t *tm)
+{
+    tpool_migration_info info = {};
+#ifdef __linux__
+    info.available = true;
+    if (tm == nullptr) return info;
+    pthread_mutex_lock(&(tm->work_mutex));
+    info.observations = tm->cpu_observation_cnt;
+    info.migrations = tm->cpu_migration_cnt;
+    info.requested_cpu_mismatches = tm->cpu_mismatch_cnt;
+    pthread_mutex_unlock(&(tm->work_mutex));
+#else
+    (void)tm;
+#endif
+    return info;
 }
 
 bool tpool_add_work(tpool_t *tm, thread_func_t func, void *arg)

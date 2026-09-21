@@ -10,6 +10,8 @@
 #include <utility>
 #include <vector>
 
+struct tpool_migration_info;
+
 namespace cpufb::cli {
 
 struct BenchmarkInfo
@@ -81,6 +83,7 @@ bool validate_memory_bandwidth_options(
 
 void initialize_system_information(const std::vector<int> &selected_cores);
 void print_system_information();
+void record_migration_information(const tpool_migration_info &info);
 
 std::string trim_arg_value(const std::string &value);
 std::string normalize_filter_value(std::string value);

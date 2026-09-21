@@ -652,6 +652,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
         }
     }
 
+    record_migration_information(tpool_get_migration_info(tm));
     bool ok = print_and_save_benchmark_tables(filter, save_options, tables);
     tpool_destroy(tm);
     for (size_t i = 0; i < tables.size(); ++i) delete tables[i];

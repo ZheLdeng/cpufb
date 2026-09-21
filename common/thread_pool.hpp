@@ -39,6 +39,9 @@ struct tpool
     size_t thread_num;
     size_t startup_ready_cnt;
     size_t affinity_failure_cnt;
+    size_t cpu_observation_cnt;
+    size_t cpu_migration_cnt;
+    size_t cpu_mismatch_cnt;
     size_t parallel_ready_cnt;
     size_t parallel_done_cnt;
     uint64_t parallel_generation;
@@ -71,6 +74,16 @@ void tpool_destroy(tpool_t *tm);
 // that own per-worker memory must index by this, not by arrival order, so a
 // buffer is always streamed by the core that first touched it.
 size_t tpool_worker_index(void);
+
+struct tpool_migration_info
+{
+    bool available;
+    size_t observations;
+    size_t migrations;
+    size_t requested_cpu_mismatches;
+};
+
+tpool_migration_info tpool_get_migration_info(tpool_t *tm);
 
 bool tpool_add_work(tpool_t *tm, thread_func_t func, void *arg);
 void tpool_wait(tpool_t *tm);

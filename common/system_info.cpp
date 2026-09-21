@@ -3,8 +3,10 @@
 #include "cache_topology.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>
 #include <cstdint>
+#include <ctime>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -79,6 +81,47 @@ std::string format_ghz(double hz)
     std::ostringstream output;
     output << std::fixed << std::setprecision(3) << hz * 1e-9 << " GHz";
     return output.str();
+}
+
+std::string current_timestamp()
+{
+    const std::time_t now = std::time(nullptr);
+    std::tm local = {};
+    localtime_r(&now, &local);
+    char value[32] = {0};
+    std::strftime(value, sizeof(value), "%Y-%m-%dT%H:%M:%S%z", &local);
+    return value;
+}
+
+std::string read_temperature(std::string &source)
+{
+#ifdef __linux__
+    double hottest_celsius = 0.0;
+    std::string hottest_source;
+    for (int zone = 0; zone < 128; ++zone) {
+        const std::string root = "/sys/class/thermal/thermal_zone" +
+            std::to_string(zone) + "/";
+        double raw = 0.0;
+        if (!read_positive_number(root + "temp", raw)) continue;
+        const double celsius = raw > 1000.0 ? raw / 1000.0 : raw;
+        if (celsius < 0.0 || celsius > 150.0 || celsius <= hottest_celsius)
+            continue;
+        hottest_celsius = celsius;
+        std::string type;
+        read_first_line(root + "type", type);
+        hottest_source = root + "temp";
+        if (!type.empty()) hottest_source += " (" + type + ")";
+    }
+    if (hottest_celsius > 0.0) {
+        std::ostringstream output;
+        output << std::fixed << std::setprecision(1) << hottest_celsius
+               << " C";
+        source = hottest_source;
+        return output.str();
+    }
+#endif
+    source = "no unprivileged CPU temperature interface";
+    return "unavailable";
 }
 
 void add_entry(SystemInfo &info,
@@ -317,6 +360,8 @@ SystemInfo collect_system_info(const std::vector<int> &selected_cores)
     struct utsname system_name = {};
     const bool have_uname = uname(&system_name) == 0;
 
+    add_entry(info, "Sample Timestamp", current_timestamp(), "system clock");
+
 #ifdef __linux__
     std::string os_source;
     add_entry(info, "OS", read_linux_os_name(os_source), os_source);
@@ -350,6 +395,10 @@ SystemInfo collect_system_info(const std::vector<int> &selected_cores)
 
     add_entry(info, "Core Selection", format_cores(selected_cores),
         "--thread_pool");
+    add_entry(info, "Core Migration", "unavailable", "not measured");
+    std::string temperature_source;
+    add_entry(info, "Temperature", read_temperature(temperature_source),
+        temperature_source);
     const int cpu = selected_cores.empty() ? 0 : selected_cores.front();
 #ifdef __linux__
     const FrequencyInfo frequency = read_linux_frequency(cpu);

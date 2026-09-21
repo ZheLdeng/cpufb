@@ -22,6 +22,8 @@ function(cpufb_simd_asm_flags arch feature out_var)
         elseif(feature STREQUAL "_FHM_")
             set(flag "-march=armv8.2-a+fp16+fp16fml")
         elseif(feature STREQUAL "_ASIMD_FCMA_")
+            # FCMA is mandatory from Armv8.3-A.  "+fcma" is not a modifier older
+            # GCC releases know, and they reject the whole -march for it.
             set(flag "-march=armv8.3-a+fp16")
         elseif(feature STREQUAL "_ASIMD_REDUCE_"
                 OR feature STREQUAL "_ASIMD_RECIP_")
@@ -82,17 +84,19 @@ function(cpufb_simd_asm_flags arch feature out_var)
     set(${out_var} "${flag}" PARENT_SCOPE)
 endfunction()
 
-# Highest-priority "umbrella" -march flag that the main cpufb.cpp TU needs to
-# compile against the union of detected SIMD features; later matches override
-# earlier ones in priority order.
+# -march for the C++ translation units (not the per-feature assembly objects,
+# which get their flag from cpufb_march_flag_for_feature above).
 function(cpufb_compute_march_flag arch features_list out_var)
     set(march "")
     if(arch STREQUAL "arm64")
         # Every optional instruction, including rdsvl, lives in a per-feature
-        # assembly object that is only reached after a runtime HWCAP check.
-        # The C++ translation units must therefore stay at the baseline: with
-        # -march=armv9-a the compiler may inline LSE atomics or SVE code into
-        # them, which SIGILLs on ARMv8.0 cores before any feature check runs.
+        # assembly object that is only reached after a runtime feature check.
+        # The C++ translation units must therefore stay at the baseline on
+        # every OS.  With a wider -march the compiler is free to use those
+        # extensions itself: -march=armv9-a lets GCC inline LSE atomics, which
+        # SIGILL on ARMv8.0 cores, and -march=armv9.2-a implies SVE2, so
+        # clang sized a stack frame with `addvl` and crashed on Apple M4,
+        # which implements SME but not SVE.
         set(march "-march=armv8-a")
     elseif(arch STREQUAL "riscv64")
         set(march "-march=rv64gcv_zfh_zicbom")

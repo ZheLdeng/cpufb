@@ -297,7 +297,12 @@ case "${test_case}" in
             }
             $1 == "system" {
                 system_rows++
-                if (!system_header || NF != 4) exit 2
+                # Values may be quoted because they contain commas, e.g.
+                # "HiSilicon (0x48), ARM part 0xd22"; count fields with the
+                # quoted ones collapsed instead of trusting -F",".
+                unquoted = $0
+                gsub(/"[^"]*"/, "q", unquoted)
+                if (!system_header || split(unquoted, parts, ",") != 4) exit 2
                 if ($2 == "OS") os_seen = 1
                 if ($2 == "Kernel") kernel_seen = 1
                 if ($2 == "Compiler") compiler_seen = 1

@@ -191,6 +191,12 @@ static void *thread_function_freq(void *arg)
         clock_hz = data->theory_freq * 1e9;
         data->counter_source = "OS-reported frequency (not measured)";
     }
+#ifdef __APPLE__
+    // Say why the counted source was skipped; without this the fallback hides
+    // whether kperf is missing, unconfigured or merely lacks privileges.
+    if (counted_cycles <= 0.0 && !counters.error().empty())
+        data->counter_source += " (kperf: " + counters.error() + ")";
+#endif
     data->clock_ghz = clock_hz * 1e-9;
 
     // CPUFB_DEBUG_CLOCK=1 prints every available clock next to the selected

@@ -30,7 +30,8 @@ struct CacheCurveResult
 {
     std::vector<CacheLatencyPoint> points;
     std::vector<CacheLevelEstimate> levels;
-    // "huge pages" or "page-grouped order"; see measure_cache_curve().
+    // "huge pages", "page-grouped order" or "large base pages"; see
+    // measure_cache_curve().
     std::string translation_mode;
 };
 
@@ -41,15 +42,17 @@ typedef void (*CacheChaseKernel)(int iterations, int64_t *buffer);
 std::vector<uint64_t> build_cache_curve_sizes(uint64_t max_bytes);
 
 // Splits the curve into flat plateaus and places each capacity at the last
-// working set below the geometric midpoint of two adjacent plateaus.  Levels
+// working set that still performs like the lower of two adjacent plateaus
+// (one third of the way up the step on a log scale).  Levels
 // are named L1, L2, ... in order of appearance.
 std::vector<CacheLevelEstimate> estimate_cache_levels(
     const std::vector<CacheLatencyPoint> &points);
 
 // Measures the curve on the calling thread (the caller pins it).  With
-// transparent huge pages the ring order is one global shuffle; otherwise the
-// order is shuffled page by page so that translation misses stay amortized
-// and cannot appear as a spurious level between L1 and L2.
+// transparent huge pages, or base pages of 16 KiB and more, the ring order is
+// one global shuffle; with 4 KiB pages only, the order is shuffled page by
+// page so that translation misses stay amortized and cannot appear as a
+// spurious level between L1 and L2.
 CacheCurveResult measure_cache_curve(
     CacheChaseKernel chase, int line_size, uint64_t max_bytes);
 

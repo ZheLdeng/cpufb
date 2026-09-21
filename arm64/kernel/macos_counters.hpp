@@ -24,7 +24,8 @@ private:
     void *library_ = nullptr;
     int (*get_thread_counters_)(uint32_t *, uint64_t *) = nullptr;
     uint32_t (*get_counter_count_)(uint32_t) = nullptr;
-    std::string error_;
+    // Reason for the most recent failure; read() is logically const.
+    mutable std::string error_;
 };
 
 // Highest CPU DVFS frequency published by the power manager in the

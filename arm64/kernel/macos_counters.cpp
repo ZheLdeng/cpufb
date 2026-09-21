@@ -40,14 +40,21 @@ MacosCounters::~MacosCounters()
 
 bool MacosCounters::read(MacosCounterSnapshot &snapshot) const
 {
-    if (!available()) return false;
-    if (get_counter_count_(kKpcClassFixedMask) < kFixedCounterCount)
+    if (!available()) return false; // error_ was set by the constructor
+    if (get_counter_count_(kKpcClassFixedMask) < kFixedCounterCount) {
+        error_ = "kperf reports fewer than two fixed counters";
         return false;
+    }
 
     uint32_t count = kFixedCounterCount;
     uint64_t values[kFixedCounterCount] = {};
-    if (get_thread_counters_(&count, values) != 0 || count < kFixedCounterCount)
+    if (get_thread_counters_(&count, values) != 0 ||
+        count < kFixedCounterCount) {
+        // The usual case without root: thread counting is not enabled.
+        error_ = "kpc_get_curthread_counters denied (needs root)";
         return false;
+    }
+    error_.clear();
 
     // Apple KPC's fixed-counter order is cycles followed by instructions.
     snapshot.cycles = values[0];

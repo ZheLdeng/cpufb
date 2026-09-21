@@ -87,9 +87,9 @@ public:
         if (bytes_read != static_cast<ssize_t>(sizeof(count))) {
             count = 0;
         }
-
-        close(fd);
-        fd = -1;
+        // The descriptor stays open so that start()/stop() can be repeated on
+        // one counter; closing it here made every later pair return 0 cycles
+        // without any sign of failure.  The destructor closes it.
     }
     long long get_cycle()
     {

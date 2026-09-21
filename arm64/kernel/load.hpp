@@ -68,6 +68,9 @@ struct LoadBandwidth
     uint64_t workset_bytes = 0;
     size_t thread_num = 1;
     std::string cycle_source;
+    // Bytes per load instruction; bytes_per_cycle / bytes_per_load is the
+    // load-instruction rate.  0 when unknown.
+    double bytes_per_load = 0.0;
 };
 LoadBandwidth get_bandwith(uint64_t looptime, double data_size,
     std::string type, void *bench, tpool_t *tm);

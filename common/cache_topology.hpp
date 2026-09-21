@@ -40,8 +40,9 @@ std::string format_cache_capacity(std::uint64_t bytes);
 // One-phrase verdict for a probe result next to the OS-reported value.  The
 // probe value is always printed as measured; this only labels agreement.
 // tolerance is the largest measured/reported ratio, in either direction, that
-// counts as agreement: 1.0 for discrete values, about 1.5 for capacities,
-// which the sweeps sample on a coarse grid and which are effective sizes.
+// counts as agreement: 1.0 for discrete values and 1.3 for capacities, which
+// the sweep samples on a quarter-octave grid (one step is at most 1.25x).
+// The ratio is part of the label whenever it is not exactly 1.
 std::string describe_probe_agreement(
     double reported, double measured, double tolerance);
 

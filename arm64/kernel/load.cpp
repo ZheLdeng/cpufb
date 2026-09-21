@@ -29,12 +29,15 @@
 #include <sys/sysctl.h>
 #endif
 
+#include <sys/mman.h>
 #ifdef __linux__
 #include <sys/syscall.h>
-#include <sys/mman.h>
 #endif
 // Assumed line size when neither the OS nor the probe provides one.
 static constexpr int kDefaultCacheLineBytes = 64;
+// Sweep limit of the capacity curve.  The plateau after the last cache level
+// needs three grid points, so this covers an L2 or L3 of up to 64 MiB.
+static constexpr uint64_t kCacheCurveMaxBytes = 128ULL * 1024 * 1024;
 
 using namespace std;
 
@@ -196,6 +199,35 @@ static inline int get_load_bytes_per_inner_loop(const string &type)
     return 512;
 }
 
+// Bytes moved by ONE load instruction of the kernel, read off the assembly:
+//   ldp q,q                32        ld1 {4 regs}           64
+//   ld1 {1 reg} (4x1)      16        ldr q                  16
+//   sve ld1b/h/w/d         VL        ldr za / ld1w ZAnH/V   SVL
+//   SME2 ld1w {4 vectors}  4 x SVL
+// Dividing Byte/Cycle by this gives load instructions per cycle, which shows
+// whether a row is limited by bandwidth or by how fast loads can be issued:
+// an SME unit that accepts about one load per cycle moves 64 B per cycle
+// with single-vector loads and 256 B per cycle with four-vector loads,
+// whatever cache level holds the data.
+static inline double get_load_bytes_per_instruction(const string &type)
+{
+#ifdef _SVE_
+    if (type.find("sve-ld1") != string::npos)
+        return static_cast<double>(load_sve_vector_bytes());
+#endif
+#ifdef _SME_
+    if (type.find("ZA") != string::npos)
+        return static_cast<double>(load_sme_vector_bytes());
+    if (type == "ld1w(f32)")
+        return 4.0 * static_cast<double>(load_sme_vector_bytes());
+#endif
+    if (type.find("4x1") != string::npos) return 16.0;
+    if (type.find("neon-ld1") != string::npos) return 64.0;
+    if (type.find("ldr.q") != string::npos) return 16.0;
+    if (type.find("ldp") != string::npos) return 32.0;
+    return 0.0;
+}
+
 static inline size_t get_load_workset_alignment(const string &type)
 {
 #ifdef _SME_
@@ -336,7 +368,7 @@ cpufb::CacheCurveResult measure_cache_hierarchy(
     // and select the jump nearest to them, which made the "measured" capacity
     // agree with the OS by construction and left it empty without topology
     // data (Android).
-    const uint64_t max_bytes = 64ULL * 1024 * 1024;
+    const uint64_t max_bytes = kCacheCurveMaxBytes;
     const int line_size = cpufb::effective_cacheline_size(
         cache_data->theory_cacheline, cache_data->test_cacheline, 64);
     result = cpufb::measure_cache_curve(load_ptr, line_size, max_bytes);
@@ -447,6 +479,50 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
         cpufb::probe_l1_associativity(static_cast<int>(cacheline));
 }
 
+// CPUFB_DEBUG_LOAD_COVERAGE=1: prove that one outer loop of a load kernel
+// really reads the whole workset it is credited with.  The kernel runs once
+// over freshly mapped, never-touched memory; every page it reads becomes
+// resident, and mincore() counts them.  Anything short of the full page count
+// means the kernel skips data and its bandwidth is over-reported.
+static void report_load_coverage(
+    const string &type, load_bench bench, int inner_loop, size_t data_bytes)
+{
+    const char *enabled = getenv("CPUFB_DEBUG_LOAD_COVERAGE");
+    if (enabled == nullptr || *enabled == '\0' || strcmp(enabled, "0") == 0)
+        return;
+
+    const long page_size = sysconf(_SC_PAGESIZE);
+    if (page_size <= 0) return;
+    const size_t page = static_cast<size_t>(page_size);
+    // Same guard as the timed buffer: some kernels read a little past the end.
+    const size_t mapped = (data_bytes + 4096 + page - 1) / page * page;
+    void *region = mmap(
+        nullptr, mapped, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+    if (region == MAP_FAILED) return;
+#if defined(__linux__) && defined(MADV_NOHUGEPAGE)
+    (void)madvise(region, mapped, MADV_NOHUGEPAGE);
+#endif
+    bench(static_cast<float *>(region), inner_loop, 1);
+
+    const size_t pages = mapped / page;
+    const size_t expected = (data_bytes + page - 1) / page;
+#ifdef __APPLE__
+    vector<char> residency(pages);
+    const int status = mincore(region, mapped, residency.data());
+#else
+    vector<unsigned char> residency(pages);
+    const int status = mincore(region, mapped, residency.data());
+#endif
+    size_t touched = 0;
+    for (size_t i = 0; status == 0 && i < expected; ++i)
+        touched += (residency[i] & 1) ? 1 : 0;
+    fprintf(stderr,
+        "load coverage: %-20s read %zu of %zu pages (%zu KiB workset)%s\n",
+        type.c_str(), touched, expected, data_bytes / 1024,
+        status != 0 ? " [mincore failed]" : "");
+    munmap(region, mapped);
+}
+
 LoadBandwidth get_bandwith(
     uint64_t looptime, double data_size, string type, void *bench, tpool_t *tm)
 {
@@ -514,6 +590,7 @@ LoadBandwidth get_bandwith(
     }
 
     load_bench bench_ptr = reinterpret_cast<load_bench>(bench);
+    report_load_coverage(type, bench_ptr, inner_loop, data_bytes);
     // warm up
     run_load_bench(bench_ptr, cache_data, inner_loop, measured_looptime,
         worker_stride_bytes, tm);
@@ -540,6 +617,7 @@ LoadBandwidth get_bandwith(
     // aggregate traffic of a multi-core pool is carried by GB/s.
     const double bytes_per_worker = (double)measured_looptime * data_bytes;
     perf.workset_bytes = data_bytes;
+    perf.bytes_per_load = get_load_bytes_per_instruction(type);
     perf.thread_num = thread_num;
     if (best_time_used > 0.0)
         perf.gb_per_second =

@@ -2,23 +2,18 @@
 #define CPUFB_RISCV64_LOAD_HPP
 
 #include <cstdint>
-#include <vector>
 
-struct CacheData
+// Line size and L1 associativity, both measured.  The reported line size is
+// passed only so that the probe's debug output can show it next to its own
+// answer; it never influences the measurement.  last_level_bytes sizes the
+// eviction buffer and must come from the latency curve, not from the OS.
+struct CacheGeometryProbe
 {
-    int theory_L1 = 0;
-    int theory_L2 = 0;
-    int test_L1 = 0;
-    int test_L2 = 0;
-    int theory_way = 0;
-    int test_way = 0;
-    int theory_cacheline = 0;
-    int test_cacheline = 0;
+    int cacheline_bytes = 0;
+    int l1_ways = 0;
 };
 
-void get_cachesize(struct CacheData *cache_size, int cpu_id);
-void get_multiway(struct CacheData *cache_size, int cpu_id);
-void get_cacheline(struct CacheData *cache_size, int cpu_id);
-double get_bandwith(
-    uint64_t looptime, double data_size, std::string type, void *bench);
+CacheGeometryProbe probe_cache_geometry(
+    int reported_cacheline, uint64_t last_level_bytes);
+
 #endif

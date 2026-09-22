@@ -16,6 +16,7 @@ extern "C"
 
 #ifdef _VECTOR_
     void riscv_cache_chase(int, int64_t *);
+    void riscv_cache_chase32(int, const int32_t *);
     size_t riscv_vector_length_bytes();
     void vector_load_stream(void *, size_t, int64_t);
     void vector_load_fma_stream(void *, size_t, int64_t);

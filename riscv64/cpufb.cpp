@@ -1,6 +1,7 @@
 #include "cli.hpp"
 #include "cache_topology.hpp"
 #include "cache_curve.hpp"
+#include "cacheline_probe.hpp"
 #include "table.hpp"
 #include "thread_pool.hpp"
 
@@ -15,6 +16,7 @@
 #include <iostream>
 #include <frequency.hpp>
 #include <compute.hpp>
+#include <load.hpp>
 #include <cmath>
 #include <algorithm>
 #include <fstream>
@@ -195,14 +197,23 @@ static int read_cache_integer(int cpu, int index, const char *name)
     return input >> value ? value : 0;
 }
 
-static void cpubm_riscv64_cache(
-    std::vector<int> &set_of_threads, Table &table)
+static void cpubm_riscv64_cache(std::vector<int> &set_of_threads, Table &table)
 {
     const int cpu = set_of_threads[0];
     const cpufb::CacheLevelInfo l1 = cpufb::detect_data_cache_level(cpu, 1);
     const cpufb::CacheLevelInfo l2 = cpufb::detect_data_cache_level(cpu, 2);
+    int cache_index = 0;
+    while (
+        cache_index < 32 && read_cache_integer(cpu, cache_index, "level") != 1)
+        ++cache_index;
+    const int reported_line =
+        read_cache_integer(cpu, cache_index, "coherency_line_size");
+    const int reported_ways =
+        read_cache_integer(cpu, cache_index, "ways_of_associativity");
     const cpufb::CacheCurveResult curve =
-        cpufb::measure_cache_curve(riscv_cache_chase, 64, 64ULL * 1024 * 1024);
+        cpufb::measure_cache_curve(riscv_cache_chase32,
+            cpufb::effective_cacheline_size(reported_line, 0, 64),
+            64ULL * 1024 * 1024);
     const auto measured_capacity = [&curve](const string &level) {
         for (const cpufb::CacheLevelEstimate &estimate : curve.levels)
             if (estimate.level == level) return estimate.capacity_bytes;
@@ -213,39 +224,39 @@ static void cpubm_riscv64_cache(
     vector<string> cont(table.getCol());
     cont[0] = "L1 data cache capacity";
     cont[1] = l1.bytes > 0 ? cpufb::format_cache_capacity(l1.bytes) : "-";
-    cont[2] = measured_l1 > 0
-        ? cpufb::format_cache_capacity(measured_l1)
-        : "-";
+    cont[2] = measured_l1 > 0 ? cpufb::format_cache_capacity(measured_l1) : "-";
     cont[5] = cpufb::describe_probe_agreement(l1.bytes, measured_l1, 1.5);
     table.addOneItem(cont);
 
     cont.assign(table.getCol(), "");
     cont[0] = "L2/unified cache capacity";
     cont[1] = l2.bytes > 0 ? cpufb::format_cache_capacity(l2.bytes) : "-";
-    cont[2] = measured_l2 > 0
-        ? cpufb::format_cache_capacity(measured_l2)
-        : "-";
+    cont[2] = measured_l2 > 0 ? cpufb::format_cache_capacity(measured_l2) : "-";
     cont[5] = cpufb::describe_probe_agreement(l2.bytes, measured_l2, 1.5);
     table.addOneItem(cont);
 
-    int cache_index = 0;
-    while (cache_index < 32 &&
-        read_cache_integer(cpu, cache_index, "level") != 1)
-        ++cache_index;
-    const int ways = read_cache_integer(cpu, cache_index, "ways_of_associativity");
-    const int line = read_cache_integer(cpu, cache_index, "coherency_line_size");
+    // Both probes run after the curve: the line probe sizes its eviction
+    // buffer from the largest level the curve measured, and the
+    // associativity ring steps by the line size the line probe found.  These
+    // two rows used to be verbatim copies of the OS column.
+    const CacheGeometryProbe geometry = probe_cache_geometry(
+        reported_line, std::max(measured_l1, measured_l2) * 4);
     cont.assign(table.getCol(), "");
     cont[0] = "L1 ways of associativity";
-    cont[1] = ways > 0 ? to_string(ways) : "-";
-    cont[2] = cont[1];
-    cont[5] = "Linux sysfs topology";
+    cont[1] = reported_ways > 0 ? to_string(reported_ways) : "-";
+    cont[2] = geometry.l1_ways > 0 ? to_string(geometry.l1_ways) : "-";
+    cont[5] =
+        cpufb::describe_probe_agreement(reported_ways, geometry.l1_ways, 1.0);
     table.addOneItem(cont);
 
     cont.assign(table.getCol(), "");
     cont[0] = "cacheline size";
-    cont[1] = line > 0 ? to_string(line) + " B" : "-";
-    cont[2] = cont[1];
-    cont[5] = "Linux sysfs topology";
+    cont[1] = reported_line > 0 ? to_string(reported_line) + " B" : "-";
+    cont[2] = geometry.cacheline_bytes > 0
+        ? to_string(geometry.cacheline_bytes) + " B"
+        : "-";
+    cont[5] = cpufb::describe_probe_agreement(
+        reported_line, geometry.cacheline_bytes, 1.0);
     table.addOneItem(cont);
 
     cout << "Cache curve translation mode: " << curve.translation_mode << endl;
@@ -273,7 +284,8 @@ static void cpubm_riscv64_cache(
         row[0] = estimate.level;
         row[1] = cpufb::format_cache_capacity(estimate.capacity_bytes);
         ostringstream latency, jump;
-        latency << fixed << setprecision(3) << estimate.latency_ns << " ns/load";
+        latency << fixed << setprecision(3) << estimate.latency_ns
+                << " ns/load";
         jump << fixed << setprecision(2) << estimate.jump_ratio << "x";
         row[2] = latency.str();
         row[3] = jump.str();
@@ -334,8 +346,7 @@ static void free_stream_buffers(StreamBenchmark &benchmark)
     for (void *buffer : benchmark.buffers) free(buffer);
 }
 
-static void add_riscv64_load_rows(
-    tpool_t *tm, int cpu, Table &table)
+static void add_riscv64_load_rows(tpool_t *tm, int cpu, Table &table)
 {
     const double frequency_hz = !freq.empty() ? freq[0] * 1e9 : 0.0;
     const size_t vector_bytes = riscv_vector_length_bytes();
@@ -347,15 +358,15 @@ static void add_riscv64_load_rows(
         benchmark.bytes = max<size_t>(vector_bytes, cache.bytes / 2);
         benchmark.bytes -= benchmark.bytes % vector_bytes;
         const uint64_t target_bytes = 256ULL * 1024 * 1024;
-        benchmark.repetitions = max<int64_t>(1,
-            static_cast<int64_t>(target_bytes / benchmark.bytes));
+        benchmark.repetitions = max<int64_t>(
+            1, static_cast<int64_t>(target_bytes / benchmark.bytes));
         if (!allocate_stream_buffers(benchmark, tm->thread_num)) {
             free_stream_buffers(benchmark);
             continue;
         }
         const double seconds = median_stream_seconds(tm, benchmark);
-        const double bytes = static_cast<double>(benchmark.bytes) *
-            benchmark.repetitions;
+        const double bytes =
+            static_cast<double>(benchmark.bytes) * benchmark.repetitions;
         const double gbps = seconds > 0.0 ? bytes / seconds / 1e9 : 0.0;
         const double bytes_per_cycle = frequency_hz > 0.0 && seconds > 0.0
             ? bytes / (seconds * frequency_hz)
@@ -386,8 +397,8 @@ static void add_riscv64_multiple_issue(tpool_t *tm, int cpu, Table &table)
     StreamBenchmark benchmark;
     benchmark.bytes = max<size_t>(vector_bytes, l1.bytes / 2);
     benchmark.bytes -= benchmark.bytes % vector_bytes;
-    benchmark.repetitions = max<int64_t>(1,
-        static_cast<int64_t>((128ULL * 1024 * 1024) / benchmark.bytes));
+    benchmark.repetitions = max<int64_t>(
+        1, static_cast<int64_t>((128ULL * 1024 * 1024) / benchmark.bytes));
     benchmark.mixed = true;
     if (!allocate_stream_buffers(benchmark, tm->thread_num)) {
         free_stream_buffers(benchmark);
@@ -444,19 +455,18 @@ static bool cpubm_do_bench(std::vector<int> &set_of_threads, uint32_t idle_time,
 
         if (should_run_test(filter, "cache"))
             cpubm_riscv64_cache(set_of_threads, *tables[2]);
-    #ifdef _VECTOR_
+#ifdef _VECTOR_
         if (should_run_test(filter, "load"))
             add_riscv64_load_rows(tm, set_of_threads[0], *tables[1]);
         if (should_run_test(filter, "multi_issue"))
             add_riscv64_multiple_issue(tm, set_of_threads[0], *tables[4]);
-    #endif
+#endif
 
         // traverse task list
 
         for (i = 0; i < static_cast<int>(bm_list.size()); i++) {
             if (catalog[i].is_latency) continue;
-            if (!should_run_benchmark(
-                    filter, bm_list[i].isa, bm_list[i].dim))
+            if (!should_run_benchmark(filter, bm_list[i].isa, bm_list[i].dim))
                 continue;
             if (bm_list[i].dim.find("OPS") != string::npos) {
                 int64_t latency = 0;
@@ -550,10 +560,9 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Notice: there must NOT be any spaces.\n");
         return 1;
     }
-    if (options.memory_bandwidth ||
-        options.memory_size_set || options.memory_repetitions_set ||
-        !options.sweep_instruction.empty() || options.loop_scale != 1 ||
-        options.bench_limit != 0) {
+    if (options.memory_bandwidth || options.memory_size_set ||
+        options.memory_repetitions_set || !options.sweep_instruction.empty() ||
+        options.loop_scale != 1 || options.bench_limit != 0) {
         fprintf(stderr,
             "Error: the riscv64 backend does not support memory-bandwidth, "
             "instruction sweep, loop scaling, or benchmark limits.\n");

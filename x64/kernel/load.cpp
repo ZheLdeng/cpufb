@@ -109,8 +109,14 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     cache_size->test_L1 = 0;
     cache_size->test_L2 = 0;
     cache_size->test_L3 = 0;
+    cache_size->capacity_note.clear();
     for (const cpufb::CacheLevelEstimate &level : curve.levels) {
-        const int size_kb = static_cast<int>(level.capacity_bytes / 1024);
+        // A gradual rise gives no capacity, only a note.
+        const int size_kb =
+            level.gradual ? 0 : static_cast<int>(level.capacity_bytes / 1024);
+        if (level.gradual)
+            cache_size->capacity_note =
+                cpufb::describe_gradual_transition(level);
         if (level.level == "L1")
             cache_size->test_L1 = size_kb;
         else if (level.level == "L2")

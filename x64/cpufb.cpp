@@ -409,14 +409,18 @@ static bool cpubm_x64_cache(
     cont[0] = "L1 cache size";
     cont[1] = format_reported_value(cache_size.theory_L1, " KB");
     cont[2] = format_reported_value(cache_size.test_L1, " KB");
-    cont[5] = cpufb::describe_probe_agreement(
-        cache_size.theory_L1, cache_size.test_L1, 1.3);
+    cont[5] = cache_size.test_L1 <= 0 && !cache_size.capacity_note.empty()
+        ? cache_size.capacity_note
+        : cpufb::describe_probe_agreement(
+              cache_size.theory_L1, cache_size.test_L1, 1.3);
     table.addOneItem(cont);
     cont[0] = "L2 cache size";
     cont[1] = format_reported_value(cache_size.theory_L2, " KB");
     cont[2] = format_reported_value(cache_size.test_L2, " KB");
-    cont[5] = cpufb::describe_probe_agreement(
-        cache_size.theory_L2, cache_size.test_L2, 1.3);
+    cont[5] = cache_size.test_L2 <= 0 && !cache_size.capacity_note.empty()
+        ? cache_size.capacity_note
+        : cpufb::describe_probe_agreement(
+              cache_size.theory_L2, cache_size.test_L2, 1.3);
     table.addOneItem(cont);
     const cpufb::CacheLevelInfo l3 =
         cpufb::detect_data_cache_level(set_of_threads[0], 3);

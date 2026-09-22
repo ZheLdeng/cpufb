@@ -178,8 +178,14 @@ cpufb::CacheCurveResult measure_cache_hierarchy(
     const int line_size = cpufb::effective_cacheline_size(
         cache_data->theory_cacheline, cache_data->test_cacheline, 64);
     result = cpufb::measure_cache_curve(load_ptr, line_size, max_bytes);
+    cache_data->capacity_note.clear();
     for (const auto &level : result.levels) {
-        const int size_kb = static_cast<int>(level.capacity_bytes / 1024);
+        // A gradual rise gives no capacity, only a note.
+        const int size_kb =
+            level.gradual ? 0 : static_cast<int>(level.capacity_bytes / 1024);
+        if (level.gradual)
+            cache_data->capacity_note =
+                cpufb::describe_gradual_transition(level);
         if (level.level == "L1")
             cache_data->test_L1 = size_kb;
         else if (level.level == "L2")

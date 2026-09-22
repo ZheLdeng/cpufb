@@ -1,6 +1,7 @@
 #include "cache_bandwidth.hpp"
 #include "cache_curve.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <string>
@@ -223,6 +224,55 @@ int main()
         std::cerr
             << "a sweep that ends inside L3 must not claim completeness\n";
         ok = false;
+    }
+
+    // Arm big core (MediaTek MT6993 cpu7): a temporal prefetcher keeps the
+    // ring at L1 latency far past the 64 KiB L1 and lets go gradually, so
+    // the rise from 2.0 ns to the ~7.6 ns plateau spans 256 KiB to 4 MiB.
+    // That is a slope, not a step; the level must be flagged and its
+    // capacity withheld, where a threshold rule reported 640 KiB.
+    std::vector<CacheLatencyPoint> smeared;
+    for (uint64_t size : build_cache_curve_sizes(64 * 1024 * kKiB)) {
+        CacheLatencyPoint point;
+        point.working_set_bytes = size;
+        const double kib = static_cast<double>(size) / kKiB;
+        if (kib <= 256)
+            point.latency_ns = 2.0;
+        else if (kib < 4096)
+            point.latency_ns =
+                2.0 * std::pow(3.8, std::log2(kib / 256) / std::log2(16.0));
+        else if (kib <= 16384)
+            point.latency_ns = 7.6;
+        else
+            point.latency_ns =
+                7.6 * std::pow(13.0 / 7.6, std::log2(kib / 16384) / 2.0);
+        smeared.push_back(point);
+    }
+    {
+        const std::vector<CacheLevelEstimate> levels =
+            estimate_cache_levels(smeared);
+        if (levels.empty() || !levels[0].gradual ||
+            levels[0].transition_width < 4.0) {
+            std::cerr << "a prefetch-smeared L1 rise was not flagged as gradual"
+                      << " (levels " << levels.size() << ")\n";
+            ok = false;
+        }
+        // The clean steps must not be flagged.
+        for (const CacheLevelEstimate &level :
+            estimate_cache_levels(kunpeng, 135.0, &reached_memory)) {
+            if (level.gradual) {
+                std::cerr << "Kunpeng 920F " << level.level
+                          << " was flagged as gradual\n";
+                ok = false;
+            }
+        }
+        for (const CacheLevelEstimate &level :
+            estimate_cache_levels(shared_l2)) {
+            if (level.gradual) {
+                std::cerr << "the M4 shared L2 was flagged as gradual\n";
+                ok = false;
+            }
+        }
     }
 
     ok &= expect_levels("flat curve", make_curve(2.0, {}), {});

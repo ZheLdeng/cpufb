@@ -24,6 +24,9 @@ struct CacheData
     int test_L3 = 0;
     double memory_latency_ns = 0;
     bool hierarchy_complete = false;
+    // Why a level has no capacity although the curve rose there (gradual
+    // transition); empty when every level was a clean step.
+    std::string capacity_note;
     int theory_way = 0;
     int test_way = 0;
     int theory_cacheline = 0;

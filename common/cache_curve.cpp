@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -31,6 +32,8 @@ const double kMinimumLevelDeltaNs = 0.20;
 // Random DRAM access is 3-10x slower than the slowest cache level, so half of
 // the measured memory latency separates the two with margin on both sides.
 const double kMemoryLatencyFraction = 0.5;
+// See estimate_cache_levels(): a step wider than this is not a boundary.
+const double kMaximumStepWidth = 4.0;
 // The memory reference walks this many lines spread over a region far larger
 // than any cache: 4M lines are 256 MiB of distinct cache lines.
 const size_t kMemoryReferenceLines = 4u << 20;
@@ -126,6 +129,25 @@ std::vector<size_t> build_ring_order(
     return order;
 }
 
+// A ring is a fixed sequence of line addresses, and a core with a temporal
+// (correlating) prefetcher learns it: once it has seen every "line A is
+// followed by line B" pair it fetches B while A is being used, and misses
+// disappear.  On an Arm big core (MediaTek MT6993 cpu7) that kept a 256 KiB
+// ring at L1 latency and smeared the L1 and L2 steps into a gradual slope,
+// while the little cores showed textbook steps.  So the ring is built from
+// several distinct permutations of the same lines, one per pointer slot of
+// the line, played one after the other: every line is still re-referenced
+// exactly line_count steps later (the cache sees the same working set), but
+// the pair sequence is `slots` times longer than the working set and repeats
+// only every `slots` laps.  Small working sets, where such prefetchers have
+// the easiest job, get the most slots; large ones need none.
+size_t slots_for(size_t line_count, size_t stride_words)
+{
+    const size_t kTargetPairs = 16384;
+    const size_t wanted = (kTargetPairs + line_count - 1) / line_count;
+    return std::max<size_t>(1, std::min(wanted, stride_words));
+}
+
 double measure_pointer_chase(CacheChaseKernel chase, int64_t *buffer,
     uint64_t working_set_bytes, size_t line_size, size_t group_lines,
     uint64_t seed)
@@ -133,20 +155,36 @@ double measure_pointer_chase(CacheChaseKernel chase, int64_t *buffer,
     const size_t stride = std::max(sizeof(int64_t), line_size);
     const size_t line_count = std::max<size_t>(2, working_set_bytes / stride);
     const size_t stride_words = stride / sizeof(int64_t);
-    const std::vector<size_t> order =
-        build_ring_order(line_count, group_lines, seed);
-    for (size_t i = 0; i < line_count; ++i)
-        buffer[order[i] * stride_words] =
-            static_cast<int64_t>(order[(i + 1) % line_count] * stride_words);
+    const size_t slots = slots_for(line_count, stride_words);
+    // Node (slot k, line l) is word k of line l; the ring visits slot 0's
+    // permutation, then slot 1's, ... and returns to slot 0.
+    auto node = [&](size_t slot, size_t line) {
+        return static_cast<int64_t>(line * stride_words + slot);
+    };
+    std::vector<size_t> order = build_ring_order(line_count, group_lines, seed);
+    for (size_t slot = 0; slot < slots; ++slot) {
+        const std::vector<size_t> next_order = slot + 1 < slots
+            ? build_ring_order(
+                  line_count, group_lines, seed + 0x9e37 * (slot + 1))
+            : std::vector<size_t>();
+        const std::vector<size_t> &following =
+            slot + 1 < slots ? next_order : order;
+        for (size_t i = 0; i + 1 < line_count; ++i)
+            buffer[node(slot, order[i])] = node(slot, order[i + 1]);
+        // Last line of this permutation to the first line of the next slot's.
+        buffer[node(slot, order[line_count - 1])] =
+            node((slot + 1) % slots, following[0]);
+        if (slot + 1 < slots) order = next_order;
+    }
+    const size_t lap = line_count * slots;
 
     const size_t int_max = static_cast<size_t>(std::numeric_limits<int>::max());
     // Two full laps place every line at its steady-state cache level.
-    chase(static_cast<int>(
-              std::min(int_max, std::max<size_t>(10000, line_count * 2))),
+    chase(static_cast<int>(std::min(int_max, std::max<size_t>(10000, lap * 2))),
         buffer);
 
     const int probe_iterations = static_cast<int>(
-        std::min<size_t>(std::max<size_t>(50000, line_count), 2000000));
+        std::min<size_t>(std::max<size_t>(50000, lap), 2000000));
     timespec start, end;
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     chase(probe_iterations, buffer);
@@ -157,7 +195,7 @@ double measure_pointer_chase(CacheChaseKernel chase, int64_t *buffer,
     // About 5 ms per sample, but never less than one full lap.
     size_t iterations = static_cast<size_t>(5e6 / probe_ns);
     iterations = std::max<size_t>(iterations, 50000);
-    iterations = std::max(iterations, line_count);
+    iterations = std::max(iterations, lap);
     iterations = std::min(iterations, int_max);
     // Everything that disturbs a sample (another core of a shared L2, an
     // interrupt, a migration on an unpinned macOS thread) adds latency and
@@ -224,6 +262,16 @@ uint64_t choose_region_bytes(uint64_t max_bytes)
 
 } // namespace
 
+std::string describe_gradual_transition(const CacheLevelEstimate &level)
+{
+    char text[128];
+    std::snprintf(text, sizeof(text),
+        "probe: %s rise is gradual (%.1fx of working set), boundary hidden, "
+        "prefetcher suspected",
+        level.level.c_str(), level.transition_width);
+    return text;
+}
+
 std::vector<uint64_t> build_cache_curve_sizes(uint64_t max_bytes)
 {
     std::vector<uint64_t> sizes;
@@ -234,6 +282,27 @@ std::vector<uint64_t> build_cache_curve_sizes(uint64_t max_bytes)
         }
     }
     return sizes;
+}
+
+// Working-set ratio over which the latency climbs from 10% to 90% of the
+// step between two plateaus, on a log scale.
+double transition_width(const std::vector<CacheLatencyPoint> &points,
+    const Plateau &below, const Plateau &above)
+{
+    const double log_low = std::log(below.latency_ns);
+    const double log_high = std::log(above.latency_ns);
+    const double at_10 = std::exp(log_low + 0.1 * (log_high - log_low));
+    const double at_90 = std::exp(log_low + 0.9 * (log_high - log_low));
+    uint64_t first_over_10 = 0, first_over_90 = 0;
+    for (size_t j = below.first; j <= above.last; ++j) {
+        const double latency = points[j].latency_ns;
+        if (first_over_10 == 0 && latency >= at_10)
+            first_over_10 = points[j].working_set_bytes;
+        if (first_over_90 == 0 && latency >= at_90)
+            first_over_90 = points[j].working_set_bytes;
+    }
+    if (first_over_10 == 0 || first_over_90 == 0) return 1.0;
+    return static_cast<double>(first_over_90) / first_over_10;
 }
 
 std::vector<CacheLevelEstimate> estimate_cache_levels(
@@ -287,6 +356,14 @@ std::vector<CacheLevelEstimate> estimate_cache_levels(
         level.capacity_bytes = points[capacity_index].working_set_bytes;
         level.latency_ns = below.latency_ns;
         level.jump_ratio = above.latency_ns / below.latency_ns;
+        level.transition_width = transition_width(points, below, above);
+        // A capacity boundary is a step: the rise happens within about one
+        // doubling of the working set (an Apple M4's cluster-shared L2, the
+        // softest real step seen, spans 2.5x).  A rise spread over more than
+        // two doublings is not a boundary but a prefetcher gradually losing
+        // its grip, and the point where such a slope crosses the threshold
+        // says nothing about the capacity.
+        level.gradual = level.transition_width > kMaximumStepWidth;
         levels.push_back(level);
     }
     return levels;

@@ -21,7 +21,9 @@ if [[ "${arch}" != "x64" && "${arch}" != "arm64" ]]; then
     exit 1
 fi
 
-test_tmp="$(mktemp -d "${TMPDIR:-/tmp}/cpufb-cli.XXXXXX")"
+# ctest sets TMPDIR to the build tree; a direct invocation uses the binary's
+# directory rather than /tmp, which a shared cluster may forbid.
+test_tmp="$(mktemp -d "${TMPDIR:-$(dirname "${binary}")}/cpufb-cli.XXXXXX")"
 trap 'rm -rf "${test_tmp}"' EXIT
 
 if [[ -n "${CPUFB_TEST_CORE:-}" ]]; then
@@ -444,6 +446,23 @@ case "${test_case}" in
                 }
             ' "${cache_output}"
         }
+        # Capacities are not compared with the OS (a busy sibling lowers them),
+        # but a value that is printed must be plausible: an L1 of at most
+        # 512 KiB, smaller than the L2 when both are given.  A cpu7 on a
+        # MediaTek MT6993 reported "640 KiB" for a 64 KiB L1 before the
+        # estimator learnt to withhold a slope's crossing point.
+        awk -F',' '
+            function kib(text) { sub(/ *K[i]?B.*/, "", text); return text + 0 }
+            $1 == "cache" && $2 ~ /^L1 (data )?cache (capacity|size)$/ &&
+                $4 ~ /K/ { l1 = kib($4) }
+            $1 == "cache" && $2 ~ /^L2/ && $2 ~ /cache/ && $4 ~ /K/ {
+                l2 = kib($4)
+            }
+            END {
+                if (l1 > 512) exit 8
+                if (l1 > 0 && l2 > 0 && l1 >= l2) exit 9
+            }
+        ' "${cache_output}" || fail "implausible cache capacities: $(grep -E 'cache (capacity|size)' "${cache_output}" | tr '\n' ' ')"
         if ! probes_agree; then
             first_attempt="$(grep -E 'cacheline size|ways of associativity' \
                 "${cache_output}" | tr '\n' ' ')"

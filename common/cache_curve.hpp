@@ -24,6 +24,13 @@ struct CacheLevelEstimate
     uint64_t capacity_bytes = 0;
     double latency_ns = 0;
     double jump_ratio = 0;
+    // Working-set ratio over which the latency rises from 10% to 90% of the
+    // step; a real capacity boundary is a step of at most a few x.
+    double transition_width = 1.0;
+    // The rise is a slope, not a step (a prefetcher losing its grip
+    // gradually): capacity_bytes is where the slope crossed the threshold
+    // and must not be reported as the capacity.
+    bool gradual = false;
 };
 
 struct CacheCurveResult
@@ -43,6 +50,9 @@ struct CacheCurveResult
 
 // Follows `iterations` links of the ring stored in buffer, starting at word 0.
 typedef void (*CacheChaseKernel)(int iterations, int64_t *buffer);
+
+// Verdict text for a level whose rise was a slope rather than a step.
+std::string describe_gradual_transition(const CacheLevelEstimate &level);
 
 // Quarter-octave working-set grid from 4 KiB to max_bytes.
 std::vector<uint64_t> build_cache_curve_sizes(uint64_t max_bytes);

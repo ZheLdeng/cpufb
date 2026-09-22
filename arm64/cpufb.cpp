@@ -576,7 +576,9 @@ static bool cpubm_arm_cache(
     auto with_agreement = [](const string &source, int reported, int measured,
                               double tolerance) {
         const string verdict =
-            cpufb::describe_probe_agreement(reported, measured, tolerance);
+            measured <= 0 && !cache_size.capacity_note.empty()
+            ? cache_size.capacity_note
+            : cpufb::describe_probe_agreement(reported, measured, tolerance);
         return source.empty() ? verdict : source + "; " + verdict;
     };
 
@@ -674,6 +676,10 @@ static bool cpubm_arm_cache(
         jump << fixed << setprecision(2) << level.jump_ratio << "x";
         row[2] = latency.str();
         row[3] = jump.str();
+        if (level.gradual) {
+            row[1] = "-";
+            row[3] += " (gradual, boundary hidden)";
+        }
         estimate_table.addOneItem(row);
     }
     estimate_table.print();

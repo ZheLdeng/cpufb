@@ -163,8 +163,9 @@ bool debug_enabled()
 
 } // namespace
 
-int probe_cacheline_size(int theory_cacheline, cacheline_flush_fn flush_line,
-    cacheline_fence_fn finish_flush, size_t last_level_cache_bytes)
+static int probe_cacheline_once(int theory_cacheline,
+    cacheline_flush_fn flush_line, cacheline_fence_fn finish_flush,
+    size_t last_level_cache_bytes)
 {
     if (flush_line == nullptr || finish_flush == nullptr) return 0;
 
@@ -218,6 +219,25 @@ int probe_cacheline_size(int theory_cacheline, cacheline_flush_fn flush_line,
     // Reported as measured even when it disagrees with the OS: substituting
     // the OS value would make the two columns agree by construction.
     return measured;
+}
+
+// One pass takes a few seconds and is right on every host tried, but a
+// frequency ramp or an interrupt burst during the 31 repeats of one stride
+// can push a marginal ratio (0.41 on a Kunpeng 920F, where the prefetcher
+// serves part of the neighbouring line) under the threshold and shift the
+// answer by one stride, about once in twenty runs.  Two agreeing passes are
+// the result; a disagreement is settled by a third.
+int probe_cacheline_size(int theory_cacheline, cacheline_flush_fn flush_line,
+    cacheline_fence_fn finish_flush, size_t last_level_cache_bytes)
+{
+    int votes[3] = {0, 0, 0};
+    for (int pass = 0; pass < 3; ++pass) {
+        votes[pass] = probe_cacheline_once(
+            theory_cacheline, flush_line, finish_flush, last_level_cache_bytes);
+        if (pass == 1 && votes[0] == votes[1]) return votes[0];
+    }
+    if (votes[2] == votes[0] || votes[2] == votes[1]) return votes[2];
+    return votes[0] == votes[1] ? votes[0] : 0; // three different answers
 }
 
 int effective_cacheline_size(

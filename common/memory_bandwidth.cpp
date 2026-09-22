@@ -1,5 +1,7 @@
 #include "memory_bandwidth.hpp"
 
+#include "perf_pmu.hpp"
+
 #include "cache_topology.hpp"
 #include "table.hpp"
 #include "thread_pool.hpp"
@@ -54,6 +56,7 @@ struct BandwidthSample
     double gb_per_second;
     double bytes_per_cycle;
     double load_ipc;
+    bool counted_cycles = false; // bytes_per_cycle from PMU cycles
 };
 
 struct BandwidthReport
@@ -167,7 +170,7 @@ public:
         std::memset(&event, 0, sizeof(event));
         event.type = PERF_TYPE_HARDWARE;
         event.size = sizeof(event);
-        event.config = PERF_COUNT_HW_CPU_CYCLES;
+        event.config = cpufb::perf_cycles_config_for_current_cpu();
         event.disabled = 1;
         event.exclude_kernel = 1;
         event.exclude_hv = 1;
@@ -327,6 +330,7 @@ BandwidthSample measure_once(const KernelSpec &kernel, float *data,
     sample.seconds = elapsed_seconds(start, end);
     sample.gb_per_second = bytes / sample.seconds / 1.0e9;
     double measured_cycles = static_cast<double>(cycles);
+    sample.counted_cycles = cycles > 0;
     if (measured_cycles == 0.0 && fallback_frequency_hz > 0.0)
         measured_cycles = sample.seconds * fallback_frequency_hz;
     sample.bytes_per_cycle =
@@ -520,9 +524,10 @@ bool measure_stream_bandwidth(int cpu, const KernelSpec &kernel,
     CycleCounter counter;
     string cycle_source = "perf CPU cycles";
     string fallback_source;
-    const double fallback_frequency_hz = counter.available()
-        ? 0.0
-        : read_fallback_cpu_frequency_hz(cpu, fallback_source);
+    // Always known: an event that opens but counts nothing (see perf_pmu.hpp)
+    // is only detected after the first sample.
+    const double fallback_frequency_hz =
+        read_fallback_cpu_frequency_hz(cpu, fallback_source);
     if (!counter.available()) {
         cycle_source = fallback_source;
         std::cerr << "Warning: hardware CPU cycles are unavailable; ";
@@ -541,10 +546,12 @@ bool measure_stream_bandwidth(int cpu, const KernelSpec &kernel,
         passes_per_sample;
     vector<BandwidthSample> samples;
     samples.reserve(repetitions);
+    bool all_samples_have_cycles = true;
     for (std::uint32_t repetition = 0; repetition < repetitions; ++repetition) {
         BandwidthSample sample = measure_once(kernel, data, inner_loop,
             passes_per_sample, transferred_bytes, load_instructions, counter,
             fallback_frequency_hz);
+        all_samples_have_cycles &= sample.counted_cycles;
         if (sample.seconds <= 0.0 || !std::isfinite(sample.gb_per_second)) {
             std::free(allocation);
             std::cerr << "Error: stream bandwidth timing failed." << std::endl;
@@ -564,6 +571,12 @@ bool measure_stream_bandwidth(int cpu, const KernelSpec &kernel,
     report.passes_per_sample = passes_per_sample;
     report.kernel = kernel.name;
     report.workset_source = workset_source;
+    // The event can open and still count nothing (a PMU of another core
+    // type, or a VM without a virtual PMU); the samples decide the label.
+    if (!all_samples_have_cycles && cycle_source == "perf CPU cycles")
+        cycle_source = fallback_frequency_hz > 0.0
+            ? fallback_source + " (perf event counted 0 cycles)"
+            : "unavailable (perf event counted 0 cycles)";
     report.cycle_source = cycle_source;
     report.median = samples[samples.size() / 2];
     report.minimum_gb_per_second = samples.front().gb_per_second;

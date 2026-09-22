@@ -404,6 +404,12 @@ bool select_memory_workset(const CliOptions &options, int cpu,
         workset_source += "; capped to " +
             cpufb::format_cache_capacity(capped) +
             "/stream by available memory";
+        // Also on stderr: a smaller workset changes the number, and the
+        // "Workset Source" column is easy to overlook when comparing runs.
+        std::cerr << "Warning: memory stream workset capped to "
+                  << cpufb::format_cache_capacity(capped)
+                  << " per stream by available memory; results are not "
+                  << "comparable with an uncapped run." << std::endl;
     }
     return true;
 }

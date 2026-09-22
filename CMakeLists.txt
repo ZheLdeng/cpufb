@@ -316,7 +316,8 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
 endif()
 
 if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND
-        (CPUFB_ARCH STREQUAL "x64" OR CPUFB_ARCH STREQUAL "arm64"))
+        (CPUFB_ARCH STREQUAL "x64" OR CPUFB_ARCH STREQUAL "arm64"
+            OR CPUFB_ARCH STREQUAL "riscv64"))
     find_program(CPUFB_BASH_EXECUTABLE bash)
     if(CPUFB_BASH_EXECUTABLE)
         set(_cli_test_script "${CMAKE_SOURCE_DIR}/tests/test_cli.sh")
@@ -324,14 +325,24 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND
         set(_cli_test_names
             list
             invalid_filters
-            instruction_matching
             filters_txt
             mode_all_override
             csv_output
-            sweep_output
+            # Asserts that the line-size and associativity probes report a
+            # value; riscv64 had no CLI test at all, which is how it kept two
+            # columns that were copies of the OS values.
+            cache_probes
         )
-        list(APPEND _cli_test_names memory_bandwidth)
-        list(APPEND _cli_test_names cache_bandwidth)
+        if(NOT CPUFB_ARCH STREQUAL "riscv64")
+            # The riscv64 backend rejects the instruction sweep and the
+            # memory-bandwidth options.
+            list(APPEND _cli_test_names
+                instruction_matching
+                sweep_output
+                memory_bandwidth
+                cache_bandwidth
+            )
+        endif()
         foreach(test_name IN LISTS _cli_test_names)
             add_test(
                 NAME "cpufb_cli_${test_name}"

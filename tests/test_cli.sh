@@ -439,15 +439,31 @@ case "${test_case}" in
                 if (rows != 1) exit 4
             }
         ' "${cache_output}" || fail "cache memory bandwidth CSV row is invalid"
+        ;;
+
+    cache_probes)
         # The line-size and associativity probes fail silently: a buffer that
         # is too small or a criterion that is too strict just yields "-" with
         # "probe: not observed" (both happened on Apple M4).  A missing or
-        # disagreeing value is therefore treated as a regression.  The probes
-        # time single cache misses, so load on the test core can spoil one run
-        # (seen once on a Kunpeng 920F straight after a 32-way build); a real
-        # regression fails every attempt, so one retry separates the two.
-        # Capacities are not asserted: a busy SMT sibling or a co-tenant
-        # legitimately lowers them.
+        # disagreeing value is therefore treated as a regression.  Capacities
+        # are not compared with the OS (a busy SMT sibling or a co-tenant
+        # legitimately lowers them), only checked for plausibility: an L1 of
+        # at most 512 KiB, smaller than the L2 when both are given.  A cpu7 on
+        # a MediaTek MT6993 reported "640 KiB" for a 64 KiB L1 before the
+        # estimator learnt to withhold a slope's crossing point.
+        cache_output="${test_tmp}/cache-probes.csv"
+        # The riscv64 backend rejects the memory-bandwidth options; the other
+        # two would otherwise spend the default workset on a row this case
+        # does not look at.
+        cache_args=(--include-test=cache)
+        if [[ "${arch}" != "riscv64" ]]; then
+            cache_args+=(--memory-size-mib=4 --memory-repetitions=1)
+        fi
+        probe_cache_run()
+        {
+            run_success "${binary}" "${thread_arg}" "${cache_args[@]}" \
+                --save="${cache_output}" >/dev/null
+        }
         probes_agree()
         {
             awk -F',' '
@@ -462,11 +478,7 @@ case "${test_case}" in
                 }
             ' "${cache_output}"
         }
-        # Capacities are not compared with the OS (a busy sibling lowers them),
-        # but a value that is printed must be plausible: an L1 of at most
-        # 512 KiB, smaller than the L2 when both are given.  A cpu7 on a
-        # MediaTek MT6993 reported "640 KiB" for a 64 KiB L1 before the
-        # estimator learnt to withhold a slope's crossing point.
+        probe_cache_run
         awk -F',' '
             function kib(text) { sub(/ *K[i]?B.*/, "", text); return text + 0 }
             $1 == "cache" && $2 ~ /^L1 (data )?cache (capacity|size)$/ &&
@@ -479,12 +491,13 @@ case "${test_case}" in
                 if (l1 > 0 && l2 > 0 && l1 >= l2) exit 9
             }
         ' "${cache_output}" || fail "implausible cache capacities: $(grep -E 'cache (capacity|size)' "${cache_output}" | tr '\n' ' ')"
+        # The probes time single cache misses, so load on the test core can
+        # spoil one run (seen once on a Kunpeng 920F straight after a 32-way
+        # build); a real regression fails every attempt.
         if ! probes_agree; then
             first_attempt="$(grep -E 'cacheline size|ways of associativity' \
                 "${cache_output}" | tr '\n' ' ')"
-            run_success "${binary}" "${thread_arg}" --include-test=cache \
-                --memory-size-mib=4 --memory-repetitions=1 \
-                --save="${cache_output}" >/dev/null
+            probe_cache_run
             probes_agree || fail "cache-line or associativity probe did not report a value that agrees with the OS, twice: ${first_attempt}| $(grep -E 'cacheline size|ways of associativity' "${cache_output}" | tr '\n' ' ')"
         fi
         ;;

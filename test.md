@@ -3,15 +3,19 @@
 Rewritten in full at the end of every round. It describes what the branch
 needs verified *now*; it is not a log, and nothing is appended to it.
 
-- **Under test:** `fix/review-high-medium` @ `88165b1`
+- **Under test:** `fix/review-high-medium` @ `ea613ee`
 - **Already validated:** x86-64 (14/14 ctest, L1/L2/L3 all agree with the OS)
   and Kunpeng 920F
 - **Still to run:** Milk-V X60, MediaTek MT6993, Apple M4 Pro
 
-**The RISC-V run is the urgent one this round.** Its backend did not compile
-at `a33f896` and has a new probe path that no machine has executed, and there
-is no riscv64 toolchain on the machine the branch is written on, so the
-Milk-V is the first compile as well as the first run.
+**The RISC-V build break is fixed.** At `a33f896` and `fa2153d` the riscv64
+backend did not compile: the 32-bit chase links were added to arm64 and x64
+only. A reviewer hit it, patched a scratch copy the same way `a6f53f8` does,
+and confirmed the curve is unchanged there (32 KiB and 512 KiB, clean steps),
+so the ring change is not the risk on that platform. What is still unrun is
+everything else in `a6f53f8`: the two probes, the CLI tests and the curve
+dump. There is no riscv64 toolchain on the machine the branch is written on,
+so the Milk-V remains the first compile of that code.
 
 ## What changed since the last round (`88b3238`)
 
@@ -52,12 +56,14 @@ CPUFB_DEBUG_CACHELINE=1 ./cpufb '--thread_pool=[0]' --mode=cache 2>line_x60.txt
 
 Please confirm, in this order:
 
-1. **It compiles.** A build error here is expected to be possible and is the
-   single most useful thing to report; paste it verbatim.
-2. **ctest is 9, not 4.** Five CLI cases now register on riscv64 (`list`,
-   `invalid_filters`, `filters_txt`, `mode_all_override`, `csv_output`) plus
-   `cache_probes`. The sweep and memory-bandwidth cases stay out because the
-   backend rejects those options.
+1. **It compiles.** `riscv_cache_chase32` is the fix; paste any build error
+   verbatim.
+2. **ctest is 10, not 4.** Six CLI cases now register on riscv64 (`list`,
+   `invalid_filters`, `filters_txt`, `mode_all_override`, `csv_output`,
+   `cache_probes`); the sweep and memory-bandwidth cases stay out because the
+   backend rejects those options. This also closes the hole the last report
+   named: those cases run the `cpufb` binary, so ctest can no longer pass
+   while the main program fails to build.
 3. **The line size and the ways are measured**, not copied. The two rows
    should read `probe (agrees with OS)` rather than `Linux sysfs topology`,
    and should still say 64 B and 4 ways. This probe has never run on RISC-V:
@@ -66,9 +72,12 @@ Please confirm, in this order:
    needs Zicbom and the kernel's permission. If it reports `-` or a wrong
    size, `line_x60.txt` has the ratios it saw and is what to send.
 4. **L1 32 KiB and L2 512 KiB are still reported** and neither is withheld.
-   Send `curve_x60.txt`; its new per-level lines give each level's rise.
-5. The probe adds roughly 20-60 s to a cache run on this board. If it takes
-   minutes, say so, and the eviction buffer can be bounded.
+   The patched scratch build already showed this, so it is a confirmation,
+   not an open question.
+5. **`curve_x60.txt` is no longer empty.** riscv64 did not call
+   `debug_print_cache_curve`; `ea613ee` wires it in.
+6. The line probe adds roughly 20-60 s to a cache run on this board. If it
+   takes minutes, say so, and the eviction buffer can be bounded.
 
 ## MediaTek MT6993 (Android) — last tested at `88b3238`
 
@@ -139,6 +148,7 @@ them again costs a round trip.
 | `*_latency` of FMA instructions, `.vs` forms | Only the accumulator path is measured for the by-element forms. The `.vv` forms now have both. |
 | Line-size probe on a core that prefetches both directions | Reports twice the line size by construction. No machine tried so far does this. |
 | riscv64 has no memory-bandwidth, instruction sweep or loop scaling | A deliberate subset; the backend rejects those options explicitly. |
+| riscv64 thermal zone differs between runs | The system table reads whichever zone the kernel exposes; the reading itself was right both times. |
 
 ## Reporting
 

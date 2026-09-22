@@ -109,12 +109,14 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     cache_size->test_L1 = 0;
     cache_size->test_L2 = 0;
     cache_size->test_L3 = 0;
+    const std::string doubt = cpufb::describe_prefetch_doubt(curve);
     for (const cpufb::CacheLevelEstimate &level : curve.levels) {
-        // A gradual rise gives no capacity, only a note; a soft one keeps
-        // the capacity and carries its uncertainty range.
-        const int size_kb =
-            level.gradual ? 0 : static_cast<int>(level.capacity_bytes / 1024);
-        const std::string note = cpufb::describe_transition(level);
+        // Every level the curve resolved is reported; the note says when
+        // its boundary was not sharp.
+        const int size_kb = static_cast<int>(level.capacity_bytes / 1024);
+        // The doubt applies to the whole curve, so it goes on every level.
+        std::string note = cpufb::describe_transition(level);
+        if (!doubt.empty()) note = note.empty() ? doubt : note + "; " + doubt;
         if (level.level == "L1")
             cache_size->test_L1_note = note;
         else if (level.level == "L2")

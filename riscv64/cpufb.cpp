@@ -226,7 +226,9 @@ static void cpubm_riscv64_cache(std::vector<int> &set_of_threads, Table &table)
     cont[0] = "L1 data cache capacity";
     cont[1] = l1.bytes > 0 ? cpufb::format_cache_capacity(l1.bytes) : "-";
     cont[2] = measured_l1 > 0 ? cpufb::format_cache_capacity(measured_l1) : "-";
+    const string doubt = cpufb::describe_prefetch_doubt(curve);
     cont[5] = cpufb::describe_probe_agreement(l1.bytes, measured_l1, 1.5);
+    if (!doubt.empty()) cont[5] += "; " + doubt;
     table.addOneItem(cont);
 
     cont.assign(table.getCol(), "");
@@ -234,6 +236,7 @@ static void cpubm_riscv64_cache(std::vector<int> &set_of_threads, Table &table)
     cont[1] = l2.bytes > 0 ? cpufb::format_cache_capacity(l2.bytes) : "-";
     cont[2] = measured_l2 > 0 ? cpufb::format_cache_capacity(measured_l2) : "-";
     cont[5] = cpufb::describe_probe_agreement(l2.bytes, measured_l2, 1.5);
+    if (!doubt.empty()) cont[5] += "; " + doubt;
     table.addOneItem(cont);
 
     // Both probes run after the curve: the line probe sizes its eviction

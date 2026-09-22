@@ -179,12 +179,14 @@ cpufb::CacheCurveResult measure_cache_hierarchy(
     const int line_size = cpufb::effective_cacheline_size(
         cache_data->theory_cacheline, cache_data->test_cacheline, 64);
     result = cpufb::measure_cache_curve(load_ptr32, line_size, max_bytes);
+    const std::string doubt = cpufb::describe_prefetch_doubt(result);
     for (const auto &level : result.levels) {
-        // A gradual rise gives no capacity, only a note; a soft one keeps
-        // the capacity and carries its uncertainty range.
-        const int size_kb =
-            level.gradual ? 0 : static_cast<int>(level.capacity_bytes / 1024);
-        const std::string note = cpufb::describe_transition(level);
+        // Every level the curve resolved is reported; the note says when
+        // its boundary was not sharp.
+        const int size_kb = static_cast<int>(level.capacity_bytes / 1024);
+        // The doubt applies to the whole curve, so it goes on every level.
+        std::string note = cpufb::describe_transition(level);
+        if (!doubt.empty()) note = note.empty() ? doubt : note + "; " + doubt;
         if (level.level == "L1")
             cache_data->test_L1_note = note;
         else if (level.level == "L2")

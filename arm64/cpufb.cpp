@@ -678,10 +678,8 @@ static bool cpubm_arm_cache(
         jump << fixed << setprecision(2) << level.jump_ratio << "x";
         row[2] = latency.str();
         row[3] = jump.str();
-        if (level.gradual) {
-            row[1] = "-";
-            row[3] += " (gradual, no boundary)";
-        }
+        const string note = cpufb::describe_transition(level);
+        if (!note.empty()) row[3] += " (" + note + ")";
         estimate_table.addOneItem(row);
     }
     estimate_table.print();

@@ -147,9 +147,13 @@ std::vector<size_t> build_ring_order(
 // n lines in a cache of c lines keeps a share of its hits that falls off
 // roughly as (c/n)^2.5 (0.55 at 1.25x, 0.17 at 2x, 0.04 at 4x the capacity
 // on an x86 core): the latency still jumps at the capacity, but closes the
-// last tenth of the step only near 2.5x.  So the width of a rise is not
-// evidence against a boundary; where the capacity sits within it is (see
-// CacheLevelEstimate::gradual).
+// last tenth of the step only near 2.5x.  A wide rise is therefore not
+// evidence against a boundary, and neither is where the capacity sits inside
+// it: an Apple M4's cluster-shared L2, whose 16 MiB every other check
+// confirms, sits at 1.3-1.6 of the start of its rise because the plateau
+// below it drifts upward, while the MT6993 core whose plateau a prefetcher
+// extends sits at 0.94.  Both were tried as tests and both withheld correct
+// capacities; see describe_prefetch_doubt() for what the curve does say.
 size_t slots_for(size_t line_count, size_t stride_words)
 {
     const size_t kTargetPairs = 65536;
@@ -285,15 +289,38 @@ std::string format_approximate_capacity(uint64_t bytes)
 
 std::string describe_transition(const CacheLevelEstimate &level)
 {
-    if (!level.gradual) return "";
-    char text[192];
+    if (level.transition_width <= kWideRiseWidth || level.rise_begin_bytes == 0)
+        return "";
+    char text[160];
     std::snprintf(text, sizeof(text),
-        "probe: %s latency rises gradually from %s to %s (%.1fx) instead of "
-        "stepping, so no capacity is read off it; prefetcher suspected",
-        level.level.c_str(),
+        "latency climbed over %s to %s (%.1fx), so the boundary is not sharp",
         format_approximate_capacity(level.rise_begin_bytes).c_str(),
         format_approximate_capacity(level.rise_end_bytes).c_str(),
         level.transition_width);
+    return text;
+}
+
+// A pointer chase over a working set far larger than any cache has to miss,
+// and a miss costs what memory costs.  A MediaTek MT6993 big core answered a
+// 128 MiB chase in 12.6 ns, 25 cycles at its 2 GHz, which no DRAM does: its
+// prefetcher followed the ring at every size.  Its L1 plateau then reached
+// 128 KiB for a 64 KiB cache, and the curve carried no other sign of it.
+std::string describe_prefetch_doubt(const CacheCurveResult &result)
+{
+    if (result.reached_memory || result.points.empty()) return "";
+    const double deepest = result.points.back().latency_ns;
+    // 40 cycles at 4 GHz, below any DRAM and above any cache hit.
+    const double kMemoryFloorNs = 10.0;
+    if (deepest >= kMemoryFloorNs && result.memory_latency_ns > 0.0 &&
+        deepest >= kMemoryLatencyFraction * result.memory_latency_ns)
+        return "";
+    char text[192];
+    std::snprintf(text, sizeof(text),
+        "a %s working set still answered in %.1f ns, so the chase was "
+        "prefetched throughout and every capacity here may be too large",
+        format_approximate_capacity(result.points.back().working_set_bytes)
+            .c_str(),
+        deepest);
     return text;
 }
 
@@ -314,7 +341,9 @@ void debug_print_cache_curve(const CacheCurveResult &result)
             level.latency_ns, level.jump_ratio, level.transition_width,
             format_approximate_capacity(level.rise_begin_bytes).c_str(),
             format_approximate_capacity(level.rise_end_bytes).c_str(),
-            level.gradual ? " gradual" : "");
+            level.transition_width > kWideRiseWidth ? " wide" : "");
+    const std::string doubt = describe_prefetch_doubt(result);
+    if (!doubt.empty()) std::fprintf(stderr, "  %s\n", doubt.c_str());
 }
 
 std::vector<uint64_t> build_cache_curve_sizes(uint64_t max_bytes)
@@ -417,12 +446,6 @@ std::vector<CacheLevelEstimate> estimate_cache_levels(
         level.jump_ratio = above.latency_ns / below.latency_ns;
         level.transition_width = transition_width(
             points, below, above, level.rise_begin_bytes, level.rise_end_bytes);
-        // A capacity boundary makes the latency jump, so the threshold is
-        // crossed where the rise starts; a slope crosses it partway up, and
-        // then the crossing point says nothing about the capacity.
-        level.gradual = level.rise_begin_bytes > 0 &&
-            static_cast<double>(level.capacity_bytes) > kGradualRisePosition *
-                    static_cast<double>(level.rise_begin_bytes);
         levels.push_back(level);
     }
     return levels;

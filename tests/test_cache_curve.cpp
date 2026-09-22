@@ -8,8 +8,10 @@
 #include <vector>
 
 using cpufb::build_cache_curve_sizes;
+using cpufb::CacheCurveResult;
 using cpufb::CacheLatencyPoint;
 using cpufb::CacheLevelEstimate;
+using cpufb::describe_prefetch_doubt;
 using cpufb::describe_transition;
 using cpufb::estimate_cache_levels;
 
@@ -29,6 +31,26 @@ struct Step
     uint64_t capacity_kib;
     double latency_ns;
 };
+
+// A curve recorded on real hardware, as CPUFB_DEBUG_CACHE_CURVE prints it.
+struct MeasuredPoint
+{
+    uint64_t kib;
+    double latency_ns;
+};
+
+std::vector<CacheLatencyPoint> measured_curve(
+    const MeasuredPoint *samples, size_t count)
+{
+    std::vector<CacheLatencyPoint> curve;
+    for (size_t i = 0; i < count; ++i) {
+        CacheLatencyPoint point;
+        point.working_set_bytes = samples[i].kib * 1024;
+        point.latency_ns = samples[i].latency_ns;
+        curve.push_back(point);
+    }
+    return curve;
+}
 
 std::vector<CacheLatencyPoint> make_curve(double base_latency_ns,
     const std::vector<Step> &steps, double drift_per_point = 0.0,
@@ -98,22 +120,6 @@ int main()
     }
     ok &= expect_levels("soft knee", soft, {{"L1", 64}, {"L2", 1024}});
 
-    // Cluster-shared L2 that softens above its capacity, after an Apple M4
-    // Pro (128 KiB L1, 16 MiB L2): 20 MiB reads 24.5 ns between the 7.9 ns
-    // plateau and ~110 ns DRAM.  The geometric midpoint placed L2 at 20 MiB.
-    std::vector<CacheLatencyPoint> shared_l2 =
-        make_curve(0.9, {{128, 7.9}, {16384, 113.0}});
-    for (CacheLatencyPoint &point : shared_l2) {
-        const uint64_t mib = point.working_set_bytes / (1024 * kKiB);
-        if (mib == 20) point.latency_ns = 24.5;
-        if (mib == 24) point.latency_ns = 38.2;
-        if (mib == 28) point.latency_ns = 45.0;
-        if (mib == 32) point.latency_ns = 50.6;
-        if (mib == 40) point.latency_ns = 80.0;
-        if (mib == 48) point.latency_ns = 105.8;
-    }
-    ok &= expect_levels("shared L2", shared_l2, {{"L1", 128}, {"L2", 16384}});
-
     // Translation cost growing slowly across the L2 plateau (4 KiB pages) is
     // drift within one level, not an extra level between L1 and L2.
     ok &= expect_levels("translation drift",
@@ -123,11 +129,7 @@ int main()
     // Measured on an isolated Kunpeng 920F core (32 KiB L1, 768 KiB L2, no
     // L3, transparent huge pages).  The DRAM plateau is noisy, so a rule that
     // depends on where it starts reads 1280 KiB here.
-    static const struct
-    {
-        uint64_t kib;
-        double latency_ns;
-    } kKunpeng920F[] = {
+    static const MeasuredPoint kKunpeng920F[] = {
         {4, 3.594},
         {5, 3.490},
         {6, 3.464},
@@ -186,13 +188,8 @@ int main()
         {57344, 138.011},
         {65536, 138.960},
     };
-    std::vector<CacheLatencyPoint> kunpeng;
-    for (const auto &sample : kKunpeng920F) {
-        CacheLatencyPoint point;
-        point.working_set_bytes = sample.kib * kKiB;
-        point.latency_ns = sample.latency_ns;
-        kunpeng.push_back(point);
-    }
+    std::vector<CacheLatencyPoint> kunpeng = measured_curve(
+        kKunpeng920F, sizeof(kKunpeng920F) / sizeof(*kKunpeng920F));
     ok &= expect_levels("Kunpeng 920F", kunpeng, {{"L1", 32}, {"L2", 768}});
 
     // Telling an L3 from memory.  With the latency of a working set that no
@@ -227,58 +224,6 @@ int main()
         ok = false;
     }
 
-    // Arm big core (MediaTek MT6993 cpu7): a temporal prefetcher keeps the
-    // ring at L1 latency far past the 64 KiB L1 and lets go gradually, so
-    // the rise from 2.0 ns to the ~7.6 ns plateau spans 256 KiB to 4 MiB.
-    // That is a slope, not a step; the level must be flagged and its
-    // capacity withheld, where a threshold rule reported 640 KiB.
-    std::vector<CacheLatencyPoint> smeared;
-    for (uint64_t size : build_cache_curve_sizes(64 * 1024 * kKiB)) {
-        CacheLatencyPoint point;
-        point.working_set_bytes = size;
-        const double kib = static_cast<double>(size) / kKiB;
-        if (kib <= 256)
-            point.latency_ns = 2.0;
-        else if (kib < 4096)
-            point.latency_ns =
-                2.0 * std::pow(3.8, std::log2(kib / 256) / std::log2(16.0));
-        else if (kib <= 16384)
-            point.latency_ns = 7.6;
-        else
-            point.latency_ns =
-                7.6 * std::pow(13.0 / 7.6, std::log2(kib / 16384) / 2.0);
-        smeared.push_back(point);
-    }
-    {
-        const std::vector<CacheLevelEstimate> levels =
-            estimate_cache_levels(smeared);
-        if (levels.empty() || !levels[0].gradual) {
-            std::cerr << "a prefetch-smeared L1 rise was not flagged as gradual"
-                      << " (levels " << levels.size() << ")\n";
-            ok = false;
-        }
-        // The clean steps must not be flagged at all.
-        for (const CacheLevelEstimate &level :
-            estimate_cache_levels(kunpeng, 135.0, &reached_memory)) {
-            if (level.gradual) {
-                std::cerr << "Kunpeng 920F " << level.level
-                          << " was flagged as gradual (rise "
-                          << level.transition_width << "x)\n";
-                ok = false;
-            }
-        }
-        // The M4's cluster-shared L2 rises over 2.5x, but it rises from its
-        // capacity, so it is a step.
-        for (const CacheLevelEstimate &level :
-            estimate_cache_levels(shared_l2)) {
-            if (level.gradual) {
-                std::cerr << "the M4 shared L2 was flagged as gradual (rise "
-                          << level.transition_width << "x)\n";
-                ok = false;
-            }
-        }
-    }
-
     // A clean cache under the multi-permutation ring: a working set of n
     // lines in a cache of c lines keeps about (c/n)^2.5 of its hits past the
     // capacity (see measure_pointer_chase), so the step trails off over
@@ -298,50 +243,81 @@ int main()
         tailed.push_back(point);
     }
     ok &= expect_levels("ring tail", tailed, {{"L1", 32}, {"L2", 1024}});
-    for (const CacheLevelEstimate &level : estimate_cache_levels(tailed)) {
-        if (level.gradual) {
-            std::cerr << "the ring's reuse-distance tail was read as a slope ("
-                      << level.transition_width << "x)\n";
+
+    // Measured on an Apple M4 Pro (128 KiB L1, 16 MiB cluster-shared L2, no
+    // L3).  The L2 plateau is not flat: it drifts from 6.0 ns at 1 MiB to
+    // 17.4 ns at 14 MiB, so the 10% crossing of the step to memory happens
+    // at 10 MiB, well below the 16 MiB boundary.  A rule that asked for the
+    // capacity to sit at the foot of its rise withheld this level in 16 of
+    // 17 runs, on the one machine whose L2 every other check confirms.
+    static const MeasuredPoint kAppleM4Pro[] = {{4, 0.887}, {5, 0.887},
+        {6, 0.887}, {7, 0.887}, {8, 0.974}, {10, 0.971}, {12, 0.971},
+        {14, 0.949}, {16, 0.956}, {20, 0.985}, {24, 0.947}, {28, 0.980},
+        {32, 0.933}, {40, 0.988}, {48, 0.944}, {56, 0.992}, {64, 0.944},
+        {80, 0.942}, {96, 0.951}, {112, 0.948}, {128, 1.003}, {160, 3.250},
+        {192, 4.309}, {224, 5.024}, {256, 5.665}, {320, 5.917}, {384, 5.843},
+        {448, 6.347}, {512, 6.326}, {640, 6.188}, {768, 6.457}, {896, 5.911},
+        {1024, 6.026}, {1280, 6.047}, {1536, 6.035}, {1792, 6.024},
+        {2048, 6.029}, {2560, 6.100}, {3072, 6.439}, {3584, 6.881},
+        {4096, 7.235}, {5120, 8.214}, {6144, 8.476}, {7168, 8.609},
+        {8192, 8.884}, {10240, 10.819}, {12288, 13.858}, {14336, 17.436},
+        {16384, 16.632}, {20480, 45.404}, {24576, 98.157}, {28672, 103.886},
+        {32768, 106.125}, {40960, 108.428}, {49152, 110.029}, {57344, 110.053},
+        {65536, 113.365}, {81920, 117.492}, {98304, 119.001}, {114688, 119.927},
+        {131072, 118.649}};
+    std::vector<CacheLatencyPoint> apple_m4 =
+        measured_curve(kAppleM4Pro, sizeof(kAppleM4Pro) / sizeof(*kAppleM4Pro));
+    ok &= expect_levels("Apple M4 Pro", apple_m4, {{"L1", 128}, {"L2", 16384}});
+
+    // Measured on a MediaTek MT6993 big core (cpu7), whose real L1 is
+    // 64 KiB.  Its prefetcher follows the ring at every working set: 2.01 ns
+    // holds to 128 KiB, and 128 MiB still answers in 12.6 ns, 25 cycles at
+    // 2 GHz, which no DRAM does.  The curve therefore reads a 128 KiB L1 and
+    // there is nothing in its shape to say otherwise -- a width test called
+    // it a slope, a position test called it a clean step, and both were
+    // wrong somewhere else.  What the curve does say is that it never
+    // reached memory, and that is what has to be reported.
+    static const MeasuredPoint kMediaTekCpu7[] = {{4, 2.009}, {5, 2.011},
+        {6, 2.007}, {7, 1.998}, {8, 2.009}, {10, 2.008}, {12, 2.009},
+        {14, 2.007}, {16, 2.009}, {20, 2.009}, {24, 2.012}, {28, 2.011},
+        {32, 2.009}, {40, 2.012}, {48, 2.010}, {56, 2.017}, {64, 2.011},
+        {80, 2.012}, {96, 2.012}, {112, 2.020}, {128, 2.009}, {160, 2.743},
+        {192, 3.533}, {224, 3.934}, {256, 4.206}, {320, 4.578}, {384, 4.836},
+        {448, 5.009}, {512, 5.157}, {640, 5.367}, {768, 5.456}, {896, 5.675},
+        {1024, 5.764}, {1280, 6.196}, {1536, 6.529}, {1792, 6.989},
+        {2048, 7.011}, {2560, 7.511}, {3072, 7.823}, {3584, 7.950},
+        {4096, 7.734}, {5120, 7.610}, {6144, 7.482}, {7168, 7.503},
+        {8192, 7.488}, {10240, 7.609}, {12288, 7.794}, {14336, 7.956},
+        {16384, 8.046}, {20480, 8.233}, {24576, 8.496}, {28672, 8.969},
+        {32768, 8.936}, {40960, 9.827}, {49152, 10.643}, {57344, 10.932},
+        {65536, 11.231}, {81920, 11.820}, {98304, 12.201}, {114688, 12.304},
+        {131072, 12.560}};
+    {
+        CacheCurveResult prefetched;
+        prefetched.points = measured_curve(
+            kMediaTekCpu7, sizeof(kMediaTekCpu7) / sizeof(*kMediaTekCpu7));
+        prefetched.levels =
+            estimate_cache_levels(prefetched.points, 0.0, &reached_memory);
+        prefetched.reached_memory = reached_memory;
+        if (prefetched.reached_memory) {
+            std::cerr << "a curve that tops out at 12.6 ns claimed to have "
+                         "reached memory\n";
             ok = false;
         }
-    }
-
-    // The same big core with the multi-permutation ring: the prefetcher lets
-    // go earlier, and the rise from the 2.0 ns L1 plateau spans 139 KiB to
-    // 605 KiB.  A width test read this as a clean step (its 10%/90% crossings
-    // fell exactly 4.0x apart on the grid, and the test was "> 4.0") and
-    // reported a 192 KiB L1.  The capacity sits 1.38x above the start of the
-    // rise, a third of the way up it, so there is no boundary to report.
-    static const struct
-    {
-        uint64_t kib;
-        double latency_ns;
-    } kMediaTekCpu7[] = {{128, 2.011}, {160, 2.610}, {192, 2.633}, {224, 2.885},
-        {256, 2.996}, {320, 3.936}, {384, 4.053}, {448, 4.642}, {512, 4.358},
-        {640, 5.113}, {768, 5.413}};
-    std::vector<CacheLatencyPoint> big_core;
-    for (uint64_t size : build_cache_curve_sizes(64 * 1024 * kKiB)) {
-        CacheLatencyPoint point;
-        point.working_set_bytes = size;
-        const uint64_t kib = size / kKiB;
-        point.latency_ns = kib < 128 ? 2.0 : 5.43;
-        for (const auto &sample : kMediaTekCpu7)
-            if (sample.kib == kib) point.latency_ns = sample.latency_ns;
-        if (kib > 16384)
-            point.latency_ns =
-                5.43 * std::pow(100.0 / 5.43, std::log2(kib / 16384.0) / 2.0);
-        big_core.push_back(point);
-    }
-    {
-        const std::vector<CacheLevelEstimate> levels =
-            estimate_cache_levels(big_core);
-        if (levels.empty() || !levels[0].gradual ||
-            levels[0].rise_begin_bytes < 128 * kKiB ||
-            levels[0].rise_end_bytes > 768 * kKiB ||
-            describe_transition(levels[0]).find("139 KiB") ==
-                std::string::npos) {
-            std::cerr << "the MT6993 cpu7 L1 rise was not flagged as gradual"
-                      << " (levels " << levels.size() << ")\n";
+        if (describe_prefetch_doubt(prefetched).empty()) {
+            std::cerr << "a curve prefetched throughout was not doubted\n";
+            ok = false;
+        }
+        // A curve that does reach memory must not be doubted.
+        CacheCurveResult honest;
+        honest.points = apple_m4;
+        honest.levels =
+            estimate_cache_levels(honest.points, 123.1, &reached_memory);
+        honest.reached_memory = reached_memory;
+        honest.memory_latency_ns = 123.1;
+        if (!describe_prefetch_doubt(honest).empty()) {
+            std::cerr << "the Apple M4 curve was doubted although it reached "
+                         "memory\n";
             ok = false;
         }
     }

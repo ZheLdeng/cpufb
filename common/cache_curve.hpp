@@ -35,15 +35,6 @@ struct CacheLevelEstimate
     uint64_t rise_begin_bytes = 0;
     uint64_t rise_end_bytes = 0;
     double transition_width = 1.0;
-    // What does say it is where capacity_bytes sits within that rise.  A
-    // boundary makes the latency jump, so the threshold is crossed in the
-    // same grid interval the rise starts in: every level measured on real
-    // hardware so far sits at 0.95-1.01 of rise_begin_bytes.  A prefetcher
-    // letting go gradually turns the step into a slope, the threshold is
-    // crossed well up it, and capacity_bytes is an artefact of where the
-    // threshold happens to lie (a MediaTek MT6993 big core: 1.38, reported
-    // as a 192 KiB L1 for a rise spanning 139 KiB to 605 KiB).
-    bool gradual = false;
 };
 
 struct CacheCurveResult
@@ -66,13 +57,19 @@ struct CacheCurveResult
 // a 64-byte line holds 16 of them.
 typedef void (*CacheChaseKernel)(int iterations, const int32_t *buffer);
 
-// Verdict text for a level whose capacity was withheld; empty for a level
-// whose latency jumped at its capacity.
+// How far the latency climbed before it settled, for a level whose rise was
+// wider than one working-set doubling; empty for a clean step.  This is an
+// annotation, not a verdict: two rounds of hardware reports showed that the
+// width of a rise, and where the capacity sits inside it, both fail to tell
+// a real boundary from a prefetched plateau.  See describe_prefetch_doubt()
+// for the signal that does carry information.
 std::string describe_transition(const CacheLevelEstimate &level);
-// Adjacent working sets on the quarter-octave grid differ by at most 1.25x,
-// so a capacity more than this far above the start of the rise means a
-// sample was already climbing before the threshold was crossed.
-const double kGradualRisePosition = 1.25;
+const double kWideRiseWidth = 2.5;
+
+// Set when the deepest working set in the sweep is still served faster than
+// memory: the chase was prefetched everywhere, so no capacity read from this
+// curve can be trusted.  Empty otherwise.
+std::string describe_prefetch_doubt(const CacheCurveResult &result);
 
 // With CPUFB_DEBUG_CACHE_CURVE set, writes the sampled curve and the level
 // estimates to stderr; does nothing otherwise.  This is what a bug report

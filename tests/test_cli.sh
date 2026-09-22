@@ -16,7 +16,8 @@ if [[ ! -x "${binary}" ]]; then
     echo "FAIL ${test_case}: cpufb binary is not executable: ${binary}" >&2
     exit 1
 fi
-if [[ "${arch}" != "x64" && "${arch}" != "arm64" ]]; then
+if [[ "${arch}" != "x64" && "${arch}" != "arm64" &&
+    "${arch}" != "riscv64" ]]; then
     echo "FAIL ${test_case}: unsupported test architecture: ${arch}" >&2
     exit 1
 fi

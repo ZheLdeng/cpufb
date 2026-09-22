@@ -522,7 +522,15 @@ CacheCurveResult measure_cache_curve(
     // region prefetcher serve most accesses (an Apple M4 read 14 ns at 48 MiB
     // instead of ~110 ns, non-monotonically, and L2 could not be placed).
     const size_t kLargePageBytes = 16 * 1024;
-    const bool group_by_page = !huge_pages && page_bytes < kLargePageBytes;
+    // CPUFB_CHASE_NO_PAGE_GROUPS=1 shuffles globally instead, which costs a
+    // translation miss per access and is the control for the other half of
+    // that trade: visiting a whole page at once is exactly what lets a region
+    // prefetcher serve it.  A MediaTek MT6993 answers a 128 MiB chase in
+    // 26 ns under page-grouped order, which is not memory, and its curve
+    // falls by 0.9 ns at 12 MiB; the same sweep on huge pages rises there.
+    const char *no_groups = std::getenv("CPUFB_CHASE_NO_PAGE_GROUPS");
+    const bool group_by_page = !huge_pages && page_bytes < kLargePageBytes &&
+        (no_groups == nullptr || no_groups[0] != '1');
     const size_t group_lines =
         group_by_page ? std::max<size_t>(1, page_bytes / line) : 0;
     if (huge_pages)

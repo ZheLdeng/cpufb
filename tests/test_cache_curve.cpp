@@ -322,6 +322,68 @@ int main()
         }
     }
 
+    // Two little cores of the same MediaTek MT6993 cluster, measured in the
+    // same run.  Their curves are nearly identical, and the point of this
+    // case is that the estimator must say the same thing about both: the
+    // plateau between 112 KiB and 320 KiB drifts by 1.099 against a 1.10
+    // band, so the rule that used that band found three levels on one core
+    // and two on the other, and flipped between them from run to run.
+    static const MeasuredPoint kMediaTekCpu0[] = {{4, 1.486}, {5, 1.487},
+        {6, 1.479}, {7, 1.486}, {8, 1.485}, {10, 1.484}, {12, 1.486},
+        {14, 1.483}, {16, 1.484}, {20, 1.485}, {24, 1.485}, {28, 1.485},
+        {32, 1.486}, {40, 1.487}, {48, 1.486}, {56, 1.489}, {64, 1.485},
+        {80, 2.355}, {96, 2.698}, {112, 2.918}, {128, 3.071}, {160, 3.198},
+        {192, 3.272}, {224, 3.306}, {256, 3.650}, {320, 4.489}, {384, 4.978},
+        {448, 5.040}, {512, 5.266}, {640, 5.875}, {768, 6.268}, {896, 6.758},
+        {1024, 6.656}, {1280, 6.879}, {1536, 6.561}, {1792, 6.484},
+        {2048, 6.535}, {2560, 6.680}, {3072, 6.703}, {3584, 6.729},
+        {4096, 6.855}, {5120, 6.860}, {6144, 7.268}, {7168, 7.283},
+        {8192, 7.102}, {10240, 7.597}, {12288, 6.718}, {14336, 9.160},
+        {16384, 10.390}, {20480, 12.053}, {24576, 15.622}, {28672, 17.091},
+        {32768, 17.979}, {40960, 20.103}, {49152, 21.714}, {57344, 22.642},
+        {65536, 24.030}, {81920, 24.557}, {98304, 24.240}, {114688, 24.948},
+        {131072, 25.285}};
+    static const MeasuredPoint kMediaTekCpu1[] = {{4, 1.485}, {5, 1.485},
+        {6, 1.486}, {7, 1.483}, {8, 1.486}, {10, 1.486}, {12, 1.483},
+        {14, 1.484}, {16, 1.485}, {20, 1.483}, {24, 1.486}, {28, 1.483},
+        {32, 1.487}, {40, 1.485}, {48, 1.486}, {56, 1.484}, {64, 1.488},
+        {80, 2.353}, {96, 2.692}, {112, 2.913}, {128, 3.070}, {160, 3.197},
+        {192, 3.264}, {224, 3.297}, {256, 3.334}, {320, 3.374}, {384, 3.783},
+        {448, 4.640}, {512, 5.243}, {640, 6.171}, {768, 6.680}, {896, 6.728},
+        {1024, 6.563}, {1280, 6.821}, {1536, 6.419}, {1792, 6.519},
+        {2048, 6.611}, {2560, 6.627}, {3072, 6.663}, {3584, 6.772},
+        {4096, 6.777}, {5120, 6.792}, {6144, 6.911}, {7168, 7.012},
+        {8192, 7.305}, {10240, 7.780}, {12288, 6.833}, {14336, 8.407},
+        {16384, 9.999}, {20480, 14.407}, {24576, 14.576}, {28672, 16.401},
+        {32768, 27.154}, {40960, 20.274}, {49152, 21.051}, {57344, 23.431},
+        {65536, 24.353}, {81920, 23.746}, {98304, 24.283}, {114688, 26.569},
+        {131072, 25.886}};
+    {
+        const std::vector<CacheLevelEstimate> cpu0 =
+            estimate_cache_levels(measured_curve(
+                kMediaTekCpu0, sizeof(kMediaTekCpu0) / sizeof(*kMediaTekCpu0)));
+        const std::vector<CacheLevelEstimate> cpu1 =
+            estimate_cache_levels(measured_curve(
+                kMediaTekCpu1, sizeof(kMediaTekCpu1) / sizeof(*kMediaTekCpu1)));
+        if (cpu0.size() != cpu1.size() || cpu0.size() != 3) {
+            std::cerr << "two cores of one cluster were read differently: "
+                      << cpu0.size() << " levels against " << cpu1.size()
+                      << ", expected 3 each\n";
+            ok = false;
+        }
+        for (size_t i = 0; i < cpu0.size() && i < cpu1.size(); ++i) {
+            const double ratio = static_cast<double>(cpu0[i].capacity_bytes) /
+                static_cast<double>(cpu1[i].capacity_bytes);
+            if (ratio < 0.5 || ratio > 2.0) {
+                std::cerr << "MT6993 " << cpu0[i].level << " differs between "
+                          << "two cores of one cluster: "
+                          << cpu0[i].capacity_bytes / kKiB << " KiB against "
+                          << cpu1[i].capacity_bytes / kKiB << " KiB\n";
+                ok = false;
+            }
+        }
+    }
+
     ok &= expect_levels("flat curve", make_curve(2.0, {}), {});
 
     // Bandwidth worksets live in a level but not in the one below it.

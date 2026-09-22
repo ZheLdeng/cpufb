@@ -20,8 +20,24 @@ namespace cpufb {
 
 namespace {
 
-// Points of one plateau stay within this max/min band.
-const double kPlateauBand = 1.10;
+// A plateau ends where the latency starts climbing, and how fast it climbs
+// is measured between neighbouring samples: log latency over log working
+// set, so a doubling of latency across a doubling of the working set is 1.0.
+// Within a level this stays near zero (0.05 to 0.2 on every curve measured),
+// and a boundary is 1.4 to 10.
+//
+// The rule this replaces asked that the whole run stay within a 1.10 band of
+// its own minimum, which made where a plateau ends depend on where it began
+// and on how far a slow drift had accumulated.  Two platforms landed on the
+// edge of that band at once: a MediaTek MT6993 core had a run measuring
+// 1.099 against the 1.10 limit, so a 0.003 ns wobble decided whether it
+// found two cache levels or three, and an Apple M4 Pro's L2, which climbs
+// across its own range, was cut in a different place run to run, which moved
+// its capacity between 8 and 20 MiB.
+const double kPlateauSlope = 0.30;
+// No real plateau drifts this far within itself; this only stops a curve
+// that creeps everywhere from merging into one segment.
+const double kMaximumPlateauSpan = 4.0;
 const size_t kMinimumPlateauPoints = 3;
 // Adjacent plateaus closer than this are one level drifting, not a new cache
 // level.  Translation cost is the usual cause: on a Kunpeng 920F DRAM latency
@@ -70,7 +86,14 @@ std::vector<Plateau> find_plateaus(const std::vector<CacheLatencyPoint> &points)
             const double next = points[end + 1].latency_ns;
             const double next_low = std::min(low, next);
             const double next_high = std::max(high, next);
-            if (next_low <= 0.0 || next_high / next_low > kPlateauBand) break;
+            if (next_low <= 0.0 || next_high / next_low > kMaximumPlateauSpan)
+                break;
+            const double rise =
+                std::fabs(std::log(next / points[end].latency_ns));
+            const double step = std::log(
+                static_cast<double>(points[end + 1].working_set_bytes) /
+                static_cast<double>(points[end].working_set_bytes));
+            if (step <= 0.0 || rise / step > kPlateauSlope) break;
             low = next_low;
             high = next_high;
             ++end;

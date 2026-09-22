@@ -3,48 +3,97 @@
 Rewritten in full at the end of every round. It describes what the branch
 needs verified *now*; it is not a log, and nothing is appended to it.
 
-- **Under test:** `fix/review-high-medium` @ `ea613ee`
-- **Already validated:** x86-64 (14/14 ctest, L1/L2/L3 all agree with the OS)
-  and Kunpeng 920F
-- **Still to run:** Milk-V X60, MediaTek MT6993, Apple M4 Pro
+- **Under test:** `fix/review-high-medium` @ `af6c1a7`
+- **Already validated:** x86-64 (14/14 ctest)
+- **Still to run:** Apple M4 Pro, MediaTek MT6993, Milk-V X60
 
-**The RISC-V build break is fixed.** At `a33f896` and `fa2153d` the riscv64
-backend did not compile: the 32-bit chase links were added to arm64 and x64
-only. A reviewer hit it, patched a scratch copy the same way `a6f53f8` does,
-and confirmed the curve is unchanged there (32 KiB and 512 KiB, clean steps),
-so the ring change is not the risk on that platform. What is still unrun is
-everything else in `a6f53f8`: the two probes, the CLI tests and the curve
-dump. There is no riscv64 toolchain on the machine the branch is written on,
-so the Milk-V remains the first compile of that code.
+## What this round does, and why
 
-## What changed since the last round (`88b3238`)
+The previous round asked for a capacity to sit within `1.25x` of the start of
+its rise, on the reasoning that a real boundary makes the latency jump right
+where the rise begins. Two reports measured that, and it is wrong in both
+directions:
 
-1. A capacity is no longer judged by how wide its rise is, but by where the
-   capacity sits within that rise. A boundary makes the latency jump, so the
-   capacity threshold is crossed where the rise starts; a prefetcher letting
-   go turns the step into a slope and the threshold is crossed partway up it.
-   Above `1.25x` of the start of the rise the capacity is withheld. This
-   decides whether a level is reported at all, so it affects every platform.
-2. The chase links are 32-bit indices (`load_ptr32` on arm64,
-   `riscv_cache_chase32` on riscv64, an int32 chase on x64), so a 64-byte
-   line holds 16 of them and the ring is built from 16 permutations instead
-   of 8. This changes the shape of every measured curve.
-3. riscv64 measures its line size and L1 associativity instead of copying
-   them from sysfs, and its dead second cache-size estimator is gone.
-4. The CLI assertion that those two probes report a value now runs on every
-   backend, as the `cache_probes` case. riscv64 had no CLI test before.
-5. `fmla.mul.vv(f32,f32,f32)` and its f64 counterpart measure an FMA's
-   latency through a multiplier input; the existing rows measure it through
-   the accumulator. Both are real and they differ (920F: 2.31 against 4.44
-   for f32, at the same 23.1 GFLOPS throughput).
-6. `CPUFB_DEBUG_CACHE_CURVE` moved into `common/cache_curve` and prints the
-   per-level estimates as well as the sampled points. arm64 and riscv64 did
-   not have this switch at all before.
-7. A measured clock below 85% of the reported maximum adds `reported maximum
-   not sustained under load` to the frequency source column.
-8. A memory workset capped by available memory now also warns on stderr.
+| | capacity / start of rise | what it should be | what the rule did |
+|---|---|---|---|
+| Apple M4 Pro L2 | 1.3 - 1.6 | 16 MiB, confirmed by sysctl | withheld, 16 of 17 runs |
+| MT6993 cpu0 L2 | above 1.25 | 16 MiB, correct before | withheld |
+| MT6993 cpu1 L2 | below 1.25 | 16 MiB | reported 384 KiB |
+| MT6993 cpu7 L1 | 0.94 | withheld | reported 128 KiB |
 
-## Milk-V X60 (RISC-V) — last tested at `88b3238`
+The M4's L2 sits high because the plateau below it is not flat: it drifts
+from 6.0 ns at 1 MiB to 17.4 ns at 14 MiB, so the 10% crossing of the step to
+memory lands at 10 MiB, well under the 16 MiB boundary. The rule therefore
+cost three correct capacities and never caught the core it was written for.
+The width rule before it failed the same way from the other side.
+
+**Both are gone.** Every level the curve resolves is reported. A rise wider
+than one doubling is annotated, never vetoed. The M4 and MT6993 cpu7 curves
+from the last two reports are now unit tests, so whatever replaces this has
+to keep the first at 16 MiB and doubt the second.
+
+The one thing the cpu7 curve does say is that it never reached memory: a
+128 MiB working set still answers in 12.6 ns, 25 cycles at 2 GHz, which no
+DRAM does. A chase that is prefetched at every size cannot place any
+boundary, so that is now reported against every capacity from such a curve.
+
+Everything else from the previous round stands: 32-bit chase links, the
+riscv64 probes and CLI tests, `fmla.mul.vv`, the frequency and workset
+warnings.
+
+## Apple M4 Pro (macOS) — last tested at `fa2153d`
+
+The machine that produced the clearest refutation, so the first to re-run.
+
+```bash
+ctest
+./cpufb '--thread_pool=[0]' --mode=cache --include-test=cache --loop_scale=200
+for i in $(seq 8); do
+  CPUFB_DEBUG_CACHE_CURVE=1 ./cpufb '--thread_pool=[0]' --mode=cache 2>&1 >/dev/null \
+    | grep -E '^  (L[12]:|a )'
+done
+```
+
+Please confirm:
+
+1. **L2 reports 16 MiB in all eight runs**, not one in seventeen. The
+   per-level line may say `wide` and the verdict may add `latency climbed
+   over ... so the boundary is not sharp`; that is the annotation and it does
+   not change the number.
+2. **L1 still reports 128 KiB** and the line-size probe still reads 128 B.
+   With L2 no longer withheld the eviction buffer returns to `4 x 16 MiB`
+   rather than the 64 MiB floor, which is the case the probe was tuned for.
+3. **No run prints the prefetch doubt.** This curve reaches 118 ns against a
+   123 ns memory reference, so it must not be doubted.
+4. **ctest is 14/14.**
+
+## MediaTek MT6993 (Android) — last tested at `fa2153d`
+
+```bash
+for c in 0 1 4 6 7; do
+  ./cpufb "--thread_pool=[$c]" --mode=cache --include-test=cache --loop_scale=200
+done
+for c in 0 1 7; do
+  CPUFB_DEBUG_CACHE_CURVE=1 ./cpufb "--thread_pool=[$c]" --mode=cache 2>curve$c.txt
+done
+```
+
+Please confirm:
+
+1. **cpu0 and cpu1 report their L2 again**, around 14-16 MiB, instead of `-`
+   and 384 KiB. This is the regression this round exists to undo.
+2. **cpu7 reports a 128 KiB L1 with the doubt attached**: the verdict should
+   carry `a 128 MiB working set still answered in 12.6 ns, so the chase was
+   prefetched throughout and every capacity here may be too large`. The
+   128 KiB is still wrong, the true L1 is 64 KiB, and the curve cannot see
+   that; what it can say is that nothing here is trustworthy.
+3. **cpu4 and cpu6 still report 64 KiB.**
+4. `curve0.txt`, `curve1.txt` and `curve7.txt` in full. **The cpu0 and cpu1
+   dumps are the most valuable thing in this round**: no curve from a working
+   MT6993 L2 has ever been sent, and every rule proposed so far was designed
+   without one. If only one thing comes back, make it those.
+
+## Milk-V X60 (RISC-V) — last tested at `fa2153d`, which did not build
 
 ```bash
 cmake --preset native-release && cmake --build build/native-release -j8
@@ -54,105 +103,43 @@ CPUFB_DEBUG_CACHE_CURVE=1 ./cpufb '--thread_pool=[0]' --mode=cache 2>curve_x60.t
 CPUFB_DEBUG_CACHELINE=1 ./cpufb '--thread_pool=[0]' --mode=cache 2>line_x60.txt
 ```
 
-Please confirm, in this order:
+Unchanged from the last checklist; none of it has run yet:
 
-1. **It compiles.** `riscv_cache_chase32` is the fix; paste any build error
-   verbatim.
-2. **ctest is 10, not 4.** Six CLI cases now register on riscv64 (`list`,
-   `invalid_filters`, `filters_txt`, `mode_all_override`, `csv_output`,
-   `cache_probes`); the sweep and memory-bandwidth cases stay out because the
-   backend rejects those options. This also closes the hole the last report
-   named: those cases run the `cpufb` binary, so ctest can no longer pass
-   while the main program fails to build.
-3. **The line size and the ways are measured**, not copied. The two rows
+1. **It compiles.** `riscv_cache_chase32` is the fix for what the last report
+   hit; paste any build error verbatim.
+2. **ctest is 10, not 4.** Six CLI cases register on riscv64 now, and they run
+   the `cpufb` binary, so ctest can no longer pass while the main program
+   fails to build.
+3. **The line size and the ways are measured**, not copied: the two rows
    should read `probe (agrees with OS)` rather than `Linux sysfs topology`,
-   and should still say 64 B and 4 ways. This probe has never run on RISC-V:
-   it makes its nodes cold by reading an eviction buffer of four times the
-   measured L2, without any cache-maintenance instruction, because cbo.flush
-   needs Zicbom and the kernel's permission. If it reports `-` or a wrong
-   size, `line_x60.txt` has the ratios it saw and is what to send.
-4. **L1 32 KiB and L2 512 KiB are still reported** and neither is withheld.
-   The patched scratch build already showed this, so it is a confirmation,
-   not an open question.
-5. **`curve_x60.txt` is no longer empty.** riscv64 did not call
-   `debug_print_cache_curve`; `ea613ee` wires it in.
+   and still say 64 B and 4 ways. The probe makes its nodes cold by reading
+   an eviction buffer of four times the measured L2, with no cache
+   maintenance instruction, because `cbo.flush` needs Zicbom and the kernel's
+   permission. If it reports `-`, send `line_x60.txt`.
+4. **`curve_x60.txt` is no longer empty**; riscv64 did not call
+   `debug_print_cache_curve` before.
+5. **L1 32 KiB and L2 512 KiB, with no doubt attached** (this curve reaches
+   220 ns, so it clearly gets to memory).
 6. The line probe adds roughly 20-60 s to a cache run on this board. If it
    takes minutes, say so, and the eviction buffer can be bounded.
 
-## MediaTek MT6993 (Android) — last tested at `88b3238`
-
-The only machine that can confirm what item 1 was written for.
-
-```bash
-./cpufb '--thread_pool=[7]' --mode=cache --include-test=cache --loop_scale=200
-CPUFB_DEBUG_CACHE_CURVE=1 ./cpufb '--thread_pool=[7]' --mode=cache 2>curve7.txt
-./cpufb '--thread_pool=[0]' --include-test=freq
-./cpufb '--thread_pool=[7]' --include-test=load
-```
-
-Please confirm:
-
-1. **cpu7 no longer reports a 192 KiB L1.** The capacity cell should be `-`
-   and the verdict should read `probe: L1 latency rises gradually from
-   ~139 KiB to ~605 KiB (4.4x) instead of stepping, so no capacity is read
-   off it; prefetcher suspected`. The numbers will differ; what matters is
-   that a range is given and no capacity is claimed.
-2. **cpu4 and cpu6 still report 64 KiB**, and cpu0/cpu1 still report
-   64 KiB / 16 MiB. The new criterion must not withdraw a level that was
-   correct at `88b3238`.
-3. **The frequency table** says `reported maximum not sustained under load`
-   on cpu4 and cpu7, and does not say it on cpu0.
-4. **The bandwidth run** prints the workset-cap warning on stderr when the
-   cap triggers, and nothing when it does not.
-5. `curve7.txt` in full, whatever the outcome.
-
-## Apple M4 Pro (macOS) — last tested at `86413b1`
-
-Three rounds behind. Nothing here was written for this machine, but items 1
-and 2 change every capacity it measures, and its cluster-shared L2 is the
-real-hardware case closest to the new threshold: it sits at 0.95 where the
-cutoff is 1.25.
-
-```bash
-ctest
-./cpufb '--thread_pool=[0]' --mode=cache --include-test=cache --loop_scale=200
-CPUFB_DEBUG_CACHE_CURVE=1 ./cpufb '--thread_pool=[0]' --mode=cache 2>curve_m4.txt
-CPUFB_DEBUG_CACHELINE=1 ./cpufb '--thread_pool=[0]' --mode=cache 2>line_m4.txt
-```
-
-Please confirm:
-
-1. **L1 128 KiB and L2 16 MiB are still reported**, and neither is withheld.
-   If the L2 is withheld, the per-level line in `curve_m4.txt` gives its rise
-   and that is the number to report.
-2. **The line-size probe still reads 128 B.** It sizes its eviction buffer
-   from the largest level the curve found, so a changed curve can change it.
-3. **ctest is 14/14** on Darwin (`cache_probes` is new).
-4. The two `fmla.vv(f32,f32,f32)` latency rows, accumulator and `.mul`,
-   whatever they say. An M4's FMA may well forward both inputs at the same
-   time, in which case the two numbers are equal and that is the answer.
-
 ## Known gaps — please do not re-report these
-
-These are understood and either accepted or scheduled; a report that lists
-them again costs a round trip.
 
 | Gap | Status |
 |---|---|
-| MT6993 big core's true L1/L2 capacity | Unknown. Deliberately withheld rather than guessed. An independent probe could not resolve it either. |
-| riscv64 line-size probe runs without a flush instruction | By design: cbo.flush needs Zicbom and kernel permission. Capacity eviction alone is enough on the other two architectures. |
-| L3 on a shared VM | Reads a few MiB against a 36 MiB nominal L3, and varies between runs. The measurable quantity there is the slice this guest gets, not the hardware's L3. |
-| `Theory Freq` on a DVFS machine | The cpufreq maximum, not an operating point. Now labelled when it is not sustained, but the nominal number is still what the column shows. |
-| Bandwidth without sysfs cache sizes | Workset falls back to 256 MiB or is capped by free memory; numbers are not comparable across runs. Now warned about. |
+| MT6993 cpu7 reports a 128 KiB L1 for a 64 KiB cache | Its prefetcher follows the ring at every working set, so the curve genuinely shows L1 latency at 128 KiB. Two shape rules were tried and both broke correct levels elsewhere. The output now says the curve never reached memory. Placing this capacity needs a different measurement, not a better rule; a conflict-stride sweep over the existing associativity ring is the candidate. |
+| riscv64 line-size probe runs without a flush instruction | By design: `cbo.flush` needs Zicbom and kernel permission. Capacity eviction alone is enough on the other two architectures. |
+| L3 on a shared VM | Reads a few MiB against a 36 MiB nominal L3, and varies between runs. The measurable quantity there is the slice this guest gets. |
+| `Theory Freq` on a DVFS machine | The cpufreq maximum, not an operating point. Labelled when it is not sustained. |
+| Bandwidth without sysfs cache sizes | Workset falls back to 256 MiB or is capped by free memory; not comparable across runs. Warned about. |
 | `Core Migration` | Never implemented on any platform. |
-| `*_latency` of FMA instructions, `.vs` forms | Only the accumulator path is measured for the by-element forms. The `.vv` forms now have both. |
+| `*_latency` of FMA, `.vs` forms | Only the accumulator path. The `.vv` forms have both since `88165b1`. |
 | Line-size probe on a core that prefetches both directions | Reports twice the line size by construction. No machine tried so far does this. |
-| riscv64 has no memory-bandwidth, instruction sweep or loop scaling | A deliberate subset; the backend rejects those options explicitly. |
-| riscv64 thermal zone differs between runs | The system table reads whichever zone the kernel exposes; the reading itself was right both times. |
+| riscv64 has no memory-bandwidth, instruction sweep or loop scaling | A deliberate subset; the backend rejects those options. |
+| MT6993 memory reference reads 0.0 ns | The 1 GiB reference ring cannot be allocated under that device's memory pressure, which the workset-cap warning also reports. |
 
 ## Reporting
 
 State the commit tested. Raw `CPUFB_DEBUG_*` output is worth more than a
-summary of it: every defect fixed in the last four rounds was diagnosed from
-one of those dumps, and twice the reporter's conclusion was wrong while the
-dump was right.
+summary of it: both rules removed this round were refuted by per-level dump
+lines, and the dumps were right where the summaries were not.

@@ -136,9 +136,15 @@ std::vector<size_t> build_ring_order(
 // several distinct permutations of the same lines, one per link slot of the
 // line, played one after the other: the cache sees the same set of lines,
 // but the pair sequence is `slots` times longer than the working set and
-// repeats only every `slots` laps.  Small working sets, where such
-// prefetchers have the easiest job, get the most slots (16 per 64-byte line
-// with 32-bit links); large ones need none.
+// repeats only every `slots` laps.
+//
+// The count is the same at every working set, and that matters more than
+// its value.  It used to fall as the working set grew, on the reasoning
+// that a prefetcher has no chance of memorising millions of pairs anyway;
+// but each drop is a change of method in the middle of a sweep, and it
+// shows up as a step in the curve that no cache put there.  An MT6993 core
+// answered 3.5 MiB in 6.7 ns and 4 MiB in 4.5 ns, faster with the larger
+// set, exactly where the count fell from two to one.
 //
 // The price is the top of each step.  With one permutation every line is
 // re-referenced exactly line_count accesses later, so a working set one line
@@ -154,11 +160,13 @@ std::vector<size_t> build_ring_order(
 // below it drifts upward, while the MT6993 core whose plateau a prefetcher
 // extends sits at 0.94.  Both were tried as tests and both withheld correct
 // capacities; see describe_prefetch_doubt() for what the curve does say.
-size_t slots_for(size_t line_count, size_t stride_words)
+size_t slots_for(size_t stride_words)
 {
-    const size_t kTargetPairs = 65536;
-    const size_t wanted = (kTargetPairs + line_count - 1) / line_count;
-    return std::max<size_t>(1, std::min(wanted, stride_words));
+    // One per link slot of a line: 16 in a 64-byte line, 32 in a 128-byte
+    // one, capped so that building the ring for the largest working sets
+    // stays a small part of the sweep.
+    const size_t kMaximumSlots = 16;
+    return std::max<size_t>(1, std::min(stride_words, kMaximumSlots));
 }
 
 double measure_pointer_chase(CacheChaseKernel chase, int32_t *buffer,
@@ -168,7 +176,7 @@ double measure_pointer_chase(CacheChaseKernel chase, int32_t *buffer,
     const size_t stride = std::max(sizeof(int32_t), line_size);
     const size_t line_count = std::max<size_t>(2, working_set_bytes / stride);
     const size_t stride_words = stride / sizeof(int32_t);
-    const size_t slots = slots_for(line_count, stride_words);
+    const size_t slots = slots_for(stride_words);
     // Node (slot k, line l) is word k of line l; the ring visits slot 0's
     // permutation, then slot 1's, ... and returns to slot 0.
     auto node = [&](size_t slot, size_t line) {
@@ -189,15 +197,21 @@ double measure_pointer_chase(CacheChaseKernel chase, int32_t *buffer,
             node((slot + 1) % slots, following[0]);
         if (slot + 1 < slots) order = next_order;
     }
-    const size_t lap = line_count * slots;
+    // How much work a sample is worth is set by the working set, not by the
+    // number of permutations: a pass of line_count accesses already touches
+    // every line once, whichever permutation it is in.  Tying it to the ring
+    // length instead made a sample `slots` times longer, which at 128 MiB
+    // was 32M dependent misses per sample.
+    const size_t pass = line_count;
 
     const size_t int_max = static_cast<size_t>(std::numeric_limits<int>::max());
-    // Two full laps place every line at its steady-state cache level.
-    chase(static_cast<int>(std::min(int_max, std::max<size_t>(10000, lap * 2))),
+    // Two passes place every line at its steady-state cache level.
+    chase(
+        static_cast<int>(std::min(int_max, std::max<size_t>(10000, pass * 2))),
         buffer);
 
     const int probe_iterations = static_cast<int>(
-        std::min<size_t>(std::max<size_t>(50000, lap), 2000000));
+        std::min<size_t>(std::max<size_t>(50000, pass), 2000000));
     timespec start, end;
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     chase(probe_iterations, buffer);
@@ -208,7 +222,7 @@ double measure_pointer_chase(CacheChaseKernel chase, int32_t *buffer,
     // About 5 ms per sample, but never less than one full lap.
     size_t iterations = static_cast<size_t>(5e6 / probe_ns);
     iterations = std::max<size_t>(iterations, 50000);
-    iterations = std::max(iterations, lap);
+    iterations = std::max(iterations, pass);
     iterations = std::min(iterations, int_max);
     // Everything that disturbs a sample (another core of a shared L2, an
     // interrupt, a migration on an unpinned macOS thread) adds latency and
@@ -427,9 +441,17 @@ std::vector<CacheLevelEstimate> estimate_cache_levels(
         // fits a level while it still performs like that level, so the
         // boundary is one third of the way up the step on a log scale: below
         // the geometric midpoint, which accepted that 20 MiB point, yet far
-        // enough above the plateau to ignore its noise.  It does not depend
-        // on where the upper plateau is judged to begin, which is unreliable
-        // when that plateau is noisy DRAM latency.
+        // enough above the plateau to ignore its noise.
+        //
+        // Choosing the last sample below that threshold makes the answer a
+        // grid point, which is exact where the step is sharp and quantized
+        // where it is not: an Apple M4 Pro reported 8 to 20 MiB for its
+        // 16 MiB L2 over twenty runs, because the threshold fell within
+        // 0.04 ns of a sample.  Taking the steepest interval instead was
+        // tried, and on a machine whose L3 never forms a plateau it returned
+        // that L3's boundary as the L2 capacity.  The threshold stays until
+        // there are curves to choose a better rule from; what improved this
+        // round is the curve, not the rule reading it.
         const double threshold =
             std::cbrt(below.latency_ns * below.latency_ns * above.latency_ns);
         size_t capacity_index = below.last;

@@ -545,7 +545,7 @@
 // longer of the instruction's two input paths.  The _latency kernels above
 // chain through the accumulator alone, which a core can forward later in the
 // pipeline because the addend is needed last: a Kunpeng 920F closes that
-// chain in 2.5 cycles and this one in 4.5.  Both numbers are real; a GEMM
+// chain in 2.3 cycles and this one in 4.4.  Both numbers are real; a GEMM
 // kernel accumulating in registers sees the first, a chain that feeds a
 // product back into the next product sees the second.
 #void asimd_fmla_mul_vv_f32f32f32_latency(int64_t);
@@ -587,7 +587,7 @@
 // longer of the instruction's two input paths.  The _latency kernels above
 // chain through the accumulator alone, which a core can forward later in the
 // pipeline because the addend is needed last: a Kunpeng 920F closes that
-// chain in 2.5 cycles and this one in 4.5.  Both numbers are real; a GEMM
+// chain in 2.3 cycles and this one in 4.4.  Both numbers are real; a GEMM
 // kernel accumulating in registers sees the first, a chain that feeds a
 // product back into the next product sees the second.
 #void asimd_fmla_mul_vv_f64f64f64_latency(int64_t);

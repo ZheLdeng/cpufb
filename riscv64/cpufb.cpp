@@ -410,7 +410,8 @@ static void add_riscv64_multiple_issue(tpool_t *tm, int cpu, Table &table)
 }
 #endif
 
-static bool cpubm_do_bench(std::vector<int> &set_of_threads, uint32_t idle_time)
+static bool cpubm_do_bench(std::vector<int> &set_of_threads, uint32_t idle_time,
+    const BenchmarkFilter &filter, const SaveOptions &save_options)
 {
     int i;
 
@@ -438,18 +439,25 @@ static bool cpubm_do_bench(std::vector<int> &set_of_threads, uint32_t idle_time)
         }
         BenchmarkCatalog catalog = build_benchmark_catalog();
 
-        get_cpu_freq(set_of_threads, *tables[3]);
+        if (benchmark_needs_freq(filter))
+            get_cpu_freq(set_of_threads, *tables[3]);
 
-        cpubm_riscv64_cache(set_of_threads, *tables[2]);
+        if (should_run_test(filter, "cache"))
+            cpubm_riscv64_cache(set_of_threads, *tables[2]);
     #ifdef _VECTOR_
-        add_riscv64_load_rows(tm, set_of_threads[0], *tables[1]);
-        add_riscv64_multiple_issue(tm, set_of_threads[0], *tables[4]);
+        if (should_run_test(filter, "load"))
+            add_riscv64_load_rows(tm, set_of_threads[0], *tables[1]);
+        if (should_run_test(filter, "multi_issue"))
+            add_riscv64_multiple_issue(tm, set_of_threads[0], *tables[4]);
     #endif
 
         // traverse task list
 
         for (i = 0; i < static_cast<int>(bm_list.size()); i++) {
             if (catalog[i].is_latency) continue;
+            if (!should_run_benchmark(
+                    filter, bm_list[i].isa, bm_list[i].dim))
+                continue;
             if (bm_list[i].dim.find("OPS") != string::npos) {
                 int64_t latency = 0;
                 if (catalog[i].pair_index >= 0) {
@@ -465,11 +473,13 @@ static bool cpubm_do_bench(std::vector<int> &set_of_threads, uint32_t idle_time)
             }
         }
 
-        for (i = 0; i < tables.size(); i++) tables[i]->print();
+        record_migration_information(tpool_get_migration_info(tm));
+        const bool save_ok =
+            print_and_save_benchmark_tables(filter, save_options, tables);
 
         tpool_destroy(tm);
         for (Table *table : tables) delete table;
-        return true;
+        return save_ok;
     }
     printf("Sorry, there's no any supported SIMD isa.\n");
     return false;
@@ -523,8 +533,6 @@ static void cpufb_register_isa()
 
 int main(int argc, char *argv[])
 {
-    // Same strict parser as ARM64 and x86-64.  The options this backend does
-    // not implement are rejected instead of being accepted and ignored.
     CliOptions options;
     if (!parse_cli_options(argc, argv, options)) return 1;
 
@@ -542,24 +550,32 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Notice: there must NOT be any spaces.\n");
         return 1;
     }
-    const BenchmarkFilter &filter = options.filter;
-    if ((options.mode_explicit && options.mode != BENCH_MODE_ALL) ||
-        options.memory_bandwidth ||
+    if (options.memory_bandwidth ||
         options.memory_size_set || options.memory_repetitions_set ||
-        options.list_categories || options.list_instructions ||
-        !options.sweep_instruction.empty() || options.save.enabled ||
-        options.save.format_set || options.loop_scale != 1 ||
-        options.bench_limit != 0 || !filter.include_test.empty() ||
-        !filter.exclude_test.empty() || !filter.include_isa.empty() ||
-        !filter.exclude_isa.empty()) {
+        !options.sweep_instruction.empty() || options.loop_scale != 1 ||
+        options.bench_limit != 0) {
         fprintf(stderr,
-            "Error: the riscv64 backend only supports "
-            "--thread_pool and --idle_time.\n");
+            "Error: the riscv64 backend does not support memory-bandwidth, "
+            "instruction sweep, loop scaling, or benchmark limits.\n");
         return 1;
     }
 
+    if (!finalize_save_options(options.save)) return 1;
     initialize_system_information(options.thread_pool);
     print_system_information();
     cpufb_register_isa();
-    return cpubm_do_bench(options.thread_pool, options.idle_time) ? 0 : 1;
+    BenchmarkCatalog catalog = build_benchmark_catalog();
+    if (options.list_categories) {
+        print_benchmark_categories(catalog);
+        return 0;
+    }
+    if (options.list_instructions) {
+        print_benchmark_instructions(catalog);
+        return 0;
+    }
+    if (!validate_benchmark_filter(options.filter, catalog)) return 1;
+    return cpubm_do_bench(options.thread_pool, options.idle_time,
+               options.filter, options.save)
+        ? 0
+        : 1;
 }

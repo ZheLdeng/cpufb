@@ -255,9 +255,8 @@ static bool cpubm_standalone_warmup(vector<int> &set_of_threads)
     return true;
 }
 
-// Returns the best wall time for item.loop_time iterations.  cycles_per_core
-// receives the smallest per-core PMU cycle count for the same iterations, or
-// 0 when hardware cycles were not available on every worker.
+// Returns the best wall time for item.loop_time iterations. cycles_per_core
+// comes from that same invocation, preserving a paired time/cycle sample.
 static double cpubm_measure_compute_time(
     tpool_t *tm, cpubm_t &item, double &cycles_per_core)
 {
@@ -299,18 +298,19 @@ static double cpubm_measure_compute_time(
         // Normalize to the registered loop count so existing FLOP/OP
         // accounting remains unchanged.
         double t = get_time(&start, &end) / loop_scale;
-        if (t < best_time) best_time = t;
+        double paired_cycles = 0.0;
 #ifdef __linux__
         if (compute_cycle_samples.load(std::memory_order_relaxed) ==
             static_cast<int>(tm->thread_num)) {
-            const double cycles = static_cast<double>(compute_cycle_sum.load(
+            paired_cycles = static_cast<double>(compute_cycle_sum.load(
                                       std::memory_order_relaxed)) /
                 tm->thread_num / loop_scale;
-            if (cycles > 0.0 &&
-                (cycles_per_core == 0.0 || cycles < cycles_per_core))
-                cycles_per_core = cycles;
         }
 #endif
+        if (t < best_time) {
+            best_time = t;
+            cycles_per_core = paired_cycles;
+        }
     }
 #else
     // warm up
@@ -998,6 +998,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
             }
             benches_run++;
         }
+        record_migration_information(tpool_get_migration_info(tm));
         bool save_ok =
             print_and_save_benchmark_tables(filter, save_options, tables);
         tpool_destroy(tm);

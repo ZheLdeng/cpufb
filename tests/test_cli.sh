@@ -85,6 +85,18 @@ run_success()
     printf '%s\n' "${output}"
 }
 
+require_single_migration_row()
+{
+    local csv_file="$1"
+    awk -F',' '
+        $1 == "system" && $2 == "Core Migration" {
+            rows++
+            if ($3 == "") exit 2
+        }
+        END { if (rows != 1) exit 3 }
+    ' "${csv_file}" || fail "CSV output must contain one explicit migration status"
+}
+
 instruction_rows="${test_tmp}/instructions.tsv"
 instruction_output=""
 
@@ -279,6 +291,7 @@ case "${test_case}" in
         if [[ ! -s "${csv_output}" ]]; then
             fail "CSV output was not created"
         fi
+        require_single_migration_row "${csv_output}"
         awk -F',' -v expected_core="${test_core}" -v arch="${arch}" '
             $1 == "section" && $2 == "Item" && $3 == "Value" {
                 system_header = 1
@@ -297,6 +310,7 @@ case "${test_case}" in
                 if ($2 == "Compiler") compiler_seen = 1
                 if ($2 == "CPU Model") cpu_seen = 1
                 if ($2 == "Core Selection" && $3 == "[" expected_core "]") cores_seen = 1
+                if ($2 == "Core Migration") migration_seen = 1
                 if ($2 == "CPU Frequency") frequency_seen = 1
                 if ($2 == "L1 Data/Unified Cache") l1_seen = 1
                 if ($2 == "L2 Data/Unified Cache") l2_seen = 1
@@ -315,8 +329,8 @@ case "${test_case}" in
             }
             END {
                 if (rows != 1 || system_rows < 9 || !os_seen || !kernel_seen ||
-                    !compiler_seen || !cpu_seen || !cores_seen || !frequency_seen ||
-                    !l1_seen || !l2_seen || !l3_seen) exit 5
+                    !compiler_seen || !cpu_seen || !cores_seen || !migration_seen ||
+                    !frequency_seen || !l1_seen || !l2_seen || !l3_seen) exit 5
             }
         ' "${csv_output}" || fail "CSV frequency output has an invalid structure"
         ;;
@@ -338,6 +352,7 @@ case "${test_case}" in
         if [[ ! -s "${sweep_output}" ]]; then
             fail "sweep CSV output was not created"
         fi
+        require_single_migration_row "${sweep_output}"
         awk -F',' -v expected_pool="[${test_core}]" '
             $1 == "section" && $2 == "Cores" {
                 header_columns = NF
@@ -373,6 +388,7 @@ case "${test_case}" in
         require_contains "${command_output}" "Median GB/s"
         require_contains "${command_output}" "Load IPC"
         require_contains "${command_output}" "Saved csv output:"
+        require_single_migration_row "${memory_output}"
         awk -F',' -v expected_core="${test_core}" '
             $1 == "section" && $2 == "Core ID" && $5 == "Median GB/s" {
                 columns = NF

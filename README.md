@@ -139,6 +139,47 @@ preset.
 
 `./cpufb --thread_pool=[xxx] --mode=all --idle_time=yyy`
 
+### Independent statistical trials
+
+Use the repository runner for publishable summaries. It starts cpufb as ten
+independent processes, retains every raw log and CSV file, and writes
+`summary.csv` with the median, first and third quartiles, IQR, and the 95%
+Student-t confidence interval for the mean of every numeric benchmark metric:
+
+```sh
+python3 tools/run_statistical_trials.py run \
+  --trials=10 --output-dir=results/host-core0 \
+  -- build/native-release/cpufb '--thread_pool=[0]' --mode=all
+```
+
+Each raw CSV includes the timestamp, requested core selection, current
+OS-reported frequency when available, counter source, and temperature when an
+unprivileged Linux thermal-zone interface is available. Unsupported readings
+are recorded as `unavailable`; they are never synthesized. Linux and Android
+also sample `sched_getcpu()` before and after every worker invocation and record
+the observation count, endpoint migrations, and requested-core mismatches in
+the `Core Migration` row. macOS records this check as unavailable because it
+does not expose the same executing-CPU interface. Existing trial CSV files,
+including files copied back from a remote host, can be aggregated with:
+
+```sh
+python3 tools/run_statistical_trials.py aggregate \
+  --output=results/host-core0/summary.csv results/host-core0/trial-*.csv
+```
+
+Both commands require exactly ten distinct trials. They reject missing or
+duplicate metric observations, inconsistent metric sets, incomplete required
+run metadata, and absent counter/cycle-source provenance, preventing partial,
+legacy, and current protocols from being combined silently. Full-suite and
+standalone memory-bandwidth CSV metrics are supported; instruction sweeps lack
+the required counter-source provenance and are therefore rejected.
+
+Ten observations are a small sample. The confidence interval therefore uses
+Student's t distribution rather than a normal approximation; preserve the raw
+files when publishing results. Within one process, compute metrics select the
+fastest of five timed invocations and retain cycles from that same invocation;
+wall time and cycles are never minimized independently.
+
 ### Memory bandwidth
 
 ```sh

@@ -427,6 +427,34 @@ void print_system_information()
     table.print();
 }
 
+void record_migration_information(const tpool_migration_info &info)
+{
+    if (!system_info_initialized) return;
+    cpufb::SystemInfoEntry *entry = nullptr;
+    for (cpufb::SystemInfoEntry &candidate : system_info.entries) {
+        if (candidate.item == "Core Migration") {
+            entry = &candidate;
+            break;
+        }
+    }
+    if (entry == nullptr) return;
+    if (!info.available) {
+        entry->value = "unavailable";
+        entry->source = "OS does not expose the executing CPU";
+        return;
+    }
+
+    const bool migrated = info.migrations != 0 ||
+        info.requested_cpu_mismatches != 0;
+    stringstream source;
+    source << "sched_getcpu before/after " << info.observations
+           << " worker invocations; migrations=" << info.migrations
+           << ", requested-core mismatches="
+           << info.requested_cpu_mismatches;
+    entry->value = migrated ? "yes" : "no";
+    entry->source = source.str();
+}
+
 string trim_arg_value(const string &value)
 {
     size_t start = value.find_first_not_of(" \t\n\r");

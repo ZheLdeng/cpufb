@@ -25,4 +25,7 @@ done
 cmake --preset native-release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
 cmake --build --preset native-release -j 1
 
-taskset -c 0 build/native-release/cpufb '--thread_pool=[0]' --mode=all
+rm -rf results-kunpeng920f-v2
+python3 tools/run_statistical_trials.py run \
+    --trials=10 --output-dir=results-kunpeng920f-v2 -- \
+    taskset -c 0 build/native-release/cpufb '--thread_pool=[0]' --mode=all

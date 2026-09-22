@@ -1167,6 +1167,19 @@ static void cpufb_register_isa()
         96LL, (void *)asimd_fmla_vv_f64f64f64);
     reg_new_isa("asimd", "hybrid_fp32_mla_6x16", "FLOPS", kComputeLoopTime,
         768LL, (void *)asimd_hybrid_fp32_mla_6x16);
+    // The same instruction with the chain through a multiplier input
+    // instead of the accumulator.  The throughput kernel is the plain one:
+    // only the latency differs between the two paths, and showing the two
+    // rows side by side is what says which of the two numbers a reader is
+    // looking at.
+    reg_new_isa("asimd", "fmla.mul.vv(f32,f32,f32)_latency", "FLOPS",
+        kLatencyLoopTime, 192LL, (void *)asimd_fmla_mul_vv_f32f32f32_latency);
+    reg_new_isa("asimd", "fmla.mul.vv(f32,f32,f32)", "FLOPS", kComputeLoopTime,
+        192LL, (void *)asimd_fmla_vv_f32f32f32);
+    reg_new_isa("asimd", "fmla.mul.vv(f64,f64,f64)_latency", "FLOPS",
+        kLatencyLoopTime, 96LL, (void *)asimd_fmla_mul_vv_f64f64f64_latency);
+    reg_new_isa("asimd", "fmla.mul.vv(f64,f64,f64)", "FLOPS", kComputeLoopTime,
+        96LL, (void *)asimd_fmla_vv_f64f64f64);
     // Tier-2 additions: non-FMA paths and negated-FMA chain.
     reg_new_isa("asimd", "fmls.vv(f32,f32,f32)_latency", "FLOPS",
         kLatencyLoopTime, 192LL, (void *)asimd_fmls_vv_f32f32f32_latency);

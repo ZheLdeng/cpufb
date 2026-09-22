@@ -222,6 +222,9 @@ static void *thread_function_freq(void *arg)
     }
     data->clock_ghz = cycle_frequency * 1e-9;
     data->caculate_freq = measured ? data->clock_ghz : 0.0;
+    if (data->caculate_freq > 0.0 && data->theory_freq > 0.0 &&
+        data->caculate_freq < 0.85 * data->theory_freq)
+        data->counter_source += "; reported maximum not sustained under load";
 
     // CPUFB_DEBUG_CLOCK=1 prints every available clock next to the selected
     // one, to cross-check the ADD-chain estimate against counted cycles.

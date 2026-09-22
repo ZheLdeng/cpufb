@@ -198,6 +198,13 @@ static void *thread_function_freq(void *arg)
     if (counted_cycles <= 0.0 && !counters.error().empty())
         data->counter_source += " (kperf: " + counters.error() + ")";
 #endif
+    // The reported maximum is what cpufreq allows, not what the governor
+    // picks for this kind of load: an MT6993 big core lists 4.21 GHz and runs
+    // these kernels at 2.0.  Say so next to the source, so that a "Test Freq"
+    // well below "Theory Freq" is not read as a measurement error.
+    if (data->caculate_freq > 0.0 && data->theory_freq > 0.0 &&
+        data->caculate_freq < 0.85 * data->theory_freq)
+        data->counter_source += "; reported maximum not sustained under load";
     data->clock_ghz = clock_hz * 1e-9;
 
     // CPUFB_DEBUG_CLOCK=1 prints every available clock next to the selected

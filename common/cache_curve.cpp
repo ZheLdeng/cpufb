@@ -349,10 +349,12 @@ void debug_print_cache_curve(const CacheCurveResult &result)
             point.latency_ns);
     for (const CacheLevelEstimate &level : result.levels)
         std::fprintf(stderr,
-            "  %s: capacity %s, %.3f ns, jump %.2fx, rise %.2fx (%s to %s)%s\n",
+            "  %s: capacity %s, %.3f ns, jump %.2fx, plateau drift %.2fx, "
+            "rise %.2fx (%s to %s)%s\n",
             level.level.c_str(),
             format_approximate_capacity(level.capacity_bytes).c_str(),
-            level.latency_ns, level.jump_ratio, level.transition_width,
+            level.latency_ns, level.jump_ratio, level.plateau_drift,
+            level.transition_width,
             format_approximate_capacity(level.rise_begin_bytes).c_str(),
             format_approximate_capacity(level.rise_end_bytes).c_str(),
             level.transition_width > kWideRiseWidth ? " wide" : "");
@@ -463,6 +465,13 @@ std::vector<CacheLevelEstimate> estimate_cache_levels(
         }
         CacheLevelEstimate level;
         level.level = "L" + std::to_string(levels.size() + 1);
+        // How flat the plateau this level sits on actually is.  A level whose
+        // own latency climbs before its boundary pushes the 10% crossing of
+        // the step down below the capacity, which is why an Apple M4 Pro's
+        // L2 reads far above the start of its rise; no other output says so.
+        level.plateau_drift = points[below.first].latency_ns > 0.0
+            ? points[below.last].latency_ns / points[below.first].latency_ns
+            : 1.0;
         level.capacity_bytes = points[capacity_index].working_set_bytes;
         level.latency_ns = below.latency_ns;
         level.jump_ratio = above.latency_ns / below.latency_ns;

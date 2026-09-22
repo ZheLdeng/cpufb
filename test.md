@@ -3,7 +3,8 @@
 Rewritten in full at the end of every round. It describes what the branch
 needs verified *now*; it is not a log, and nothing is appended to it.
 
-- **Under test:** `fix/review-high-medium` @ `7d179b6`
+- **Under test:** `fix/review-high-medium` @ `5b34077` plus the debug
+  output below
 - **Already validated:** x86-64 (14/14 ctest, L1 32 KiB and L2 1.0 MiB)
 - **Still to run:** MediaTek MT6993, Apple M4 Pro, Milk-V X60
 
@@ -80,17 +81,25 @@ CPUFB_DEBUG_CACHE_CURVE=1 ./cpufb '--thread_pool=[0]' --mode=cache 2>curve_m4.tx
 
 Please confirm:
 
-1. **What the eight L2 readings are now.** Last round they were 12, 12, 12,
-   12, 14, 14, 14, 16 MiB, and the report traced that to a threshold landing
-   0.04 ns from a sample. The ring fix changes the curve; whether it also
-   narrows this spread is the question, and the eight per-level lines are the
-   answer whatever it is.
-2. **One full `curve_m4.txt`.** Last round's showed the L2 plateau drifting
-   from 6.0 ns at 1 MiB to 17.4 ns at 14 MiB. If the constant ring flattens
-   that drift, the threshold stops sitting on a knife edge on its own.
+1. **How far apart the eight L2 readings are**, not whether they equal
+   16 MiB. Last round they spanned 8 to 20 MiB over twenty samples, which is
+   0.50x to 1.25x of the sysctl value; the question this round is the spread
+   and the worst ratio, and the eight per-level lines answer it whatever it
+   is. A stable 14 MiB would be a pass: it is 0.88x, inside the tolerance,
+   and one answer rather than five.
+2. **One full `curve_m4.txt`, and the `plateau drift` figure in it.** Last
+   round's L2 plateau climbed from 6.0 ns at 1 MiB to 17.4 ns at 14 MiB,
+   which is what pushes the 10% crossing below the capacity, and no output
+   said so. The per-level lines now print it. Part of that drift was the ring
+   itself: the permutation count fell from eight to one across exactly that
+   range, so the number this round is the first honest measurement of it.
 3. **L1 is still 128 KiB, the line probe still 128 B, ctest still 14/14, and
    no run prints the prefetch doubt.**
-4. A cache run takes about twice as long as before. If it becomes
+4. **What the line probe now says about its eviction buffer.** It prints
+   `last_level=...KiB eviction=...MiB(4x level|clamped)`, so `4 x 16 MiB`
+   and the 64 MiB floor are no longer the same output. This is the check
+   that was undecidable on this machine last round.
+5. A cache run takes about twice as long as before. If it becomes
    inconvenient, say so and the ring build can be bounded.
 
 ## Milk-V X60 (RISC-V) — last tested at `1f38cfb`
@@ -125,7 +134,7 @@ CPUFB_DEBUG_CACHE_CURVE=1 ./cpufb '--thread_pool=[0]' --mode=cache 2>curve_x60.t
 | Line-size probe on a core that prefetches both directions | Reports twice the line size by construction. No machine tried so far does this. |
 | riscv64 has no memory-bandwidth, instruction sweep or loop scaling | A deliberate subset; the backend rejects those options. |
 | MT6993 memory reference reads 0.0 ns | The 1 GiB reference ring cannot be allocated under that device's memory pressure. The prefetch doubt now covers the same ground more directly. |
-| macOS eviction buffer prints 64 MiB either way | `4 x 16 MiB` and the 64 MiB floor are the same number on that machine, so its output cannot distinguish them. Needs a machine whose last level is not 16 MiB, or the chosen capacity printed alongside. |
+| Nothing described the plateau a level sits on | Fixed: the per-level debug line prints `plateau drift`, the ratio across the plateau below the step. An Apple M4 Pro's L2 climbs 2-3x across its own range, which is why its capacity lands far above the start of its rise. |
 
 ## Reporting
 

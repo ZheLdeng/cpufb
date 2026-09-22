@@ -213,8 +213,16 @@ static int probe_cacheline_once(int theory_cacheline,
         for (size_t i = 0; i < ratios.size(); ++i)
             std::fprintf(stderr, " %zu=%.3f|%.3f", kStrides[i], below_ratios[i],
                 above_ratios[i]);
-        std::fprintf(stderr, " eviction=%zuMiB measured=%d theory=%d\n",
-            eviction_bytes >> 20, measured, theory_cacheline);
+        // The last-level capacity is printed next to the buffer it sized,
+        // because 4x a 16 MiB level and the 64 MiB floor are the same number
+        // and an Apple M4 Pro cannot tell from its output which one it got.
+        std::fprintf(stderr,
+            " last_level=%zuKiB eviction=%zuMiB(%s) measured=%d theory=%d\n",
+            last_level_cache_bytes >> 10, eviction_bytes >> 20,
+            last_level_cache_bytes == 0                        ? "unknown"
+                : eviction_bytes == last_level_cache_bytes * 4 ? "4x level"
+                                                               : "clamped",
+            measured, theory_cacheline);
     }
     // Reported as measured even when it disagrees with the OS: substituting
     // the OS value would make the two columns agree by construction.

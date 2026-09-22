@@ -35,6 +35,11 @@ struct CacheLevelEstimate
     uint64_t rise_begin_bytes = 0;
     uint64_t rise_end_bytes = 0;
     double transition_width = 1.0;
+    // Latency at the end of the plateau this level sits on, over the latency
+    // at its start.  1.0 is a flat plateau; an Apple M4 Pro's cluster-shared
+    // L2 climbs by 2-3x across its own range before its boundary, and that
+    // is what makes its capacity land far above the start of its rise.
+    double plateau_drift = 1.0;
 };
 
 struct CacheCurveResult

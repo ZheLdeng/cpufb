@@ -320,6 +320,7 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND
     find_program(CPUFB_BASH_EXECUTABLE bash)
     if(CPUFB_BASH_EXECUTABLE)
         set(_cli_test_script "${CMAKE_SOURCE_DIR}/tests/test_cli.sh")
+        file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/Testing/tmp")
         set(_cli_test_names
             list
             invalid_filters
@@ -337,10 +338,13 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND
                 COMMAND "${CPUFB_BASH_EXECUTABLE}" "${_cli_test_script}"
                     "${test_name}" "$<TARGET_FILE:cpufb>" "${CPUFB_ARCH}"
             )
+            # Scratch files stay inside the build tree: on a shared cluster the
+            # project directory is the only place a job may write to.
             set_tests_properties("cpufb_cli_${test_name}" PROPERTIES
                 LABELS "cli"
                 RUN_SERIAL TRUE
                 TIMEOUT 240
+                ENVIRONMENT "TMPDIR=${CMAKE_BINARY_DIR}/Testing/tmp"
             )
         endforeach()
     else()

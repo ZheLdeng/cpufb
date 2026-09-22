@@ -17,7 +17,10 @@ if [[ $# -eq 1 ]]; then
     build_root="$1"
     mkdir -p "${build_root}"
 else
-    build_root="$(mktemp -d "${TMPDIR:-/tmp}/cpufb-arm64-overrides.XXXXXX")"
+    # Under the source tree, not /tmp: a shared cluster may only be written
+    # inside the project directory.
+    mkdir -p "${source_dir}/build"
+    build_root="$(mktemp -d "${source_dir}/build/cpufb-arm64-overrides.XXXXXX")"
 fi
 
 if [[ -n "${CPUFB_TEST_CORE:-}" ]]; then

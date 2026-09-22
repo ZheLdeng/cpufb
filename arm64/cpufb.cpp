@@ -303,7 +303,7 @@ static double cpubm_measure_compute_time(
         if (compute_cycle_samples.load(std::memory_order_relaxed) ==
             static_cast<int>(tm->thread_num)) {
             paired_cycles = static_cast<double>(compute_cycle_sum.load(
-                                      std::memory_order_relaxed)) /
+                                std::memory_order_relaxed)) /
                 tm->thread_num / loop_scale;
         }
 #endif

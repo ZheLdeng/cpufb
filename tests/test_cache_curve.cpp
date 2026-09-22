@@ -10,6 +10,7 @@
 using cpufb::build_cache_curve_sizes;
 using cpufb::CacheLatencyPoint;
 using cpufb::CacheLevelEstimate;
+using cpufb::describe_transition;
 using cpufb::estimate_cache_levels;
 
 namespace {
@@ -251,27 +252,97 @@ int main()
     {
         const std::vector<CacheLevelEstimate> levels =
             estimate_cache_levels(smeared);
-        if (levels.empty() || !levels[0].gradual ||
-            levels[0].transition_width < 4.0) {
+        if (levels.empty() || !levels[0].gradual) {
             std::cerr << "a prefetch-smeared L1 rise was not flagged as gradual"
                       << " (levels " << levels.size() << ")\n";
             ok = false;
         }
-        // The clean steps must not be flagged.
+        // The clean steps must not be flagged at all.
         for (const CacheLevelEstimate &level :
             estimate_cache_levels(kunpeng, 135.0, &reached_memory)) {
             if (level.gradual) {
                 std::cerr << "Kunpeng 920F " << level.level
-                          << " was flagged as gradual\n";
+                          << " was flagged as gradual (rise "
+                          << level.transition_width << "x)\n";
                 ok = false;
             }
         }
+        // The M4's cluster-shared L2 rises over 2.5x, but it rises from its
+        // capacity, so it is a step.
         for (const CacheLevelEstimate &level :
             estimate_cache_levels(shared_l2)) {
             if (level.gradual) {
-                std::cerr << "the M4 shared L2 was flagged as gradual\n";
+                std::cerr << "the M4 shared L2 was flagged as gradual (rise "
+                          << level.transition_width << "x)\n";
                 ok = false;
             }
+        }
+    }
+
+    // A clean cache under the multi-permutation ring: a working set of n
+    // lines in a cache of c lines keeps about (c/n)^2.5 of its hits past the
+    // capacity (see measure_pointer_chase), so the step trails off over
+    // ~2.5x.  A wide rise that starts at the capacity is still a step.
+    std::vector<CacheLatencyPoint> tailed;
+    for (uint64_t size : build_cache_curve_sizes(64 * 1024 * kKiB)) {
+        CacheLatencyPoint point;
+        point.working_set_bytes = size;
+        const double n = static_cast<double>(size) / kKiB;
+        auto hits = [](double lines, double capacity) {
+            return lines <= capacity ? 1.0 : std::pow(capacity / lines, 2.5);
+        };
+        if (n <= 1024)
+            point.latency_ns = 1.6 + (4.5 - 1.6) * (1.0 - hits(n, 32));
+        else
+            point.latency_ns = 4.5 + (95.0 - 4.5) * (1.0 - hits(n, 1024));
+        tailed.push_back(point);
+    }
+    ok &= expect_levels("ring tail", tailed, {{"L1", 32}, {"L2", 1024}});
+    for (const CacheLevelEstimate &level : estimate_cache_levels(tailed)) {
+        if (level.gradual) {
+            std::cerr << "the ring's reuse-distance tail was read as a slope ("
+                      << level.transition_width << "x)\n";
+            ok = false;
+        }
+    }
+
+    // The same big core with the multi-permutation ring: the prefetcher lets
+    // go earlier, and the rise from the 2.0 ns L1 plateau spans 139 KiB to
+    // 605 KiB.  A width test read this as a clean step (its 10%/90% crossings
+    // fell exactly 4.0x apart on the grid, and the test was "> 4.0") and
+    // reported a 192 KiB L1.  The capacity sits 1.38x above the start of the
+    // rise, a third of the way up it, so there is no boundary to report.
+    static const struct
+    {
+        uint64_t kib;
+        double latency_ns;
+    } kMediaTekCpu7[] = {{128, 2.011}, {160, 2.610}, {192, 2.633}, {224, 2.885},
+        {256, 2.996}, {320, 3.936}, {384, 4.053}, {448, 4.642}, {512, 4.358},
+        {640, 5.113}, {768, 5.413}};
+    std::vector<CacheLatencyPoint> big_core;
+    for (uint64_t size : build_cache_curve_sizes(64 * 1024 * kKiB)) {
+        CacheLatencyPoint point;
+        point.working_set_bytes = size;
+        const uint64_t kib = size / kKiB;
+        point.latency_ns = kib < 128 ? 2.0 : 5.43;
+        for (const auto &sample : kMediaTekCpu7)
+            if (sample.kib == kib) point.latency_ns = sample.latency_ns;
+        if (kib > 16384)
+            point.latency_ns =
+                5.43 * std::pow(100.0 / 5.43, std::log2(kib / 16384.0) / 2.0);
+        big_core.push_back(point);
+    }
+    {
+        const std::vector<CacheLevelEstimate> levels =
+            estimate_cache_levels(big_core);
+        if (levels.empty() || !levels[0].gradual ||
+            levels[0].rise_begin_bytes < 128 * kKiB ||
+            levels[0].rise_end_bytes > 768 * kKiB ||
+            describe_transition(levels[0]).find("139 KiB") ==
+                std::string::npos) {
+            std::cerr << "the MT6993 cpu7 L1 rise was not flagged as gradual"
+                      << " (levels " << levels.size() << ")\n";
+            ok = false;
         }
     }
 

@@ -78,9 +78,9 @@ void get_theory_cache(struct CacheData *cache_size, int cpu_id)
 
 // Dependent-load ring walk; the empty asm keeps `next` live so the chain is
 // neither vectorized nor dropped.
-static void chase_ring(int iterations, int64_t *buffer)
+static void chase_ring(int iterations, const int32_t *buffer)
 {
-    int64_t next = 0;
+    int32_t next = 0;
     for (int i = 0; i < iterations; ++i) next = buffer[next];
     __asm__ volatile("" : "+r"(next) : : "memory");
 }
@@ -109,14 +109,18 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     cache_size->test_L1 = 0;
     cache_size->test_L2 = 0;
     cache_size->test_L3 = 0;
-    cache_size->capacity_note.clear();
     for (const cpufb::CacheLevelEstimate &level : curve.levels) {
-        // A gradual rise gives no capacity, only a note.
+        // A gradual rise gives no capacity, only a note; a soft one keeps
+        // the capacity and carries its uncertainty range.
         const int size_kb =
             level.gradual ? 0 : static_cast<int>(level.capacity_bytes / 1024);
-        if (level.gradual)
-            cache_size->capacity_note =
-                cpufb::describe_gradual_transition(level);
+        const std::string note = cpufb::describe_transition(level);
+        if (level.level == "L1")
+            cache_size->test_L1_note = note;
+        else if (level.level == "L2")
+            cache_size->test_L2_note = note;
+        else if (level.level == "L3")
+            cache_size->test_L3_note = note;
         if (level.level == "L1")
             cache_size->test_L1 = size_kb;
         else if (level.level == "L2")
@@ -126,14 +130,7 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     }
     cache_size->memory_latency_ns = curve.memory_latency_ns;
     cache_size->hierarchy_complete = curve.reached_memory;
-    if (getenv("CPUFB_DEBUG_CACHE_CURVE") != nullptr) {
-        fprintf(stderr, "cache curve (%s), memory reference %.1f ns:\n",
-            curve.translation_mode.c_str(), curve.memory_latency_ns);
-        for (const cpufb::CacheLatencyPoint &point : curve.points)
-            fprintf(stderr, "  %8llu KB %8.3f ns/load\n",
-                static_cast<unsigned long long>(point.working_set_bytes / 1024),
-                point.latency_ns);
-    }
+    cpufb::debug_print_cache_curve(curve);
 }
 
 void get_multiway(struct CacheData *cache_size, int cpu_id)

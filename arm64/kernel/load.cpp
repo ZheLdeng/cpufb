@@ -45,6 +45,7 @@ double cacheline = kDefaultCacheLineBytes;
 extern "C"
 {
     void load_ptr(int looptime, int64_t *ptr);
+    void load_ptr32(int looptime, const int32_t *ptr);
 }
 
 #ifdef __APPLE__
@@ -177,15 +178,19 @@ cpufb::CacheCurveResult measure_cache_hierarchy(
     const uint64_t max_bytes = kCacheCurveMaxBytes;
     const int line_size = cpufb::effective_cacheline_size(
         cache_data->theory_cacheline, cache_data->test_cacheline, 64);
-    result = cpufb::measure_cache_curve(load_ptr, line_size, max_bytes);
-    cache_data->capacity_note.clear();
+    result = cpufb::measure_cache_curve(load_ptr32, line_size, max_bytes);
     for (const auto &level : result.levels) {
-        // A gradual rise gives no capacity, only a note.
+        // A gradual rise gives no capacity, only a note; a soft one keeps
+        // the capacity and carries its uncertainty range.
         const int size_kb =
             level.gradual ? 0 : static_cast<int>(level.capacity_bytes / 1024);
-        if (level.gradual)
-            cache_data->capacity_note =
-                cpufb::describe_gradual_transition(level);
+        const std::string note = cpufb::describe_transition(level);
+        if (level.level == "L1")
+            cache_data->test_L1_note = note;
+        else if (level.level == "L2")
+            cache_data->test_L2_note = note;
+        else if (level.level == "L3")
+            cache_data->test_L3_note = note;
         if (level.level == "L1")
             cache_data->test_L1 = size_kb;
         else if (level.level == "L2")
@@ -195,6 +200,7 @@ cpufb::CacheCurveResult measure_cache_hierarchy(
     }
     cache_data->memory_latency_ns = result.memory_latency_ns;
     cache_data->hierarchy_complete = result.reached_memory;
+    cpufb::debug_print_cache_curve(result);
     return result;
 }
 

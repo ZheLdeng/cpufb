@@ -24,12 +24,25 @@ struct CacheLevelEstimate
     uint64_t capacity_bytes = 0;
     double latency_ns = 0;
     double jump_ratio = 0;
-    // Working-set ratio over which the latency rises from 10% to 90% of the
-    // step; a real capacity boundary is a step of at most a few x.
+    // Working sets at which the latency has covered 10% and 90% of the step,
+    // log-interpolated between grid points, and their ratio.  How wide the
+    // rise is does not by itself say whether the boundary is real: the ring
+    // leaves a reuse-distance tail above every capacity (see
+    // measure_pointer_chase), and an unresolved level above this one
+    // stretches the rise further (this VM's L2 rises over 4.4x because its
+    // shared L3 never forms a plateau), yet in both cases the latency still
+    // jumps at the capacity.
+    uint64_t rise_begin_bytes = 0;
+    uint64_t rise_end_bytes = 0;
     double transition_width = 1.0;
-    // The rise is a slope, not a step (a prefetcher losing its grip
-    // gradually): capacity_bytes is where the slope crossed the threshold
-    // and must not be reported as the capacity.
+    // What does say it is where capacity_bytes sits within that rise.  A
+    // boundary makes the latency jump, so the threshold is crossed in the
+    // same grid interval the rise starts in: every level measured on real
+    // hardware so far sits at 0.95-1.01 of rise_begin_bytes.  A prefetcher
+    // letting go gradually turns the step into a slope, the threshold is
+    // crossed well up it, and capacity_bytes is an artefact of where the
+    // threshold happens to lie (a MediaTek MT6993 big core: 1.38, reported
+    // as a 192 KiB L1 for a rise spanning 139 KiB to 605 KiB).
     bool gradual = false;
 };
 
@@ -48,11 +61,23 @@ struct CacheCurveResult
     std::string translation_mode;
 };
 
-// Follows `iterations` links of the ring stored in buffer, starting at word 0.
-typedef void (*CacheChaseKernel)(int iterations, int64_t *buffer);
+// Follows `iterations` links of the ring stored in buffer, starting at index
+// 0.  Links are 32-bit indices into the buffer (a 1 GiB region still fits), so
+// a 64-byte line holds 16 of them.
+typedef void (*CacheChaseKernel)(int iterations, const int32_t *buffer);
 
-// Verdict text for a level whose rise was a slope rather than a step.
-std::string describe_gradual_transition(const CacheLevelEstimate &level);
+// Verdict text for a level whose capacity was withheld; empty for a level
+// whose latency jumped at its capacity.
+std::string describe_transition(const CacheLevelEstimate &level);
+// Adjacent working sets on the quarter-octave grid differ by at most 1.25x,
+// so a capacity more than this far above the start of the rise means a
+// sample was already climbing before the threshold was crossed.
+const double kGradualRisePosition = 1.25;
+
+// With CPUFB_DEBUG_CACHE_CURVE set, writes the sampled curve and the level
+// estimates to stderr; does nothing otherwise.  This is what a bug report
+// about a wrong capacity needs to be diagnosed.
+void debug_print_cache_curve(const CacheCurveResult &result);
 
 // Quarter-octave working-set grid from 4 KiB to max_bytes.
 std::vector<uint64_t> build_cache_curve_sizes(uint64_t max_bytes);

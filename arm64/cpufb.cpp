@@ -573,12 +573,14 @@ static bool cpubm_arm_cache(
     // After the curve: the line probe sizes its eviction buffer from the last
     // level the curve found.
     probe_arm_cache(set_of_threads);
+    // The note explains a withheld capacity, and then replaces the
+    // agreement verdict, which has nothing to compare.
     auto with_agreement = [](const string &source, int reported, int measured,
-                              double tolerance) {
-        const string verdict =
-            measured <= 0 && !cache_size.capacity_note.empty()
-            ? cache_size.capacity_note
-            : cpufb::describe_probe_agreement(reported, measured, tolerance);
+                              double tolerance, const string &note) {
+        string verdict =
+            cpufb::describe_probe_agreement(reported, measured, tolerance);
+        if (!note.empty())
+            verdict = measured <= 0 ? note : verdict + "; " + note;
         return source.empty() ? verdict : source + "; " + verdict;
     };
 
@@ -589,7 +591,7 @@ static bool cpubm_arm_cache(
     cont[2] =
         cache_size.test_L1 > 0 ? to_string(cache_size.test_L1) + " KiB" : "-";
     cont[5] = with_agreement(cache_size.theory_L1_source, cache_size.theory_L1,
-        cache_size.test_L1, 1.3);
+        cache_size.test_L1, 1.3, cache_size.test_L1_note);
     table.addOneItem(cont);
     cont[0] = "L2/unified cache capacity";
     cont[1] = cache_size.theory_L2 > 0
@@ -598,7 +600,7 @@ static bool cpubm_arm_cache(
     cont[2] =
         cache_size.test_L2 > 0 ? to_string(cache_size.test_L2) + " KiB" : "-";
     cont[5] = with_agreement(cache_size.theory_L2_source, cache_size.theory_L2,
-        cache_size.test_L2, 1.3);
+        cache_size.test_L2, 1.3, cache_size.test_L2_note);
     table.addOneItem(cont);
     const cpufb::CacheLevelInfo l3 =
         cpufb::detect_data_cache_level(set_of_threads[0], 3);
@@ -611,8 +613,8 @@ static bool cpubm_arm_cache(
     cont[3].clear();
     cont[4].clear();
     cont[5] = cache_size.test_L3 > 0
-        ? cpufb::describe_probe_agreement(
-              l3.bytes / 1024.0, cache_size.test_L3, 1.3)
+        ? with_agreement("", l3.bytes / 1024.0, cache_size.test_L3, 1.3,
+              cache_size.test_L3_note)
         : l3.source;
     table.addOneItem(cont);
     cont[0] = "L1 ways of associativity";
@@ -622,7 +624,7 @@ static bool cpubm_arm_cache(
     cont[3].clear();
     cont[4].clear();
     cont[5] =
-        with_agreement("", cache_size.theory_way, cache_size.test_way, 1.0);
+        with_agreement("", cache_size.theory_way, cache_size.test_way, 1.0, "");
     table.addOneItem(cont);
     cont[0] = "cacheline size";
     cont[1] = cache_size.theory_cacheline > 0
@@ -632,7 +634,7 @@ static bool cpubm_arm_cache(
         ? to_string(cache_size.test_cacheline) + " B"
         : "-";
     cont[5] = with_agreement(
-        "", cache_size.theory_cacheline, cache_size.test_cacheline, 1.0);
+        "", cache_size.theory_cacheline, cache_size.test_cacheline, 1.0, "");
     table.addOneItem(cont);
 
     // Cache-hierarchy latency curve: emit the dependent-load working-set
@@ -678,7 +680,7 @@ static bool cpubm_arm_cache(
         row[3] = jump.str();
         if (level.gradual) {
             row[1] = "-";
-            row[3] += " (gradual, boundary hidden)";
+            row[3] += " (gradual, no boundary)";
         }
         estimate_table.addOneItem(row);
     }

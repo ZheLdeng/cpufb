@@ -115,86 +115,66 @@ std::string read_linux_os_name(std::string &source)
     return "Linux";
 }
 
-std::string read_linux_cpu_model(std::string &source)
+// Model of one CPU from /proc/cpuinfo.  x86 repeats "model name" in every
+// processor block; Arm prints "CPU implementer"/"CPU part" per block, and on
+// a heterogeneous SoC those differ between blocks, so the block of the
+// selected core is the one that describes what is being measured.
+std::string read_linux_cpu_model(int cpu, std::string &source)
 {
     std::ifstream input("/proc/cpuinfo");
-    std::string line;
-    const char *keys[] = {"model name", "hardware", "processor"};
-    for (const char *key : keys) {
-        input.clear();
-        input.seekg(0);
-        while (std::getline(input, line)) {
-            const std::size_t separator = line.find(':');
-            if (separator == std::string::npos) continue;
-            std::string name = trim(line.substr(0, separator));
-            std::transform(
-                name.begin(), name.end(), name.begin(), [](unsigned char ch) {
-                    return static_cast<char>(std::tolower(ch));
-                });
-            if (name != key) continue;
-            const std::string value = trim(line.substr(separator + 1));
-            if (!value.empty() &&
-                (name != "processor" ||
-                    !std::all_of(value.begin(), value.end(),
-                        [](unsigned char ch) { return std::isdigit(ch); }))) {
-                source = "/proc/cpuinfo";
-                return value;
-            }
-        }
-    }
-
-#ifdef __ANDROID__
-    char product_model[PROP_VALUE_MAX] = {0};
-    if (__system_property_get("ro.product.model", product_model) > 0) {
-        source = "Android system property";
-        return product_model;
-    }
-#endif
-
-    const char *fallback_paths[] = {
-        "/sys/firmware/devicetree/base/model",
-        "/proc/device-tree/model",
-        "/sys/devices/soc0/machine",
-        "/sys/devices/virtual/dmi/id/product_name",
+    std::string line, model, implementer, part;
+    bool in_block = false;  // inside the "processor : <cpu>" block
+    bool any_block = false; // the file has numbered processor blocks at all
+    auto value_of = [](const std::string &text) {
+        const std::size_t separator = text.find(':');
+        return separator == std::string::npos
+            ? std::string()
+            : trim(text.substr(separator + 1));
     };
-    for (const char *path : fallback_paths) {
-        std::string value;
-        if (!read_first_line(path, value)) continue;
-        value.erase(std::find(value.begin(), value.end(), '\0'), value.end());
-        if (value.empty()) continue;
-        std::string normalized = value;
-        std::transform(normalized.begin(), normalized.end(), normalized.begin(),
-            [](unsigned char ch) {
-                return static_cast<char>(std::tolower(ch));
-            });
-        if (normalized == "to be filled by o.e.m." ||
-            normalized == "default string" || normalized == "unknown")
-            continue;
-        source = path;
-        return value;
-    }
-
-    input.clear();
-    input.seekg(0);
-    std::string implementer;
-    std::string part;
     while (std::getline(input, line)) {
         const std::size_t separator = line.find(':');
         if (separator == std::string::npos) continue;
-        const std::string name = trim(line.substr(0, separator));
-        if (name == "CPU implementer")
-            implementer = trim(line.substr(separator + 1));
-        else if (name == "CPU part")
-            part = trim(line.substr(separator + 1));
-        if (!implementer.empty() && !part.empty()) break;
+        std::string name = trim(line.substr(0, separator));
+        std::transform(
+            name.begin(), name.end(), name.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+        const std::string value = value_of(line);
+        if (name == "processor") {
+            const bool numeric = !value.empty() &&
+                std::all_of(value.begin(), value.end(),
+                    [](unsigned char ch) { return std::isdigit(ch); });
+            if (numeric) {
+                in_block = std::atoi(value.c_str()) == cpu;
+                any_block = true;
+            } else if (model.empty()) {
+                model = value; // "Processor : AArch64 Processor rev 1"
+            }
+        } else if (in_block || !any_block) {
+            if ((name == "model name" || name == "hardware") && model.empty())
+                model = value;
+            if (name == "cpu implementer") implementer = value;
+            if (name == "cpu part") part = value;
+        }
+    }
+    if (!model.empty()) {
+        source = "/proc/cpuinfo";
+        return model;
     }
     if (!implementer.empty() || !part.empty()) {
         if (implementer == "0x48") implementer = "HiSilicon (0x48)";
-        source = "/proc/cpuinfo";
+        source = "/proc/cpuinfo (cpu" + std::to_string(cpu) + ")";
         if (implementer.empty()) return "ARM part " + part;
         if (part.empty()) return implementer;
         return implementer + ", ARM part " + part;
     }
+#ifdef __ANDROID__
+    char hardware[PROP_VALUE_MAX] = {0};
+    if (__system_property_get("ro.hardware", hardware) > 0) {
+        source = "Android system property";
+        return hardware;
+    }
+#endif
     return "";
 }
 
@@ -355,7 +335,11 @@ SystemInfo collect_system_info(const std::vector<int> &selected_cores)
 
 #ifdef __linux__
     std::string cpu_model_source;
-    add_entry(info, "CPU Model", read_linux_cpu_model(cpu_model_source),
+    // Into a local first: argument evaluation order is unspecified, and GCC
+    // read cpu_model_source before the call that fills it.
+    const std::string cpu_model = read_linux_cpu_model(
+        selected_cores.empty() ? 0 : selected_cores.front(), cpu_model_source);
+    add_entry(info, "CPU Model", cpu_model,
         cpu_model_source.empty() ? "system interface unavailable"
                                  : cpu_model_source);
 #elif defined(__APPLE__)

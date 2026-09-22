@@ -94,7 +94,9 @@ target_link_libraries(cpufb_common PUBLIC Threads::Threads)
 # Per-feature SIMD assembly objects (arm64 / riscv64). x64 .S files are still
 # detected at runtime, but the project keeps them assembled by the C++ driver.
 # ---------------------------------------------------------------------------
+include(CheckCCompilerFlag)
 set(_simd_sources "")
+set(_dropped_features "")
 foreach(feat IN LISTS CPUFB_SIMD_FEATURES)
     set(asm_file "${CPUFB_ASM_DIR}/${feat}.S")
     if(NOT EXISTS "${asm_file}")
@@ -105,10 +107,26 @@ foreach(feat IN LISTS CPUFB_SIMD_FEATURES)
 
     cpufb_simd_asm_flags("${CPUFB_ARCH}" "${feat}" _flags)
     if(_flags)
+        # An older toolchain (GCC 9 / binutils 2.34 rejects +bf16, +i8mm and
+        # every SME modifier) must drop the feature, not fail the build: the
+        # rows are selected at run time and simply stay absent.
+        string(MAKE_C_IDENTIFIER "CPUFB_ASM_ACCEPTS_${feat}" _accepts_var)
+        check_c_compiler_flag("${_flags}" ${_accepts_var})
+        if(NOT ${_accepts_var})
+            message(WARNING
+                "cpufb: dropping ${feat}: this toolchain rejects ${_flags}")
+            list(REMOVE_ITEM _simd_sources "${asm_file}")
+            list(APPEND _dropped_features "${feat}")
+            continue()
+        endif()
         set_source_files_properties("${asm_file}" PROPERTIES
             COMPILE_OPTIONS "${_flags}")
     endif()
 endforeach()
+if(_dropped_features)
+    list(REMOVE_ITEM CPUFB_SIMD_FEATURES ${_dropped_features})
+    message(STATUS "cpufb: kernels after toolchain filtering: ${CPUFB_SIMD_FEATURES}")
+endif()
 
 # arm64 has an extra access.S that is always built (not feature-gated).
 if(CPUFB_ARCH STREQUAL "arm64" AND EXISTS "${CPUFB_ASM_DIR}/access.S")

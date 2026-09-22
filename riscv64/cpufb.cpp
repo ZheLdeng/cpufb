@@ -219,6 +219,7 @@ static void cpubm_riscv64_cache(std::vector<int> &set_of_threads, Table &table)
             if (estimate.level == level) return estimate.capacity_bytes;
         return uint64_t(0);
     };
+    cpufb::debug_print_cache_curve(curve);
     const uint64_t measured_l1 = measured_capacity("L1");
     const uint64_t measured_l2 = measured_capacity("L2");
     vector<string> cont(table.getCol());

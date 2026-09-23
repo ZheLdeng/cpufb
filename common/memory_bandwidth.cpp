@@ -440,9 +440,29 @@ bool select_l3_workset(int cpu, std::uint64_t bytes_per_block,
     return true;
 }
 
-bool select_parallel_l3_workset(const vector<int> &cpus,
+// A stream sized from the OS's last level can overflow what one core actually
+// reaches.  A Graviton3 reports a 32 MiB L3 shared by all its cores while one
+// core's latency curve leaves cache at 16 MiB, so a 24 MiB "L3" stream there
+// partly measured memory.  When the curve measured a smaller last level, each
+// stream is kept to three quarters of it.
+bool cap_to_measured_level(std::uint64_t measured_bytes,
     std::uint64_t bytes_per_block, std::uint64_t &bytes_per_stream,
     string &workset_source)
+{
+    if (measured_bytes == 0) return true;
+    std::uint64_t cap = measured_bytes - measured_bytes / 4;
+    cap -= cap % bytes_per_block;
+    if (cap == 0 || bytes_per_stream <= cap) return true;
+    bytes_per_stream = cap;
+    workset_source += "; capped to " + cpufb::format_cache_capacity(cap) +
+        ", 3/4 of the " + cpufb::format_cache_capacity(measured_bytes) +
+        " last level one core measured";
+    return true;
+}
+
+bool select_parallel_l3_workset(const vector<int> &cpus,
+    std::uint64_t bytes_per_block, std::uint64_t measured_last_level_bytes,
+    std::uint64_t &bytes_per_stream, string &workset_source)
 {
     if (cpus.empty()) return false;
 
@@ -453,7 +473,11 @@ bool select_parallel_l3_workset(const vector<int> &cpus,
     }
     if (cpus.size() == 1) {
         bytes_per_stream = aggregate_bytes;
-        return true;
+        cap_to_measured_level(measured_last_level_bytes, bytes_per_block,
+            bytes_per_stream, workset_source);
+        // Still has to leave the private L2 to be an L3 measurement.
+        return bytes_per_stream >
+            cpufb::detect_data_cache_level(cpus.front(), 2).bytes;
     }
 
     std::uint64_t largest_l2 = 0;
@@ -469,6 +493,10 @@ bool select_parallel_l3_workset(const vector<int> &cpus,
     // throughput.  Do not silently turn the L3 row into an L2 measurement.
     if (bytes_per_stream == 0 || bytes_per_stream <= largest_l2) return false;
 
+    string cap_note;
+    cap_to_measured_level(
+        measured_last_level_bytes, bytes_per_block, bytes_per_stream, cap_note);
+    if (bytes_per_stream <= largest_l2) return false;
     const std::uint64_t actual_aggregate = bytes_per_stream * cpus.size();
     const cpufb::CacheLevelInfo l3 =
         cpufb::detect_data_cache_level(cpus.front(), 3);
@@ -476,7 +504,8 @@ bool select_parallel_l3_workset(const vector<int> &cpus,
         " aggregate / " + cpufb::format_cache_capacity(bytes_per_stream) +
         " per stream; L2 < "
         "per-stream workset < L3 (" +
-        cpufb::format_cache_capacity(l3.bytes) + ") from " + l3.source;
+        cpufb::format_cache_capacity(l3.bytes) + ") from " + l3.source +
+        cap_note;
     return true;
 }
 
@@ -827,7 +856,8 @@ void append_cache_bandwidth_failure_row(Table &table, const string &item)
 
 } // namespace
 
-bool append_cache_memory_bandwidth(const CliOptions &options, Table &table)
+bool append_cache_memory_bandwidth(const CliOptions &options, Table &table,
+    std::uint64_t measured_last_level_bytes)
 {
     const vector<int> &cpus = options.thread_pool;
     const int cpu = cpus.front();
@@ -836,8 +866,8 @@ bool append_cache_memory_bandwidth(const CliOptions &options, Table &table)
     string workset_source;
     BandwidthReport report;
 
-    if (select_parallel_l3_workset(
-            cpus, kernel.bytes_per_block, requested_bytes, workset_source)) {
+    if (select_parallel_l3_workset(cpus, kernel.bytes_per_block,
+            measured_last_level_bytes, requested_bytes, workset_source)) {
         if (!measure_parallel_stream_bandwidth(cpus, kernel, requested_bytes,
                 workset_source, options.memory_repetitions, options.idle_time,
                 kL3StreamPasses, report)) {

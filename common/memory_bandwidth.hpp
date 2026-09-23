@@ -35,7 +35,10 @@ double estimate_core_clock_hz();
 bool run_memory_bandwidth(const cpufb::cli::CliOptions &options);
 
 // L3 and DRAM stream rows of the cache table.
-bool append_cache_memory_bandwidth(
-    const cpufb::cli::CliOptions &options, Table &table);
+// measured_last_level_bytes: the deepest level the latency curve resolved on
+// the first core, or 0; the L3 stream is kept inside it (see
+// cap_to_measured_level).
+bool append_cache_memory_bandwidth(const cpufb::cli::CliOptions &options,
+    Table &table, std::uint64_t measured_last_level_bytes = 0);
 
 #endif

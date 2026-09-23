@@ -478,12 +478,24 @@ static bool cpubm_x64_cache(
         cache_size.test_L3, cache_size.hierarchy_complete);
     cont[3].clear();
     cont[4].clear();
-    cont[5] = cache_size.test_L3 > 0
-        ? cpufb::describe_probe_agreement(
-              l3.bytes / 1024.0, cache_size.test_L3, 1.3)
-        : l3.source;
+    if (cache_size.test_L3 > 0) {
+        cont[5] = cpufb::describe_probe_agreement(
+            l3.bytes / 1024.0, cache_size.test_L3, 1.3);
+        std::string note = cache_size.test_L3_note;
+        const std::string shared =
+            cpufb::describe_shared_level(l3, cache_size.test_L3);
+        if (!shared.empty())
+            note = note.empty() ? shared : note + "; " + shared;
+        if (!note.empty()) cont[5] += "; " + note;
+    } else {
+        cont[5] = l3.source;
+    }
     table.addOneItem(cont);
-    return append_cache_memory_bandwidth(options, table);
+    const uint64_t measured_last_level =
+        cache_size.curve_trusted && cache_size.test_L3 > 0
+        ? static_cast<uint64_t>(cache_size.test_L3) * 1024
+        : 0;
+    return append_cache_memory_bandwidth(options, table, measured_last_level);
 }
 
 static void cpubm_x64_multiple_issue(tpool_t *tm, cpubm_t &item, Table &table)

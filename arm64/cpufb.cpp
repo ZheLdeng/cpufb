@@ -631,10 +631,16 @@ static bool cpubm_arm_cache(
         cache_size.test_L3, cache_size.hierarchy_complete);
     cont[3].clear();
     cont[4].clear();
-    cont[5] = cache_size.test_L3 > 0
-        ? with_agreement("", l3.bytes / 1024.0, cache_size.test_L3, 1.3,
-              cache_size.test_L3_note)
-        : l3.source;
+    {
+        string note = cache_size.test_L3_note;
+        const string shared =
+            cpufb::describe_shared_level(l3, cache_size.test_L3);
+        if (!shared.empty())
+            note = note.empty() ? shared : note + "; " + shared;
+        cont[5] = cache_size.test_L3 > 0 ? with_agreement("", l3.bytes / 1024.0,
+                                               cache_size.test_L3, 1.3, note)
+                                         : l3.source;
+    }
     table.addOneItem(cont);
     cont[0] = "L1 ways of associativity";
     cont[1] =
@@ -736,7 +742,13 @@ static bool cpubm_arm_cache(
     }
     estimate_table.print();
 
-    return append_cache_memory_bandwidth(options, table);
+    // The L3 stream is kept inside the last level this core measured, unless
+    // the curve itself is in doubt.
+    const uint64_t measured_last_level =
+        cache_size.curve_trusted && cache_size.test_L3 > 0
+        ? static_cast<uint64_t>(cache_size.test_L3) * 1024
+        : 0;
+    return append_cache_memory_bandwidth(options, table, measured_last_level);
 }
 
 static void cpubm_arm_multiple_issue(tpool_t *tm, cpubm_t &item, Table &table)

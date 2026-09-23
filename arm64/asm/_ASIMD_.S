@@ -624,6 +624,80 @@
     restore_caller_vec
     ret
 ###############################
+// By-element form of the multiplier-path chain above: v8 is both the
+// accumulator and the vector multiplicand, so the loop-carried latency is the
+// longer of the two input paths.
+#void asimd_fmla_mul_vs_f32f32f32_latency(int64_t);
+    PROLOGUE asimd_fmla_mul_vs_f32f32f32_latency
+    preserve_caller_vec
+    INIT
+.asimd.fmla.mul.vs.f32f32f32.lat.L1:
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    subs x0, x0, #1
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    fmla v8.4s, v8.4s, v1.s[0]
+    bne .asimd.fmla.mul.vs.f32f32f32.lat.L1
+    restore_caller_vec
+    ret
+###############################
+// By-element form of the multiplier-path chain above: v8 is both the
+// accumulator and the vector multiplicand, so the loop-carried latency is the
+// longer of the two input paths.
+#void asimd_fmla_mul_vs_f64f64f64_latency(int64_t);
+    PROLOGUE asimd_fmla_mul_vs_f64f64f64_latency
+    preserve_caller_vec
+    INIT
+.asimd.fmla.mul.vs.f64f64f64.lat.L1:
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    subs x0, x0, #1
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    fmla v8.2d, v8.2d, v1.d[0]
+    bne .asimd.fmla.mul.vs.f64f64f64.lat.L1
+    restore_caller_vec
+    ret
+###############################
 // Tier-2 latency variants.
 // fmls: Pattern A (vd is RMW accumulator).
 #void asimd_fmls_vv_f32f32f32_latency(int64_t);

@@ -15,7 +15,6 @@
 #include "compute.hpp"
 #include "frequency.hpp"
 #include "common.hpp"
-#include "load.hpp"
 #include <compute.hpp>
 
 #ifdef __linux__

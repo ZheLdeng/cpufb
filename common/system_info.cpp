@@ -18,6 +18,9 @@
 #include <sys/system_properties.h>
 #endif
 #ifdef __APPLE__
+#include <cstdio>
+#include <CoreFoundation/CoreFoundation.h>
+#include <IOKit/IOKitLib.h>
 #include <sys/sysctl.h>
 #endif
 
@@ -99,8 +102,8 @@ std::string read_temperature(std::string &source)
     double hottest_celsius = 0.0;
     std::string hottest_source;
     for (int zone = 0; zone < 128; ++zone) {
-        const std::string root = "/sys/class/thermal/thermal_zone" +
-            std::to_string(zone) + "/";
+        const std::string root =
+            "/sys/class/thermal/thermal_zone" + std::to_string(zone) + "/";
         double raw = 0.0;
         if (!read_positive_number(root + "temp", raw)) continue;
         const double celsius = raw > 1000.0 ? raw / 1000.0 : raw;
@@ -114,8 +117,7 @@ std::string read_temperature(std::string &source)
     }
     if (hottest_celsius > 0.0) {
         std::ostringstream output;
-        output << std::fixed << std::setprecision(1) << hottest_celsius
-               << " C";
+        output << std::fixed << std::setprecision(1) << hottest_celsius << " C";
         source = hottest_source;
         return output.str();
     }
@@ -124,13 +126,11 @@ std::string read_temperature(std::string &source)
     return "unavailable";
 }
 
-void add_entry(SystemInfo &info,
-    const std::string &item,
-    const std::string &value,
-    const std::string &source)
+void add_entry(SystemInfo &info, const std::string &item,
+    const std::string &value, const std::string &source)
 {
-    info.entries.push_back({item, value.empty() ? "unavailable" : value,
-        source});
+    info.entries.push_back(
+        {item, value.empty() ? "unavailable" : value, source});
 }
 
 std::string read_linux_os_name(std::string &source)
@@ -157,81 +157,66 @@ std::string read_linux_os_name(std::string &source)
     return "Linux";
 }
 
-std::string read_linux_cpu_model(std::string &source)
+// Model of one CPU from /proc/cpuinfo.  x86 repeats "model name" in every
+// processor block; Arm prints "CPU implementer"/"CPU part" per block, and on
+// a heterogeneous SoC those differ between blocks, so the block of the
+// selected core is the one that describes what is being measured.
+std::string read_linux_cpu_model(int cpu, std::string &source)
 {
     std::ifstream input("/proc/cpuinfo");
-    std::string line;
-    const char *keys[] = {"model name", "hardware", "processor"};
-    for (const char *key : keys) {
-        input.clear();
-        input.seekg(0);
-        while (std::getline(input, line)) {
-            const std::size_t separator = line.find(':');
-            if (separator == std::string::npos) continue;
-            std::string name = trim(line.substr(0, separator));
-            std::transform(name.begin(), name.end(), name.begin(),
-                [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-            if (name != key) continue;
-            const std::string value = trim(line.substr(separator + 1));
-            if (!value.empty() && (name != "processor" ||
-                    !std::all_of(value.begin(), value.end(),
-                        [](unsigned char ch) { return std::isdigit(ch); }))) {
-                source = "/proc/cpuinfo";
-                return value;
-            }
-        }
-    }
-
-#ifdef __ANDROID__
-    char product_model[PROP_VALUE_MAX] = {0};
-    if (__system_property_get("ro.product.model", product_model) > 0) {
-        source = "Android system property";
-        return product_model;
-    }
-#endif
-
-    const char *fallback_paths[] = {
-        "/sys/firmware/devicetree/base/model",
-        "/proc/device-tree/model",
-        "/sys/devices/soc0/machine",
-        "/sys/devices/virtual/dmi/id/product_name",
+    std::string line, model, implementer, part;
+    bool in_block = false;  // inside the "processor : <cpu>" block
+    bool any_block = false; // the file has numbered processor blocks at all
+    auto value_of = [](const std::string &text) {
+        const std::size_t separator = text.find(':');
+        return separator == std::string::npos
+            ? std::string()
+            : trim(text.substr(separator + 1));
     };
-    for (const char *path : fallback_paths) {
-        std::string value;
-        if (!read_first_line(path, value)) continue;
-        value.erase(std::find(value.begin(), value.end(), '\0'), value.end());
-        if (value.empty()) continue;
-        std::string normalized = value;
-        std::transform(normalized.begin(), normalized.end(), normalized.begin(),
-            [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-        if (normalized == "to be filled by o.e.m." ||
-            normalized == "default string" || normalized == "unknown")
-            continue;
-        source = path;
-        return value;
-    }
-
-    input.clear();
-    input.seekg(0);
-    std::string implementer;
-    std::string part;
     while (std::getline(input, line)) {
         const std::size_t separator = line.find(':');
         if (separator == std::string::npos) continue;
-        const std::string name = trim(line.substr(0, separator));
-        if (name == "CPU implementer")
-            implementer = trim(line.substr(separator + 1));
-        else if (name == "CPU part")
-            part = trim(line.substr(separator + 1));
-        if (!implementer.empty() && !part.empty()) break;
+        std::string name = trim(line.substr(0, separator));
+        std::transform(
+            name.begin(), name.end(), name.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+        const std::string value = value_of(line);
+        if (name == "processor") {
+            const bool numeric = !value.empty() &&
+                std::all_of(value.begin(), value.end(),
+                    [](unsigned char ch) { return std::isdigit(ch); });
+            if (numeric) {
+                in_block = std::atoi(value.c_str()) == cpu;
+                any_block = true;
+            } else if (model.empty()) {
+                model = value; // "Processor : AArch64 Processor rev 1"
+            }
+        } else if (in_block || !any_block) {
+            if ((name == "model name" || name == "hardware") && model.empty())
+                model = value;
+            if (name == "cpu implementer") implementer = value;
+            if (name == "cpu part") part = value;
+        }
+    }
+    if (!model.empty()) {
+        source = "/proc/cpuinfo";
+        return model;
     }
     if (!implementer.empty() || !part.empty()) {
         if (implementer == "0x48") implementer = "HiSilicon (0x48)";
-        source = "/proc/cpuinfo";
+        source = "/proc/cpuinfo (cpu" + std::to_string(cpu) + ")";
         if (implementer.empty()) return "ARM part " + part;
         if (part.empty()) return implementer;
         return implementer + ", ARM part " + part;
     }
+#ifdef __ANDROID__
+    char hardware[PROP_VALUE_MAX] = {0};
+    if (__system_property_get("ro.hardware", hardware) > 0) {
+        source = "Android system property";
+        return hardware;
+    }
+#endif
     return "";
 }
 
@@ -246,8 +231,8 @@ struct FrequencyInfo
 #ifdef __linux__
 bool find_linux_cache_level(int cpu, int requested_level, std::string &source)
 {
-    const std::string root = "/sys/devices/system/cpu/cpu" +
-        std::to_string(cpu) + "/cache/";
+    const std::string root =
+        "/sys/devices/system/cpu/cpu" + std::to_string(cpu) + "/cache/";
     for (int index = 0; index < 32; ++index) {
         const std::string entry = root + "index" + std::to_string(index) + "/";
         std::string level;
@@ -273,8 +258,8 @@ std::uint16_t read_u16_le(const unsigned char *data)
 FrequencyInfo read_linux_frequency(int cpu)
 {
     FrequencyInfo result;
-    const std::string root = "/sys/devices/system/cpu/cpu" +
-        std::to_string(cpu) + "/cpufreq/";
+    const std::string root =
+        "/sys/devices/system/cpu/cpu" + std::to_string(cpu) + "/cpufreq/";
     double value = 0.0;
     if (read_positive_number(root + "base_frequency", value))
         result.base_hz = value * 1000.0;
@@ -298,8 +283,9 @@ FrequencyInfo read_linux_frequency(int cpu)
             const double configured_hz = read_u16_le(record + 0x16) * 1e6;
             if (result.base_hz == 0.0) result.base_hz = configured_hz;
             if (result.maximum_hz == 0.0) result.maximum_hz = maximum_hz;
-            result.source = result.source.empty() ? "Linux SMBIOS sysfs" :
-                result.source + "; Linux SMBIOS sysfs";
+            result.source = result.source.empty()
+                ? "Linux SMBIOS sysfs"
+                : result.source + "; Linux SMBIOS sysfs";
         }
     }
     return result;
@@ -313,8 +299,7 @@ bool read_sysctl_string(const char *name, std::string &value)
     if (sysctlbyname(name, nullptr, &size, nullptr, 0) != 0 || size == 0)
         return false;
     std::vector<char> buffer(size);
-    if (sysctlbyname(name, buffer.data(), &size, nullptr, 0) != 0)
-        return false;
+    if (sysctlbyname(name, buffer.data(), &size, nullptr, 0) != 0) return false;
     value.assign(buffer.data());
     return !value.empty();
 }
@@ -328,6 +313,14 @@ FrequencyInfo read_macos_frequency()
         result.base_hz = static_cast<double>(frequency);
         result.maximum_hz = static_cast<double>(frequency);
         result.source = "macOS hw.cpufrequency";
+        return result;
+    }
+    // Apple Silicon: the sysctl does not exist, the power manager's DVFS
+    // table does.
+    const double maximum_ghz = macos_reported_max_frequency_ghz();
+    if (maximum_ghz > 0.0) {
+        result.maximum_hz = maximum_ghz * 1e9;
+        result.source = "macOS IORegistry pmgr DVFS table";
     }
     return result;
 }
@@ -368,23 +361,31 @@ SystemInfo collect_system_info(const std::vector<int> &selected_cores)
 #elif defined(__APPLE__)
     std::string product_version;
     read_sysctl_string("kern.osproductversion", product_version);
-    add_entry(info, "OS", product_version.empty() ? "macOS" :
-        "macOS " + product_version, "sysctl kern.osproductversion");
+    add_entry(info, "OS",
+        product_version.empty() ? "macOS" : "macOS " + product_version,
+        "sysctl kern.osproductversion");
 #else
-    add_entry(info, "OS", have_uname ? system_name.sysname : "unknown", "uname");
+    add_entry(
+        info, "OS", have_uname ? system_name.sysname : "unknown", "uname");
 #endif
-    add_entry(info, "Kernel", have_uname ?
-        std::string(system_name.sysname) + " " + system_name.release : "unknown",
+    add_entry(info, "Kernel",
+        have_uname
+            ? std::string(system_name.sysname) + " " + system_name.release
+            : "unknown",
         "uname");
-    add_entry(info, "Architecture", have_uname ? system_name.machine : "unknown",
-        "uname");
+    add_entry(info, "Architecture",
+        have_uname ? system_name.machine : "unknown", "uname");
     add_entry(info, "Compiler", compiler_name(), "compile-time macros");
 
 #ifdef __linux__
     std::string cpu_model_source;
-    add_entry(info, "CPU Model", read_linux_cpu_model(cpu_model_source),
-        cpu_model_source.empty() ? "system interface unavailable" :
-            cpu_model_source);
+    // Into a local first: argument evaluation order is unspecified, and GCC
+    // read cpu_model_source before the call that fills it.
+    const std::string cpu_model = read_linux_cpu_model(
+        selected_cores.empty() ? 0 : selected_cores.front(), cpu_model_source);
+    add_entry(info, "CPU Model", cpu_model,
+        cpu_model_source.empty() ? "system interface unavailable"
+                                 : cpu_model_source);
 #elif defined(__APPLE__)
     std::string cpu_model;
     read_sysctl_string("machdep.cpu.brand_string", cpu_model);
@@ -393,8 +394,8 @@ SystemInfo collect_system_info(const std::vector<int> &selected_cores)
     add_entry(info, "CPU Model", "unavailable", "unsupported platform");
 #endif
 
-    add_entry(info, "Core Selection", format_cores(selected_cores),
-        "--thread_pool");
+    add_entry(
+        info, "Core Selection", format_cores(selected_cores), "--thread_pool");
     add_entry(info, "Core Migration", "unavailable", "not measured");
     std::string temperature_source;
     add_entry(info, "Temperature", read_temperature(temperature_source),
@@ -408,22 +409,24 @@ SystemInfo collect_system_info(const std::vector<int> &selected_cores)
     const FrequencyInfo frequency;
 #endif
     add_entry(info, "CPU Frequency", format_frequency(frequency),
-        frequency.source.empty() ? "system interface unavailable" :
-            frequency.source);
+        frequency.source.empty() ? "system interface unavailable"
+                                 : frequency.source);
 
     for (int level = 1; level <= 3; ++level) {
         const CacheLevelInfo cache = detect_data_cache_level(cpu, level);
         std::string cache_source = cache.source;
-        std::string cache_value = cache.bytes > 0 ?
-            format_cache_capacity(cache.bytes) : "unavailable";
+        std::string cache_value = cache.bytes > 0
+            ? format_cache_capacity(cache.bytes)
+            : "unavailable";
 #ifdef __linux__
         if (cache.bytes == 0 &&
             find_linux_cache_level(cpu, level, cache_source))
             cache_value = "present; capacity not exposed";
 #endif
         add_entry(info, "L" + std::to_string(level) + " Data/Unified Cache",
-            cache_value, cache_source.empty() ?
-                "system interface unavailable" : cache_source);
+            cache_value,
+            cache_source.empty() ? "system interface unavailable"
+                                 : cache_source);
     }
     return info;
 }
@@ -443,5 +446,56 @@ void populate_system_info_table(const SystemInfo &info, Table &table)
         table.addOneItem(row);
     }
 }
+
+#ifdef __APPLE__
+double macos_reported_max_frequency_ghz()
+{
+    io_iterator_t iterator = IO_OBJECT_NULL;
+    // Port 0 is the default main port on every macOS release.
+    if (IOServiceGetMatchingServices(0, IOServiceMatching("AppleARMIODevice"),
+            &iterator) != KERN_SUCCESS)
+        return 0.0;
+
+    double best_hz = 0.0;
+    io_registry_entry_t entry;
+    while ((entry = IOIteratorNext(iterator)) != IO_OBJECT_NULL) {
+        io_name_t name;
+        if (IORegistryEntryGetName(entry, name) == KERN_SUCCESS &&
+            std::strcmp(name, "pmgr") == 0) {
+            // Each table is an array of {frequency, voltage} uint32 pairs.
+            // CPU cluster tables hold the highest frequencies on the SoC, so
+            // the overall maximum is the performance-core maximum.
+            for (int index = 0; index < 32; ++index) {
+                char key[48];
+                std::snprintf(key, sizeof(key), "voltage-states%d-sram", index);
+                CFStringRef cf_key = CFStringCreateWithCString(
+                    kCFAllocatorDefault, key, kCFStringEncodingUTF8);
+                if (cf_key == nullptr) continue;
+                CFTypeRef property = IORegistryEntryCreateCFProperty(
+                    entry, cf_key, kCFAllocatorDefault, 0);
+                CFRelease(cf_key);
+                if (property == nullptr) continue;
+                if (CFGetTypeID(property) == CFDataGetTypeID()) {
+                    CFDataRef table = static_cast<CFDataRef>(property);
+                    const UInt8 *bytes = CFDataGetBytePtr(table);
+                    const CFIndex length = CFDataGetLength(table);
+                    for (CFIndex offset = 0; offset + 8 <= length;
+                        offset += 8) {
+                        uint32_t raw = 0;
+                        std::memcpy(&raw, bytes + offset, sizeof(raw));
+                        // M1-M3 publish Hz, later parts kHz.
+                        const double hz = raw >= 100000000u ? raw : raw * 1e3;
+                        if (hz > best_hz && hz < 2e10) best_hz = hz;
+                    }
+                }
+                CFRelease(property);
+            }
+        }
+        IOObjectRelease(entry);
+    }
+    IOObjectRelease(iterator);
+    return best_hz * 1e-9;
+}
+#endif
 
 } // namespace cpufb

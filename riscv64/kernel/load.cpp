@@ -1,406 +1,50 @@
-#include <cstdlib>
-#include <pthread.h>
-#include <sched.h> // For CPU affinity
-#include <ctime>
-#include <cmath>
-#include <unistd.h>
-#include <cstring>
-#include <vector>
-#include <iostream>
-#include <common.hpp>
-#include <load.hpp>
-#include <sstream>
-#ifdef __APPLE__
-#include <dispatch/dispatch.h>
-#include <thread>
-#include <sys/sysctl.h>
-#endif
+#include "load.hpp"
 
-#ifdef __linux__
-#include <sys/syscall.h>
-#endif
+#include "associativity_probe.hpp"
+#include "cacheline_probe.hpp"
+
+#include <cstddef>
+
+// This file used to hold a second cache-size estimator (a slope rule over a
+// hand-rolled pointer walk) and an associativity walk, neither of which was
+// ever called: riscv64/cpufb.cpp has always used the shared latency curve.
+// The estimator also read /cache/index0 as the L1 data cache, which is the
+// instruction cache on a SpacemiT X60, and carried a copied __APPLE__ branch.
+// What the backend was missing instead were the two probes below.
+
 namespace {
 
-// Typed constants instead of macros: the old `#define WINDOW_SIZE 4 * 1024 *
-// 1024` was unparenthesized and only correct by accident of where it was used.
-#ifndef __APPLE__
-constexpr int kWindowBytes = 4 * 1024 * 1024;
-#else
-constexpr int kWindowBytes = 32 * 1024 * 1024;
-#endif
-constexpr int kLoopTime = 100000;
-constexpr int kBufferCount = 16;
-constexpr int kBufferBytes = 4 * 1024 * 1024;
+// The line-size probe needs its node pairs cold before each timed walk.  It
+// gets there two ways, a cache-maintenance instruction and an eviction buffer
+// larger than the last level, and either one alone is enough.  RISC-V has
+// cbo.flush, but it is an extension (Zicbom) and whether it traps in user
+// mode is up to the kernel's senvcfg, so a machine without it would take an
+// illegal-instruction trap here.  This backend therefore leaves the flush
+// empty and lets capacity eviction do the work.  That is the path
+// CPUFB_CACHELINE_NO_FLUSH exercises on the other two architectures, where it
+// reads the right line size on its own: x86-64 rises 0.045 to 0.93 across the
+// boundary, a Kunpeng 920F 0.064 to 0.41.
+void flush_cache_line(void *) {}
+
+void finish_cache_line_flush()
+{
+    __asm__ __volatile__("fence rw, rw" ::: "memory");
+}
 
 } // namespace
 
-using namespace std;
-
-double cacheline = 64;
-#include <stdint.h>
-
-static inline void load_ptr(int looptime, int64_t *ptr)
+CacheGeometryProbe probe_cache_geometry(
+    int reported_cacheline, uint64_t last_level_bytes)
 {
-    int64_t idx = 0;
-
-    while (looptime--) {
-        idx = *(volatile int64_t *)(ptr + idx);
-    }
-
-    asm volatile("" ::"r"(idx) : "memory");
-}
-
-static inline void shuffleVector(std::vector<int64_t> &vec)
-{
-    // Seed the generator with the current time
-    std::srand(static_cast<unsigned>(std::time(0)));
-
-    // Fisher-Yates shuffle
-    for (size_t i = vec.size() - 1; i > 0; --i) {
-        int j = rand() % (i + 1); // random index in [0, i]
-        std::swap(
-            vec[i], vec[j]); // swap the current element with the random one
-    }
-}
-
-static inline void flush_cache_line(void *addr, size_t cl)
-{
-    uintptr_t p = (uintptr_t)addr & ~(cl - 1);
-
-    asm volatile("fence rw, rw\n\t"
-                 "cbo.flush (%0)\n\t"
-                 "fence rw, rw\n\t"
-        :
-        : "r"(p)
-        : "memory");
-}
-
-static inline void shuffleGroups(std::vector<int64_t> &vec, int sub)
-{
-    if (sub <= 0) {
-        std::cerr << "Error: sub must be greater than 0." << std::endl;
-        return;
-    }
-    // Seed the random generator
-    std::srand(std::time(0));
-
-    // Walk the vector in groups of `sub` elements
-    for (size_t i = 0; i < vec.size(); i += sub) {
-        // End of the current group
-        size_t end = std::min(i + sub, vec.size());
-
-        // Shuffle the current group
-        for (size_t j = i; j < end; ++j) {
-            // Random index within the group
-            size_t randomIndex = i + (std::rand() % (end - i));
-            // Swap the current element with the random one
-            std::swap(vec[j], vec[randomIndex]);
-        }
-    }
-}
-
-static inline void init(int64_t *ptr, vector<int64_t> ptr_index, int64_t group)
-{
-    volatile int64_t index = 0;
-    volatile int64_t group_size = ptr_index.size() / group;
-    if (group > 1) {
-        vector<int64_t> group_index(group - 1);
-        // the last group links back to 0
-        for (int64_t m = 0; m < group - 1; ++m) {
-            group_index[m] = m + 1;
-        }
-        shuffleVector(group_index);
-        shuffleGroups(ptr_index, group_size);
-        // Start at 0, visit the sub-blocks in shuffled order, and return to 0
-        index = ptr_index[0];
-        for (int64_t m = 0; m < group_size - 1; ++m) {
-            for (int64_t n = 0; n < group - 1; ++n) {
-                ptr[index] = ptr_index[group_index[n] * group_size + m];
-                index = ptr[index];
-            }
-            shuffleVector(group_index);
-            ptr[index] = ptr_index[m + 1];
-            index = ptr[index];
-        }
-        for (int64_t n = 0; n < group - 1; ++n) {
-            ptr[index] =
-                ptr_index[group_index[n] * group_size + group_size - 1];
-            index = ptr[index];
-        }
-        ptr[index] = ptr_index[0];
-    } else {
-        vector<int64_t> indexs(ptr_index.size());
-        for (int64_t m = 0; m < ptr_index.size(); m++) {
-            indexs[m] = m;
-        }
-        shuffleVector(indexs);
-        index = ptr_index[indexs[0]];
-        for (int64_t m = 0; m < ptr_index.size() - 1; m++) {
-            ptr[index] = ptr_index[indexs[m + 1]];
-            index = ptr[index];
-        }
-        ptr[index] = ptr_index[indexs[0]];
-    }
-}
-
-static inline double inloop(int group, int win_size)
-{
-    int i, j, k;
-    struct timespec start, end;
-    double sum_time_used = 0;
-    int64_t *ptr = (int64_t *)malloc(win_size);
-    int read_stride = int(log(cacheline) / log(2));
-    int total_num = (win_size) >> read_stride; // one value per cache line
-    int test_time = 100;
-
-    vector<int64_t> ptr_index(total_num);
-    for (i = 0; i < test_time; i++) {
-        int64_t index = 0;
-        for (int64_t m = 0; m < total_num; ++m) {
-            ptr_index[m] = m << (read_stride - 3);
-        }
-        init(ptr, ptr_index, group);
-        //warm up
-        load_ptr(kLoopTime, ptr);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        load_ptr(kLoopTime, ptr);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-        sum_time_used += get_time(&start, &end);
-        usleep(1000);
-    }
-    free(ptr);
-    printf(
-        "size = %d, time used = %.10f\n", win_size / 1024, sum_time_used / 100);
-
-    return sum_time_used / test_time;
-}
-
-static inline void get_slope(vector<double> &data, vector<double> &slope)
-{
-    for (int i = 1; i < data.size(); i++) {
-        slope.push_back((data[i] - data[i - 1]) / data[i - 1]);
-    }
-}
-
-static inline void get_validation(
-    vector<double> &data, vector<double> &validation)
-{
-    for (int i = 1; i < data.size(); i++) {
-        validation.push_back(abs(data[i] - data[i - 1]));
-    }
-}
-
-// Whether the point is a local maximum
-static inline bool isMaximum(const vector<double> &values, int index)
-{
-    int n = values.size();
-    if (index == 0 || index == n - 1) {
-        return false; // a boundary point is never a local maximum
-    }
-    return values[index] > values[index - 1] &&
-        values[index] > values[index + 1];
-}
-
-// Find the local maxima in the given range
-static inline int find_L2_point(
-    const vector<double> &values, int start, int end)
-{
-    int size = 0;
-    for (int i = start + 1; i < end; i++) {
-        if (isMaximum(values, i) && values[i] > values[start]) {
-            size = i;
-            break;
-        }
-    }
-    size = pow(2, size / 2 + 1) * (1 + 0.5 * (size % 2));
-    return size;
-}
-
-static inline int find_L1_point(const vector<double> &values)
-{
-    for (int i = 0; i < values.size(); i++) {
-        if (values[i] > 0.2) {
-            return i;
-        }
-    }
-    return 0;
-}
-
-static inline void random_access(vector<double> &time_used)
-{
-    for (int win_size = 2 * 1024; win_size <= kWindowBytes; win_size *= 2) {
-        time_used.push_back(inloop(max(1, win_size / 1024 / 64), win_size));
-        time_used.push_back(
-            inloop(max(1, int(win_size * 1.5 / 1024 / 64)), win_size * 1.5));
-    }
-    return;
-}
-
-void get_cacheline(struct CacheData *cache_data, int cpu_id)
-{
-    struct timespec start, end;
-    int i, j, k;
-    vector<double> slope;
-    int datasize = 64 * 1024;
-    vector<double> time_used;
-    uintptr_t *ptr = (uintptr_t *)malloc(datasize);
-    double first_time, second_time;
-#ifdef __linux__
-    pid_t pid = syscall(SYS_gettid);
-    cpu_set_t mask;
-    CPU_ZERO(&mask);
-    CPU_SET(cpu_id, &mask);
-    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
-        printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
-        printf("Warning: performance may be impacted \n");
-    }
-    read_data(cpu_id, &cache_data->theory_cacheline,
-        "/cache/index0/coherency_line_size");
-#endif
-
-    for (int buf = 16; buf <= 1024; buf *= 2) {
-        first_time = 0;
-        second_time = 0;
-        int w = datasize / buf;
-        int n = (buf >> 3) / 2 + 1;
-        for (j = 0; j < datasize >> 3; j++) {
-            ptr[j] = 0;
-        }
-        uintptr_t *next;
-        for (j = 0; j < w - 1; j++) {
-            ptr[(j * buf) >> 3] = (uintptr_t)&ptr[((j + 1) * buf) >> 3];
-            ptr[((j * buf) >> 3) + n] =
-                (uintptr_t)&ptr[(((j + 1) * buf) >> 3) + n];
-        }
-        ptr[(j * buf) >> 3] = (uintptr_t)&ptr[0];
-        ptr[((j * buf) >> 3) + n] = (uintptr_t)&ptr[n];
-
-        for (i = 0; i < 1000; i++) {
-            for (uintptr_t p = (uintptr_t)ptr; p < (uintptr_t)ptr + datasize;
-                p += cache_data->theory_cacheline) {
-                flush_cache_line((void *)p, cache_data->theory_cacheline);
-            }
-            next = (uintptr_t *)&ptr[0];
-            for (k = 0; k < w; k++) {
-                next = (uintptr_t *)*next;
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            next = (uintptr_t *)&ptr[n];
-            for (k = 0; k < w; k++) {
-                next = (uintptr_t *)*next;
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            second_time += (get_time(&start, &end) / w);
-        }
-        time_used.push_back(second_time);
-    }
-    for (size_t i = 1; i < time_used.size() - 1; ++i) {
-        if (time_used[i] / time_used[i - 1] > 1.3) {
-            cache_data->test_cacheline = 16 * pow(2, i - 1);
-            break;
-        }
-    }
-
-    cacheline = max(cache_data->test_cacheline, cache_data->theory_cacheline);
-    free(ptr);
-    return;
-}
-
-void get_cachesize(struct CacheData *cache_size, int cpu_id)
-{
-    vector<double> time_used, validation, slope;
-    int L1_size_num = 0;
-#ifdef __linux__
-    pid_t pid = syscall(SYS_gettid);
-    cpu_set_t mask;
-    CPU_ZERO(&mask);
-    CPU_SET(cpu_id, &mask);
-    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
-        printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
-        printf("Warning: performance may be impacted \n");
-    }
-    read_data(cpu_id, &cache_size->theory_L1, "/cache/index0/size");
-    read_data(cpu_id, &cache_size->theory_L2, "/cache/index2/size");
-#endif
-#ifdef __APPLE__
-    size_t size = sizeof(int);
-    if (sysctlbyname("hw.perflevel0.l1dcachesize", &cache_size->theory_L1,
-            &size, nullptr, 0) != 0) {
-        perror("sysctlbyname l1dcachesize failed");
-    }
-    if (sysctlbyname("hw.perflevel0.l2cachesize", &cache_size->theory_L2, &size,
-            nullptr, 0) != 0) {
-        perror("sysctlbyname l2cachesize failed");
-    }
-    cache_size->theory_L1 /= 1024;
-    cache_size->theory_L2 /= 1024;
-
-#endif
-    random_access(time_used);
-    get_slope(time_used, slope);
-    get_validation(time_used, validation);
-    L1_size_num = find_L1_point(slope);
-    cout << "L1_size = " << cache_size->theory_L1 << endl;
-    cache_size->test_L1 =
-        pow(2, L1_size_num / 2 + 1) * (1 + 0.5 * (L1_size_num % 2));
-    cout << "L1_size test == " << cache_size->test_L1 << endl;
-    cache_size->test_L2 =
-        find_L2_point(validation, L1_size_num, validation.size());
-    cout << "L2_size = " << cache_size->theory_L2 << endl;
-    cout << "L2_size test == " << cache_size->test_L2 << endl;
-}
-
-void get_multiway(struct CacheData *cache_size, int cpu_id)
-{
-    struct timespec start, end;
-    double time_used = 0, pre_time_used = 0;
-    int i, j, k, w;
-    int64_t loop_time = 10000, test_time = 100;
-#ifdef __linux__
-    pid_t pid = syscall(SYS_gettid);
-    cpu_set_t mask;
-    CPU_ZERO(&mask);
-    CPU_SET(cpu_id, &mask);
-    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
-        printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
-        printf("Warning: performance may be impacted \n");
-    }
-    read_data(
-        cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
-#endif
-    for (w = 0; w < kBufferCount; w++) {
-        uint64_t *index = (uint64_t *)malloc(kBufferBytes * (w + 1));
-        uint64_t next = 0;
-        //init
-        for (j = 0; j < w; j++) {
-            index[(j * kBufferBytes) >> 3] = ((j + 1) * kBufferBytes) >> 3;
-        }
-        index[(j * kBufferBytes) >> 3] = 0;
-        //warm up
-        next = 0;
-        for (k = 0; k < loop_time; k++) {
-            next = index[next];
-        }
-
-        pre_time_used = time_used;
-        time_used = 0;
-        for (i = 0; i < test_time; i++) {
-            clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-            next = 0;
-            for (k = 0; k < loop_time; k++) {
-                next = index[next];
-            }
-            clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-            time_used += get_time(&start, &end);
-        }
-        time_used /= test_time;
-        cout << "multi way " << w << " / " << time_used << " " << pre_time_used
-             << " / " << time_used / pre_time_used << endl;
-        if (w > 1 && time_used / pre_time_used - 1 > 1e-1) {
-            break;
-        }
-        free(index);
-    }
-    cache_size->test_way = w;
-    return;
+    CacheGeometryProbe result;
+    result.cacheline_bytes =
+        cpufb::probe_cacheline_size(reported_cacheline, flush_cache_line,
+            finish_cache_line_flush, static_cast<size_t>(last_level_bytes));
+    // The associativity ring needs a line size to step by; the probe's own
+    // answer is preferred, and the OS value is only a fallback for a machine
+    // where the line probe found no boundary.
+    result.l1_ways =
+        cpufb::probe_l1_associativity(cpufb::effective_cacheline_size(
+            0, result.cacheline_bytes, reported_cacheline));
+    return result;
 }

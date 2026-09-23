@@ -8,7 +8,7 @@
 
 | 扩展 | 已测指令 |
 |---|---|
-| ASIMD (NEON) | `fmla` fp32/fp64 (vs/vv + latency)，`hybrid_fp32_mla_6x16` |
+| ASIMD (NEON) | `fmla` fp32/fp64 (vs/vv + latency，另有 `fmla.mul.vv` 走乘数路径的延迟)，`hybrid_fp32_mla_6x16` |
 | ASIMD_HP | `fmla` fp16 (vs/vv) |
 | ASIMD_DP | `sdot/udot` (vs/vv) s8/u8 |
 | BF16 | `bfmmla`、`bfdot`、`bfmlalb/t` |
@@ -21,6 +21,23 @@
 | SMEf64 | `fmopa f64`、`fmla f64` |
 
 > ⚠️ `cpuid.cpp` 中 `test_sve2` 已经探测了 SVE2，但**没有注册任何 kernel**，能力被浪费。
+
+### FMA 有两个延迟，表里给的是哪一个
+
+`fmla vd, vn, vm` 算 `vd += vn * vm`，三个输入。把结果喂回下一条指令时，喂到
+哪个输入口，等的周期数不同：喂回累加器口 `vd`，硬件到流水线很靠后才需要加数，
+转发得早；喂回乘数口 `vn`/`vm`，结果要从头走一遍乘法器。鲲鹏 920F 实测分别是
+**2.31 与 4.44 周期**（f64 是 2.44 与 4.44），而两者吞吐相同：23.09 对 23.10
+GFLOPS，IPC 都是 2.0。
+
+- `fmla.vv(f32,f32,f32)_latency` 的核是 `fmla v8, v0, v1` 连排，只有 `v8` 变，
+  量的是**累加器路径**。写 GEMM 时它决定需要几个独立累加器才能喂饱 FMA 流水线，
+  是更常用的那个数。
+- `fmla.mul.vv(f32,f32,f32)_latency` 的核是 `fmla v8, v8, v1`，`v8` 同时是累加器
+  和乘数，关键路径取两者较长的那条，量的是**乘数路径**。
+
+两行并列的目的就是让读者知道自己看的是哪一个。两者的吞吐核是同一个，因为差别只在
+延迟，不在吞吐。`.vs`（按元素）形式只有累加器路径一种。
 
 ---
 

@@ -312,6 +312,14 @@ std::string describe_probe_agreement(
     return text.str();
 }
 
+std::string format_probed_l3(int l3_kib, bool hierarchy_complete)
+{
+    if (l3_kib > 0)
+        return format_cache_capacity(static_cast<std::uint64_t>(l3_kib) * kKiB);
+    return hierarchy_complete ? "none (L2 is followed by memory)"
+                              : "not determined";
+}
+
 std::string format_cache_capacity(std::uint64_t bytes)
 {
     if (bytes == 0) return "0 B";

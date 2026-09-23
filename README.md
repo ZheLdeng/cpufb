@@ -263,34 +263,53 @@ against, and a probe result is printed as measured even when it disagrees; the
 last column only labels the agreement (`probe (agrees with OS)`,
 `probe (DISAGREES with OS)`, `probe: not observed`):
 
-- cache-line size: a cold and a reuse pointer chain half a stride apart; the
-  cold chain sits above the reuse chain and windows are four strides apart,
-  so a forward adjacent-line prefetch cannot make a 64-byte line look like
-  128 bytes;
+- cache-line size: pairs of addresses half a stride apart share a line until
+  the stride exceeds the line size. After flushing, walking the first address
+  of every pair brings the second one in for free, or not; the reuse/cold time
+  ratio jumps from ~0 to ~1 at the line size. Each stride is measured with the
+  reuse address below and above the cold one and the larger ratio counts, so a
+  prefetcher that runs in one direction cannot fake a wider line. A core that
+  prefetches both neighbours would read twice the line size.
 - L1 associativity: a same-set pointer ring against a control ring that
   touches the same pages but different sets, which cancels the DTLB conflicts
-  that a bare power-of-two stride otherwise reports as cache ways;
-- L1/L2 capacity: the dependent-load latency curve on a fixed quarter-octave
-  grid up to 64 MiB; plateaus are detected from the curve alone and each
+  that a bare power-of-two stride otherwise reports as cache ways. Four
+  placements are tried and the largest result kept, because address-hashed way
+  predictors make some placements conflict early.
+- L1/L2/L3 capacity: the dependent-load latency curve on a fixed quarter-octave
+  grid up to 128 MiB; plateaus are detected from the curve alone and each
   capacity is the last working set that still performs like the lower of two
-  adjacent plateaus (one third of the way up the step on a log scale). Without transparent huge pages the ring is shuffled page
-  by page so translation misses cannot form a spurious level. The result is
-  the effective capacity seen by the pinned core, so a busy SMT sibling or a
+  adjacent plateaus (one third of the way up the step on a log scale). Without
+  transparent huge pages and with 4 KiB pages the ring is shuffled page by
+  page so translation misses cannot form a spurious level. The result is the
+  effective capacity seen by the pinned core, so a busy SMT sibling or a
   co-tenant lowers it.
+- L3 versus memory: the same run measures the latency of a ring scattered over
+  1 GiB, which no cache can hold. A plateau at least half that slow is memory,
+  not a cache level. A machine without an L3 (Kunpeng 920F, Apple Silicon)
+  therefore reports `none (L2 is followed by memory)`; if the sweep never
+  reaches memory latency the L3 row says `not determined` instead of guessing.
 
-The `load` category remains the instruction-level L1/L2 cache-bandwidth table.
-It obtains L1/L2 capacity directly from Linux cache-topology sysfs or macOS
-cache sysctl, then uses half that capacity (up to 32 MiB) as its bandwidth
-workset (x86-64 caps the workset at 2 MiB). A topology failure uses the
-empirical probe when the `cache` category ran, otherwise conservative 64 KiB
-(L1) and 1 MiB (L2) defaults on ARM64 and no row value on x86-64. The capacity
-probe is not run by `--include-test=load`.
+The `load` category is the L1/L2 read-bandwidth table (`common/cache_bandwidth`):
 
-`Byte/Cycle` is always per core. For a multi-core ARM64 pool the aggregate
-traffic is shown in the `Bandwidth (GB/s)` column (1 GB = 1e9 bytes), with the
-worker count. Load buffers are 64-byte (x86-64) or page (ARM64) aligned, the
-load kernels run on the pinned pool workers, and each worker keeps the same
-buffer slice for warm-up and measurement.
+1. the working set lives in the level under test but not in the one below:
+   half of L1, and the geometric middle of (L1, L2] for L2, so every read is
+   served by that level. Capacities come from the OS topology when exposed and
+   from the probe otherwise;
+2. every selected core reads its own buffer, first touched and warmed by the
+   worker that is timed on it, on the pinned pool workers;
+3. one sample moves about 1 GiB per core and the fastest of five is kept;
+4. `Bandwidth (GB/s)` is the aggregate and needs only the wall clock;
+   `Byte/Cycle` is per core and uses PMU cycles counted around the kernel, or
+   elapsed time x the measured clock;
+5. `Load IPC` = Byte/Cycle / `Bytes/Load` says what the number means. A rate
+   that stays at the core's load-issue limit from L1 to L2 is bounded by the
+   core (an SME unit accepting ~1 load per cycle moves 64 B per cycle with
+   single-vector loads and 256 B with four-vector loads, from either level);
+   a rate that drops is the bandwidth of the level.
+
+`CPUFB_DEBUG_LOAD_COVERAGE=1` runs each kernel once over never-touched memory
+and reports how many pages became resident, as a check that a kernel reads the
+whole working set it is credited with.
 
   --thread_pool: [xxx] is the list of cpu thread to benchmarking, from setting affinities. Please reference the result of lstopo command. For example, [0,3,5-8,13-15].
 

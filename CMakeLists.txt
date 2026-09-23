@@ -66,6 +66,7 @@ find_package(Threads REQUIRED)
 # common/ as an OBJECT library
 # ---------------------------------------------------------------------------
 add_library(cpufb_common OBJECT
+    "${CPUFB_COMMON_DIR}/cache_bandwidth.cpp"
     "${CPUFB_COMMON_DIR}/cache_curve.cpp"
     "${CPUFB_COMMON_DIR}/cache_topology.cpp"
     "${CPUFB_COMMON_DIR}/associativity_probe.cpp"
@@ -76,6 +77,12 @@ add_library(cpufb_common OBJECT
     "${CPUFB_COMMON_DIR}/thread_pool.cpp"
 )
 target_include_directories(cpufb_common PUBLIC "${CPUFB_COMMON_DIR}")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    # system_info.cpp reads the nominal CPU frequency from the IORegistry.
+    # INTERFACE so that every target linking the object library gets them.
+    target_link_libraries(cpufb_common INTERFACE
+        "-framework IOKit" "-framework CoreFoundation")
+endif()
 target_compile_options(cpufb_common PRIVATE -O2)
 if(NOT CPUFB_ARCH STREQUAL "x64")
     # arm64 / riscv64 originally compiled common with -g -w
@@ -87,7 +94,9 @@ target_link_libraries(cpufb_common PUBLIC Threads::Threads)
 # Per-feature SIMD assembly objects (arm64 / riscv64). x64 .S files are still
 # detected at runtime, but the project keeps them assembled by the C++ driver.
 # ---------------------------------------------------------------------------
+include(CheckCCompilerFlag)
 set(_simd_sources "")
+set(_dropped_features "")
 foreach(feat IN LISTS CPUFB_SIMD_FEATURES)
     set(asm_file "${CPUFB_ASM_DIR}/${feat}.S")
     if(NOT EXISTS "${asm_file}")
@@ -98,10 +107,26 @@ foreach(feat IN LISTS CPUFB_SIMD_FEATURES)
 
     cpufb_simd_asm_flags("${CPUFB_ARCH}" "${feat}" _flags)
     if(_flags)
+        # An older toolchain (GCC 9 / binutils 2.34 rejects +bf16, +i8mm and
+        # every SME modifier) must drop the feature, not fail the build: the
+        # rows are selected at run time and simply stay absent.
+        string(MAKE_C_IDENTIFIER "CPUFB_ASM_ACCEPTS_${feat}" _accepts_var)
+        check_c_compiler_flag("${_flags}" ${_accepts_var})
+        if(NOT ${_accepts_var})
+            message(WARNING
+                "cpufb: dropping ${feat}: this toolchain rejects ${_flags}")
+            list(REMOVE_ITEM _simd_sources "${asm_file}")
+            list(APPEND _dropped_features "${feat}")
+            continue()
+        endif()
         set_source_files_properties("${asm_file}" PROPERTIES
             COMPILE_OPTIONS "${_flags}")
     endif()
 endforeach()
+if(_dropped_features)
+    list(REMOVE_ITEM CPUFB_SIMD_FEATURES ${_dropped_features})
+    message(STATUS "cpufb: kernels after toolchain filtering: ${CPUFB_SIMD_FEATURES}")
+endif()
 
 # arm64 has an extra access.S that is always built (not feature-gated).
 if(CPUFB_ARCH STREQUAL "arm64" AND EXISTS "${CPUFB_ASM_DIR}/access.S")
@@ -219,11 +244,6 @@ if(_amx_target)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_link_libraries(cpufb PRIVATE "-ldl")
-    if(CPUFB_ARCH STREQUAL "arm64")
-        # macos_counters.cpp reads the nominal DVFS table from the IORegistry.
-        target_link_libraries(cpufb PRIVATE
-            "-framework IOKit" "-framework CoreFoundation")
-    endif()
 endif()
 
 # ---------------------------------------------------------------------------
@@ -296,31 +316,46 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
 endif()
 
 if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND
-        (CPUFB_ARCH STREQUAL "x64" OR CPUFB_ARCH STREQUAL "arm64"))
+        (CPUFB_ARCH STREQUAL "x64" OR CPUFB_ARCH STREQUAL "arm64"
+            OR CPUFB_ARCH STREQUAL "riscv64"))
     find_program(CPUFB_BASH_EXECUTABLE bash)
     if(CPUFB_BASH_EXECUTABLE)
         set(_cli_test_script "${CMAKE_SOURCE_DIR}/tests/test_cli.sh")
+        file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/Testing/tmp")
         set(_cli_test_names
             list
             invalid_filters
-            instruction_matching
             filters_txt
             mode_all_override
             csv_output
-            sweep_output
+            # Asserts that the line-size and associativity probes report a
+            # value; riscv64 had no CLI test at all, which is how it kept two
+            # columns that were copies of the OS values.
+            cache_probes
         )
-        list(APPEND _cli_test_names memory_bandwidth)
-        list(APPEND _cli_test_names cache_bandwidth)
+        if(NOT CPUFB_ARCH STREQUAL "riscv64")
+            # The riscv64 backend rejects the instruction sweep and the
+            # memory-bandwidth options.
+            list(APPEND _cli_test_names
+                instruction_matching
+                sweep_output
+                memory_bandwidth
+                cache_bandwidth
+            )
+        endif()
         foreach(test_name IN LISTS _cli_test_names)
             add_test(
                 NAME "cpufb_cli_${test_name}"
                 COMMAND "${CPUFB_BASH_EXECUTABLE}" "${_cli_test_script}"
                     "${test_name}" "$<TARGET_FILE:cpufb>" "${CPUFB_ARCH}"
             )
+            # Scratch files stay inside the build tree: on a shared cluster the
+            # project directory is the only place a job may write to.
             set_tests_properties("cpufb_cli_${test_name}" PROPERTIES
                 LABELS "cli"
                 RUN_SERIAL TRUE
                 TIMEOUT 240
+                ENVIRONMENT "TMPDIR=${CMAKE_BINARY_DIR}/Testing/tmp"
             )
         endforeach()
     else()

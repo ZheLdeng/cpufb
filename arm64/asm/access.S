@@ -11,6 +11,17 @@ PROLOGUE load_ptr
     bne .loadL1
     ret
 
+# void load_ptr32(int looptime, const int32_t *ptr): the same walk over
+# 32-bit indices, so that a 64-byte line holds 16 links (see cache_curve.cpp).
+PROLOGUE load_ptr32
+    mov w2, w0
+    mov w3, #0
+.loadPtr32L1:
+    ldr w3, [x1, x3, lsl #2]
+    subs x2, x2, #1
+    bne .loadPtr32L1
+    ret
+
 # uint64_t clock_add_chain(int64_t looptime, uint64_t addend)
 # Core-clock calibration without PMU access: a register-register ADD
 # dependency chain retires exactly one ADD per core cycle, so

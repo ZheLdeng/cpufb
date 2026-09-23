@@ -19,6 +19,8 @@ extern "C"
     void asimd_fadd_vv_f32f32f32(int64_t);
     void asimd_fmul_vv_f32f32f32(int64_t);
     // Tier-2 latency variants.
+    void asimd_fmla_mul_vv_f32f32f32_latency(int64_t);
+    void asimd_fmla_mul_vv_f64f64f64_latency(int64_t);
     void asimd_fmls_vv_f32f32f32_latency(int64_t);
     void asimd_fneg_fmla_vv_f32f32f32_latency(int64_t);
     void asimd_fadd_vv_f32f32f32_latency(int64_t);

@@ -7,6 +7,7 @@
 #include <frequency.hpp>
 #include <common.hpp>
 #include <multiple_issue.hpp>
+#include <cache_bandwidth.hpp>
 #include <cache_topology.hpp>
 #include "runtime_features.h"
 
@@ -327,51 +328,53 @@ static int load_capacity_kb(int reported, int measured)
     return reported > 0 ? reported : measured;
 }
 
-static void cpubm_x64_load(cpubm_t &item, Table &table)
+// Formats value with 5 significant digits and a unit, or "-" when unknown.
+static string format_or_dash(double value, const string &unit)
 {
-    vector<string> cont;
-    cont.resize(table.getCol());
+    if (value <= 0.0) return "-";
+    stringstream text;
+    text << setprecision(5) << value << unit;
+    return text.str();
+}
 
-    double data_size = 0.0;
-    if (item.cache_level == 1) {
-        data_size = load_capacity_kb(cache_size.theory_L1, cache_size.test_L1);
-        cont[3] = format_reported_value(cache_size.theory_L1, " KB");
-        cont[4] = format_reported_value(cache_size.test_L1, " KB");
-    } else {
-        data_size = load_capacity_kb(cache_size.theory_L2, cache_size.test_L2);
-        cont[3] = format_reported_value(cache_size.theory_L2, " KB");
-        cont[4] = format_reported_value(cache_size.test_L2, " KB");
-    }
+// One row of the L1/L2 load table; the method is in cache_bandwidth.hpp.
+static void cpubm_x64_load(tpool_t *tm, cpubm_t &item, Table &table)
+{
+    // Level capacities: the OS topology when exposed, the probe otherwise.
+    const size_t l1_bytes = 1024 *
+        static_cast<size_t>(
+            load_capacity_kb(cache_size.theory_L1, cache_size.test_L1));
+    const size_t l2_bytes = 1024 *
+        static_cast<size_t>(
+            load_capacity_kb(cache_size.theory_L2, cache_size.test_L2));
+    const bool is_l1 = item.cache_level == 1;
+    const size_t workset = is_l1
+        ? cpufb::cache_level_workset(0, l1_bytes)
+        : cpufb::cache_level_workset(l1_bytes, l2_bytes);
 
-    const LoadBandwidth bandwidth =
-        get_bandwith(item.loop_time, data_size, item.cache_kernel);
+    // Every x86 load kernel reads 512 bytes per count and per loop body.
+    cpufb::LoadKernel kernel;
+    kernel.name = item.type;
+    kernel.function = item.cache_kernel;
+    kernel.bytes_per_count = 512;
+    kernel.block_bytes = 512;
+    kernel.bytes_per_load = item.bytes_per_load;
+    const double clock_hz = freq.empty() ? 0.0 : freq[0] * 1e9;
+    const cpufb::CacheBandwidth bandwidth =
+        cpufb::measure_cache_bandwidth(kernel, workset, tm, clock_hz);
+    if (bandwidth.cycle_source == "time x clock") warn_estimated_cycles_once();
 
-    stringstream per_cycle, per_second;
-    if (bandwidth.bytes_per_cycle > 0.0)
-        per_cycle << setprecision(5) << bandwidth.bytes_per_cycle << " "
-                  << item.dim;
-    else
-        per_cycle << "-";
-    if (bandwidth.gb_per_second > 0.0)
-        per_second << setprecision(5) << bandwidth.gb_per_second << " GB/s";
-    else
-        per_second << "-";
-
+    vector<string> cont(table.getCol());
     cont[0] = item.isa;
     cont[1] = item.type;
-    cont[2] = per_cycle.str();
-    cont[5] = per_second.str();
+    cont[2] = format_or_dash(bandwidth.bytes_per_cycle, " " + item.dim);
+    cont[3] = format_reported_value(
+        is_l1 ? cache_size.theory_L1 : cache_size.theory_L2, " KB");
+    cont[4] = format_reported_value(
+        is_l1 ? cache_size.test_L1 : cache_size.test_L2, " KB");
+    cont[5] = format_or_dash(bandwidth.gb_per_second, " GB/s");
     cont[6] = to_string(bandwidth.workset_bytes / 1024) + " KB";
-    // Load instructions per cycle: tells a bandwidth-bound row from one
-    // limited by how fast loads can be issued.
-    if (bandwidth.bytes_per_cycle > 0.0 && item.bytes_per_load > 0) {
-        stringstream load_ipc;
-        load_ipc << setprecision(3)
-                 << bandwidth.bytes_per_cycle / item.bytes_per_load;
-        cont[7] = load_ipc.str();
-    } else {
-        cont[7] = "-";
-    }
+    cont[7] = format_or_dash(bandwidth.load_ipc, "");
     cont[8] = to_string(item.bytes_per_load) + " B";
     table.addOneItem(cont);
 }
@@ -381,9 +384,11 @@ static bool cpubm_x64_cache(
 {
     vector<string> cont;
     cont.resize(table.getCol());
+    // The capacity curve runs first: the line probe sizes its eviction buffer
+    // from the last level the curve found.
+    get_cachesize(&cache_size, set_of_threads[0]);
     get_cacheline(&cache_size, set_of_threads[0]);
     get_multiway(&cache_size, set_of_threads[0]);
-    get_cachesize(&cache_size, set_of_threads[0]);
     // The probe column always shows what was measured.  A result that
     // disagrees with the OS topology is flagged, never replaced, so the
     // report cannot agree with the reported value by construction.
@@ -406,24 +411,36 @@ static bool cpubm_x64_cache(
     cont[2] = format_reported_value(cache_size.test_L1, " KB");
     cont[5] = cpufb::describe_probe_agreement(
         cache_size.theory_L1, cache_size.test_L1, 1.3);
+    if (!cache_size.test_L1_note.empty())
+        cont[5] = cache_size.test_L1 <= 0
+            ? cache_size.test_L1_note
+            : cont[5] + "; " + cache_size.test_L1_note;
     table.addOneItem(cont);
     cont[0] = "L2 cache size";
     cont[1] = format_reported_value(cache_size.theory_L2, " KB");
     cont[2] = format_reported_value(cache_size.test_L2, " KB");
     cont[5] = cpufb::describe_probe_agreement(
         cache_size.theory_L2, cache_size.test_L2, 1.3);
+    if (!cache_size.test_L2_note.empty())
+        cont[5] = cache_size.test_L2 <= 0
+            ? cache_size.test_L2_note
+            : cont[5] + "; " + cache_size.test_L2_note;
     table.addOneItem(cont);
     const cpufb::CacheLevelInfo l3 =
         cpufb::detect_data_cache_level(set_of_threads[0], 3);
-    if (l3.bytes > 0) {
-        cont[0] = "L3/unified cache capacity";
-        cont[1] = cpufb::format_cache_capacity(l3.bytes);
-        cont[2] = "-";
-        cont[3].clear();
-        cont[4].clear();
-        cont[5] = l3.source;
-        table.addOneItem(cont);
-    }
+    // Always shown: "none" is a result too, and it is how a machine without
+    // an L3 is told apart from one whose L3 the OS merely does not report.
+    cont[0] = "L3/unified cache capacity";
+    cont[1] = l3.bytes > 0 ? cpufb::format_cache_capacity(l3.bytes) : "-";
+    cont[2] = cpufb::format_probed_l3(
+        cache_size.test_L3, cache_size.hierarchy_complete);
+    cont[3].clear();
+    cont[4].clear();
+    cont[5] = cache_size.test_L3 > 0
+        ? cpufb::describe_probe_agreement(
+              l3.bytes / 1024.0, cache_size.test_L3, 1.3)
+        : l3.source;
+    table.addOneItem(cont);
     return append_cache_memory_bandwidth(options, table);
 }
 
@@ -626,10 +643,6 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
         return false;
     } else if (should_run_test(filter, "load"))
         get_theory_cache(&cache_size, set_of_threads[0]);
-    // The L1/L2 load kernels run on the calling thread.  The cache probes pin
-    // it as a side effect, but a load-only run would otherwise measure
-    // whichever core the scheduler picks while reporting thread_pool[0].
-    if (should_run_test(filter, "load")) bind_current_thread(set_of_threads[0]);
 
     tpool_t *tm = tpool_create(set_of_threads);
     if (tm == nullptr) {
@@ -659,7 +672,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
         }
         case BENCHMARK_LOAD:
             sleep(idle_time);
-            cpubm_x64_load(bm_list[i], *tables[1]);
+            cpubm_x64_load(tm, bm_list[i], *tables[1]);
             break;
         case BENCHMARK_MULTI_ISSUE:
             sleep(idle_time);

@@ -16,12 +16,15 @@ if [[ ! -x "${binary}" ]]; then
     echo "FAIL ${test_case}: cpufb binary is not executable: ${binary}" >&2
     exit 1
 fi
-if [[ "${arch}" != "x64" && "${arch}" != "arm64" ]]; then
+if [[ "${arch}" != "x64" && "${arch}" != "arm64" &&
+    "${arch}" != "riscv64" ]]; then
     echo "FAIL ${test_case}: unsupported test architecture: ${arch}" >&2
     exit 1
 fi
 
-test_tmp="$(mktemp -d "${TMPDIR:-/tmp}/cpufb-cli.XXXXXX")"
+# ctest sets TMPDIR to the build tree; a direct invocation uses the binary's
+# directory rather than /tmp, which a shared cluster may forbid.
+test_tmp="$(mktemp -d "${TMPDIR:-$(dirname "${binary}")}/cpufb-cli.XXXXXX")"
 trap 'rm -rf "${test_tmp}"' EXIT
 
 if [[ -n "${CPUFB_TEST_CORE:-}" ]]; then
@@ -437,6 +440,67 @@ case "${test_case}" in
                 if (rows != 1) exit 4
             }
         ' "${cache_output}" || fail "cache memory bandwidth CSV row is invalid"
+        ;;
+
+    cache_probes)
+        # The line-size and associativity probes fail silently: a buffer that
+        # is too small or a criterion that is too strict just yields "-" with
+        # "probe: not observed" (both happened on Apple M4).  A missing or
+        # disagreeing value is therefore treated as a regression.  Capacities
+        # are not compared with the OS (a busy SMT sibling or a co-tenant
+        # legitimately lowers them), only checked for plausibility: an L1 of
+        # at most 512 KiB, smaller than the L2 when both are given.  A cpu7 on
+        # a MediaTek MT6993 reported "640 KiB" for a 64 KiB L1 before the
+        # estimator learnt to withhold a slope's crossing point.
+        cache_output="${test_tmp}/cache-probes.csv"
+        # The riscv64 backend rejects the memory-bandwidth options; the other
+        # two would otherwise spend the default workset on a row this case
+        # does not look at.
+        cache_args=(--include-test=cache)
+        if [[ "${arch}" != "riscv64" ]]; then
+            cache_args+=(--memory-size-mib=4 --memory-repetitions=1)
+        fi
+        probe_cache_run()
+        {
+            run_success "${binary}" "${thread_arg}" "${cache_args[@]}" \
+                --save="${cache_output}" >/dev/null
+        }
+        probes_agree()
+        {
+            awk -F',' '
+                $1 == "cache" && ($2 == "cacheline size" ||
+                        $2 == "L1 ways of associativity") {
+                    rows++
+                    if ($4 == "" || $4 == "-" || $0 ~ /not observed/) exit 5
+                    if ($0 ~ /DISAGREES/) exit 6
+                }
+                END {
+                    if (rows != 2) exit 7
+                }
+            ' "${cache_output}"
+        }
+        probe_cache_run
+        awk -F',' '
+            function kib(text) { sub(/ *K[i]?B.*/, "", text); return text + 0 }
+            $1 == "cache" && $2 ~ /^L1 (data )?cache (capacity|size)$/ &&
+                $4 ~ /K/ { l1 = kib($4) }
+            $1 == "cache" && $2 ~ /^L2/ && $2 ~ /cache/ && $4 ~ /K/ {
+                l2 = kib($4)
+            }
+            END {
+                if (l1 > 512) exit 8
+                if (l1 > 0 && l2 > 0 && l1 >= l2) exit 9
+            }
+        ' "${cache_output}" || fail "implausible cache capacities: $(grep -E 'cache (capacity|size)' "${cache_output}" | tr '\n' ' ')"
+        # The probes time single cache misses, so load on the test core can
+        # spoil one run (seen once on a Kunpeng 920F straight after a 32-way
+        # build); a real regression fails every attempt.
+        if ! probes_agree; then
+            first_attempt="$(grep -E 'cacheline size|ways of associativity' \
+                "${cache_output}" | tr '\n' ' ')"
+            probe_cache_run
+            probes_agree || fail "cache-line or associativity probe did not report a value that agrees with the OS, twice: ${first_attempt}| $(grep -E 'cacheline size|ways of associativity' "${cache_output}" | tr '\n' ' ')"
+        fi
         ;;
 
     *)

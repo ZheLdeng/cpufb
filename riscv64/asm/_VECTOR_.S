@@ -43,6 +43,20 @@ riscv_cache_chase:
     bnez a0, .riscv.cache.chase.loop
     ret
 
+# void riscv_cache_chase32(int looptime, const int32_t *ptr): the same walk
+# over 32-bit indices, so that a 64-byte line holds 16 links.  The indices are
+# positive and below 2^28, so the sign extension lw performs is harmless.
+.globl riscv_cache_chase32
+riscv_cache_chase32:
+    li x5, 0
+.riscv.cache.chase32.loop:
+    slli x6, x5, 2
+    add x6, a1, x6
+    lw x5, (x6)
+    addi a0, a0, -1
+    bnez a0, .riscv.cache.chase32.loop
+    ret
+
 .globl vector_load_stream
 vector_load_stream:
     preserve_caller_vec

@@ -256,7 +256,8 @@ def make_body_layout(
         if count_b
         else 1
     )
-    repetition_period = math.lcm(period_a, period_b)
+    # math.lcm needs Python 3.9; Ubuntu 20.04 LTS still ships 3.8.
+    repetition_period = period_a // math.gcd(period_a, period_b) * period_b
     repetitions = (
         math.ceil(minimum_repetitions / repetition_period)
         * repetition_period

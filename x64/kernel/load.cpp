@@ -13,6 +13,7 @@
 
 #include "associativity_probe.hpp"
 #include "cache_curve.hpp"
+#include "cache_topology.hpp"
 #include "cacheline_probe.hpp"
 #include "compute.hpp"
 #include "frequency.hpp"
@@ -56,9 +57,12 @@ void get_cacheline(struct CacheData *cache_size, int cpu_id)
     read_data(cpu_id, &cache_size->theory_cacheline,
         "/cache/index0/coherency_line_size");
 #endif
-    cache_size->test_cacheline =
-        cpufb::probe_cacheline_size(cache_size->theory_cacheline,
-            flush_cache_line, finish_cache_line_flush);
+    cache_size->test_cacheline = cpufb::probe_cacheline_size(
+        cache_size->theory_cacheline, flush_cache_line, finish_cache_line_flush,
+        // Largest level the latency curve found (measured, not reported).
+        1024 *
+            static_cast<size_t>(std::max({cache_size->test_L1,
+                cache_size->test_L2, cache_size->test_L3})));
 }
 
 void get_theory_cache(struct CacheData *cache_size, int cpu_id)
@@ -75,9 +79,9 @@ void get_theory_cache(struct CacheData *cache_size, int cpu_id)
 
 // Dependent-load ring walk; the empty asm keeps `next` live so the chain is
 // neither vectorized nor dropped.
-static void chase_ring(int iterations, int64_t *buffer)
+static void chase_ring(int iterations, const int32_t *buffer)
 {
-    int64_t next = 0;
+    int32_t next = 0;
     for (int i = 0; i < iterations; ++i) next = buffer[next];
     __asm__ volatile("" : "+r"(next) : : "memory");
 }
@@ -105,20 +109,47 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
         kCacheCurveMaxBytes);
     cache_size->test_L1 = 0;
     cache_size->test_L2 = 0;
+    cache_size->test_L3 = 0;
+    std::string deeper_steps;
+    const std::string doubt = cpufb::describe_prefetch_doubt(curve);
     for (const cpufb::CacheLevelEstimate &level : curve.levels) {
+        // Every level the curve resolved is reported; the note says when
+        // its boundary was not sharp.
         const int size_kb = static_cast<int>(level.capacity_bytes / 1024);
-        if (level.level == "L1")
+        // The doubt applies to the whole curve, so it goes on every level.
+        std::string note = cpufb::describe_transition(level);
+        if (!doubt.empty()) note = note.empty() ? doubt : note + "; " + doubt;
+        if (level.level == "L1") {
             cache_size->test_L1 = size_kb;
-        else if (level.level == "L2")
+            cache_size->test_L1_note = note;
+        } else if (level.level == "L2") {
             cache_size->test_L2 = size_kb;
+            cache_size->test_L2_note = note;
+        } else {
+            // The L3 row is the deepest level the curve resolved, not its
+            // third: a Kunpeng 920 resolves a step inside its 32 MiB L3 and
+            // so reports four, and naming the third one L3 made the row read
+            // "DISAGREES with OS, 0.12x" about a curve that had found the
+            // 32 MiB exactly.  Anything between L2 and the deepest is named
+            // in the note instead.
+            if (cache_size->test_L3 > 0)
+                deeper_steps += (deeper_steps.empty() ? "" : ", ") +
+                    cpufb::format_cache_capacity(
+                        static_cast<uint64_t>(cache_size->test_L3) * 1024);
+            cache_size->test_L3 = size_kb;
+            cache_size->test_L3_note = note;
+        }
     }
-    if (getenv("CPUFB_DEBUG_CACHE_CURVE") != nullptr) {
-        fprintf(stderr, "cache curve (%s):\n", curve.translation_mode.c_str());
-        for (const cpufb::CacheLatencyPoint &point : curve.points)
-            fprintf(stderr, "  %8llu KB %8.3f ns/load\n",
-                static_cast<unsigned long long>(point.working_set_bytes / 1024),
-                point.latency_ns);
+    if (!deeper_steps.empty()) {
+        const std::string extra =
+            "the curve also stepped at " + deeper_steps + " below this level";
+        cache_size->test_L3_note = cache_size->test_L3_note.empty()
+            ? extra
+            : cache_size->test_L3_note + "; " + extra;
     }
+    cache_size->memory_latency_ns = curve.memory_latency_ns;
+    cache_size->hierarchy_complete = curve.reached_memory;
+    cpufb::debug_print_cache_curve(curve);
 }
 
 void get_multiway(struct CacheData *cache_size, int cpu_id)
@@ -147,91 +178,4 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
         cpufb::effective_cacheline_size(cache_size->theory_cacheline,
             cache_size->test_cacheline, kDefaultCacheLineBytes));
     cache_size->test_way = detected_way;
-}
-
-bool bind_current_thread(int cpu_id)
-{
-#ifdef __linux__
-    pid_t pid = syscall(SYS_gettid);
-    cpu_set_t mask;
-    CPU_ZERO(&mask);
-    if (cpu_id >= 0 && cpu_id < CPU_SETSIZE) CPU_SET(cpu_id, &mask);
-    if (cpu_id < 0 || cpu_id >= CPU_SETSIZE ||
-        sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
-        printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
-        printf("Warning: performance may be impacted \n");
-        return false;
-    }
-#else
-    (void)cpu_id;
-#endif
-    return true;
-}
-
-LoadBandwidth get_bandwith(
-    uint64_t looptime, double data_size, LoadKernel kernel)
-{
-    struct timespec start, end;
-    LoadBandwidth result;
-    if (kernel == nullptr) return result;
-
-    data_size /= 2.0;
-    if (data_size > 2 * 1024) {
-        data_size = 2 * 1024;
-    }
-
-    // Every kernel consumes exactly 512 bytes per inner iteration.
-    const uint64_t kBytesPerInnerLoop = 512;
-    const int inner_loop =
-        static_cast<int>(data_size * 1024 / kBytesPerInnerLoop);
-    if (inner_loop <= 0) return result;
-    const uint64_t bytes_per_loop = inner_loop * kBytesPerInnerLoop;
-    const uint64_t target_bytes = 32ULL * 1024 * 1024 * 1024;
-    uint64_t effective_looptime = std::max<uint64_t>(
-        1, std::min<uint64_t>(looptime, target_bytes / bytes_per_loop));
-
-    // malloc() returns 16-mod-64 addresses for large blocks, so every zmm
-    // load and every other ymm load would split a cache line and roughly
-    // halve the reported bandwidth.
-    void *allocation = nullptr;
-    if (posix_memalign(&allocation, 64, bytes_per_loop) != 0) return result;
-    float *cache_data = static_cast<float *>(allocation);
-
-    //Preventing Compiler Optimization
-    for (uint64_t i = 0; i < bytes_per_loop / sizeof(float); i++) {
-        cache_data[i] = i;
-    }
-
-    kernel(cache_data, inner_loop, effective_looptime);
-    double best_time = 0.0;
-    long long best_cycles = 0;
-    for (int repeat = 0; repeat < 3; ++repeat) {
-#ifdef __linux__
-        PerfEventCycle cycle_counter(0, false);
-        cycle_counter.start();
-#endif
-        clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-        kernel(cache_data, inner_loop, effective_looptime);
-        clock_gettime(CLOCK_MONOTONIC_RAW, &end);
-#ifdef __linux__
-        cycle_counter.stop();
-        const long long cycles = cycle_counter.get_cycle();
-        if (cycles > 0 && (best_cycles == 0 || cycles < best_cycles))
-            best_cycles = cycles;
-#endif
-        const double time_used = get_time(&start, &end);
-        if (time_used > 0.0 && (best_time == 0.0 || time_used < best_time))
-            best_time = time_used;
-    }
-    free(cache_data);
-
-    const double total_bytes =
-        static_cast<double>(effective_looptime) * bytes_per_loop;
-    result.workset_bytes = bytes_per_loop;
-    if (best_time > 0.0) result.gb_per_second = total_bytes / best_time * 1e-9;
-    if (best_cycles > 0)
-        result.bytes_per_cycle = total_bytes / best_cycles;
-    else if (best_time > 0.0 && !freq.empty() && freq[0] > 0.0)
-        result.bytes_per_cycle = total_bytes / (best_time * freq[0] * 1e9);
-    return result;
 }

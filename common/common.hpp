@@ -18,6 +18,8 @@ static double get_time(struct timespec *start, struct timespec *end)
 #ifdef __linux__
 #include <asm/unistd.h>
 #include <linux/perf_event.h>
+
+#include "perf_pmu.hpp"
 class PerfEventCycle
 {
 private:
@@ -33,7 +35,7 @@ public:
         pe.type = PERF_TYPE_HARDWARE;
         pe.size = sizeof(struct perf_event_attr);
         if (mode == 0) {
-            pe.config = PERF_COUNT_HW_CPU_CYCLES;
+            pe.config = cpufb::perf_cycles_config_for_current_cpu();
         } else {
             pe.config = 0xA00000000;
         }

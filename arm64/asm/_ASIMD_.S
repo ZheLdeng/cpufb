@@ -540,6 +540,90 @@
     restore_caller_vec
     ret
 ###############################
+// fmla with the dependency running through a multiplier input: v8 is both
+// the accumulator and one multiplicand, so the loop-carried latency is the
+// longer of the instruction's two input paths.  The _latency kernels above
+// chain through the accumulator alone, which a core can forward later in the
+// pipeline because the addend is needed last: a Kunpeng 920F closes that
+// chain in 2.3 cycles and this one in 4.4.  Both numbers are real; a GEMM
+// kernel accumulating in registers sees the first, a chain that feeds a
+// product back into the next product sees the second.
+#void asimd_fmla_mul_vv_f32f32f32_latency(int64_t);
+    PROLOGUE asimd_fmla_mul_vv_f32f32f32_latency
+    preserve_caller_vec
+    INIT
+.asimd.fmla.mul.vv.f32f32f32.lat.L1:
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    subs x0, x0, #1
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    fmla v8.4s, v8.4s, v1.4s
+    bne .asimd.fmla.mul.vv.f32f32f32.lat.L1
+    restore_caller_vec
+    ret
+###############################
+// fmla with the dependency running through a multiplier input: v8 is both
+// the accumulator and one multiplicand, so the loop-carried latency is the
+// longer of the instruction's two input paths.  The _latency kernels above
+// chain through the accumulator alone, which a core can forward later in the
+// pipeline because the addend is needed last: a Kunpeng 920F closes that
+// chain in 2.3 cycles and this one in 4.4.  Both numbers are real; a GEMM
+// kernel accumulating in registers sees the first, a chain that feeds a
+// product back into the next product sees the second.
+#void asimd_fmla_mul_vv_f64f64f64_latency(int64_t);
+    PROLOGUE asimd_fmla_mul_vv_f64f64f64_latency
+    preserve_caller_vec
+    INIT
+.asimd.fmla.mul.vv.f64f64f64.lat.L1:
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    subs x0, x0, #1
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    fmla v8.2d, v8.2d, v1.2d
+    bne .asimd.fmla.mul.vv.f64f64f64.lat.L1
+    restore_caller_vec
+    ret
+###############################
 // Tier-2 latency variants.
 // fmls: Pattern A (vd is RMW accumulator).
 #void asimd_fmls_vv_f32f32f32_latency(int64_t);

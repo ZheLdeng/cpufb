@@ -550,6 +550,18 @@ int main(int argc, char *argv[])
     CliOptions options;
     if (!parse_cli_options(argc, argv, options)) return 1;
 
+    // Listing the catalogue needs no cores, and the other two backends
+    // answer it before they insist on a thread pool.  Asking for one here
+    // made `--list-instructions` exit 1 on this backend alone, which is what
+    // the CLI tests found the first time they were allowed to run on it.
+    if (options.list_categories || options.list_instructions) {
+        cpufb_register_isa();
+        BenchmarkCatalog listing = build_benchmark_catalog();
+        if (options.list_categories) print_benchmark_categories(listing);
+        if (options.list_instructions) print_benchmark_instructions(listing);
+        return 0;
+    }
+
     if (!options.thread_pool_set || options.thread_pool.empty()) {
         fprintf(stderr, "Error: You must set --thread_pool parameter.\n");
         fprintf(stderr, "You may also set --idle_time parameter.\n");
@@ -561,6 +573,8 @@ int main(int argc, char *argv[])
             "idle_time is the interval time(s) between every two benchmarks.\n");
         fprintf(stderr,
             "idle_time parameter can be ignored, the default value is 0s.\n");
+        fprintf(stderr, "       %s --list-categories | --list-instructions\n",
+            argv[0]);
         fprintf(stderr, "Notice: there must NOT be any spaces.\n");
         return 1;
     }
@@ -578,14 +592,6 @@ int main(int argc, char *argv[])
     print_system_information();
     cpufb_register_isa();
     BenchmarkCatalog catalog = build_benchmark_catalog();
-    if (options.list_categories) {
-        print_benchmark_categories(catalog);
-        return 0;
-    }
-    if (options.list_instructions) {
-        print_benchmark_instructions(catalog);
-        return 0;
-    }
     if (!validate_benchmark_filter(options.filter, catalog)) return 1;
     return cpubm_do_bench(options.thread_pool, options.idle_time,
                options.filter, options.save)

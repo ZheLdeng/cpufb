@@ -167,7 +167,7 @@ static void init_table(vector<Table *> &tables)
     ti.resize(7);
 #endif
     ti[0] = "Core ID";
-    ti[1] = "Theory Freq";
+    ti[1] = "Reported Max Freq";
     ti[2] = "Test Freq";
     ti[3] = "IPC(FSU32)";
     ti[4] = "IPC(FSU64)";

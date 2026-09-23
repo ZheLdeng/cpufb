@@ -557,7 +557,7 @@ static void init_table(vector<Table *> &tables)
 
     ti.resize(7);
     ti[0] = "Core ID";
-    ti[1] = "Theory Freq";
+    ti[1] = "Reported Max Freq";
     ti[2] = "Test Freq";
     ti[3] = "IPC(FSU32)";
     ti[4] = "IPC(FSU64)";
@@ -579,7 +579,7 @@ static bool prepare_instruction_sweep(const vector<int> &threads, int, void *)
     Table freq_table;
     vector<string> freq_head(7);
     freq_head[0] = "Core ID";
-    freq_head[1] = "Theory Freq";
+    freq_head[1] = "Reported Max Freq";
     freq_head[2] = "Test Freq";
     freq_head[3] = "IPC(FSU32)";
     freq_head[4] = "IPC(FSU64)";

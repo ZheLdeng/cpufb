@@ -392,7 +392,7 @@ sudo build/macos-arm64/cpufb '--thread_pool=[0]' --mode=compute
 Without fixed counters the frequency comes from the unprivileged `ADD`-chain
 estimate described above, then from a `powermetrics` sample, and finally from
 the nominal maximum in the power manager's IORegistry DVFS tables
-(`pmgr/voltage-states*-sram`). That last value is what `Theory Freq` always
+(`pmgr/voltage-states*-sram`). That last value is what `Reported Max Freq` always
 shows; cpufb no longer carries a per-model frequency table. When nothing can
 be measured, `Test Freq` is `-` and IPC is normalized by the reported value,
 labelled `OS-reported frequency (not measured)`. Do not compare estimated

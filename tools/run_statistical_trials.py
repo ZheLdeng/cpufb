@@ -57,7 +57,10 @@ METRIC_COLUMNS = {
     "compute": {"Peak Performance", "IPC", "Latency"},
     "load": {"Bandwidth (per core)", "Cache Capacity", "Workset", "Bandwidth (GB/s)"},
     "cache": {"Topology / Core", "Probe / Kernel", "Median Bandwidth", "Workset"},
-    "freq": {"Theory Freq", "Test Freq", "IPC(FSU32)", "IPC(FSU64)",
+    # "Theory Freq" is the pre-rename name of "Reported Max Freq"; both are
+    # accepted so that CSVs written before the rename still load.
+    "freq": {"Reported Max Freq", "Theory Freq", "Test Freq", "IPC(FSU32)",
+             "IPC(FSU64)",
              "IPC(LSU ldr)", "IPC(SVE32)", "IPC(SVE64)"},
     "multi_issue": {"IPC"},
     "memory_bandwidth": {"Median GB/s", "B/cycle", "Load IPC", "Min GB/s",

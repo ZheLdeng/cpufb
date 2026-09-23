@@ -590,12 +590,36 @@ CacheCurveResult measure_cache_curve(
             chase, buffer, region_bytes, 0x4d454d4f52595245ULL);
 
     const std::vector<uint64_t> sizes = build_cache_curve_sizes(max_bytes);
-    for (size_t i = 0; i < sizes.size(); ++i) {
-        CacheLatencyPoint point;
-        point.working_set_bytes = sizes[i];
-        point.latency_ns = measure_pointer_chase(chase, buffer, sizes[i], line,
-            group_lines, 0x4350554642ULL + i * 0x9e3779b97f4a7c15ULL);
-        result.points.push_back(point);
+    auto sweep = [&](size_t lines_per_group) {
+        std::vector<CacheLatencyPoint> points;
+        for (size_t i = 0; i < sizes.size(); ++i) {
+            CacheLatencyPoint point;
+            point.working_set_bytes = sizes[i];
+            point.latency_ns = measure_pointer_chase(chase, buffer, sizes[i],
+                line, lines_per_group,
+                0x4350554642ULL + i * 0x9e3779b97f4a7c15ULL);
+            points.push_back(point);
+        }
+        return points;
+    };
+    result.points = sweep(group_lines);
+
+    // Page-grouped order visits all the lines of a page in a row, which is
+    // also the pattern a region prefetcher serves best, and on a MediaTek
+    // MT6993 it served all of it: the deepest working set, 128 MiB, answered
+    // in 26.6 ns against a 212 ns memory reference, the curve fell where it
+    // should have risen, and the capacities read off it were a prefetcher's.
+    // The same sweep shuffled globally reached 172 ns, rose throughout, and
+    // agreed about L1.  So the grouping is kept for the translation misses it
+    // saves, and dropped when the reference says it bought a curve that never
+    // left the prefetcher.
+    if (group_by_page && result.memory_latency_ns > 0.0 &&
+        !result.points.empty() &&
+        result.points.back().latency_ns <
+            kMemoryLatencyFraction * result.memory_latency_ns) {
+        result.points = sweep(0);
+        result.translation_mode = "global order (page-grouped order never "
+                                  "reached memory)";
     }
 #ifdef __linux__
     munmap(mapping, mapping_bytes);

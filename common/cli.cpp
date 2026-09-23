@@ -441,18 +441,33 @@ void record_migration_information(const tpool_migration_info &info)
     if (!info.available) {
         entry->value = "unavailable";
         entry->source = "OS does not expose the executing CPU";
+        cout << "Core Migration: " << entry->value << " (" << entry->source
+             << ")" << endl;
         return;
     }
 
-    const bool migrated = info.migrations != 0 ||
-        info.requested_cpu_mismatches != 0;
+    // "no" after zero observations would claim something that was never
+    // checked: the cache and frequency probes pin their own thread and do
+    // not run on the pool, so a --mode=cache run observes nothing.
+    if (info.observations == 0) {
+        entry->value = "not observed";
+        entry->source =
+            "no benchmark in this run executed on the thread pool, which is "
+            "where migrations are tracked";
+        cout << "Core Migration: " << entry->value << " (" << entry->source
+             << ")" << endl;
+        return;
+    }
+    const bool migrated =
+        info.migrations != 0 || info.requested_cpu_mismatches != 0;
     stringstream source;
     source << "sched_getcpu before/after " << info.observations
            << " worker invocations; migrations=" << info.migrations
-           << ", requested-core mismatches="
-           << info.requested_cpu_mismatches;
+           << ", requested-core mismatches=" << info.requested_cpu_mismatches;
     entry->value = migrated ? "yes" : "no";
     entry->source = source.str();
+    cout << "Core Migration: " << entry->value << " (" << entry->source << ")"
+         << endl;
 }
 
 string trim_arg_value(const string &value)
@@ -612,17 +627,18 @@ bool save_table_sections(const SaveOptions &options,
     }
 
     Table system_table;
-    vector<pair<string, const Table*> > output_sections;
+    vector<pair<string, const Table *>> output_sections;
     if (system_info_initialized) {
         cpufb::populate_system_info_table(system_info, system_table);
         output_sections.push_back(make_pair(string("system"), &system_table));
     }
-    output_sections.insert(output_sections.end(), sections.begin(), sections.end());
+    output_sections.insert(
+        output_sections.end(), sections.begin(), sections.end());
 
     if (options.format == SAVE_FORMAT_CSV) {
         for (size_t i = 0; i < output_sections.size(); ++i)
-            output_sections[i].second->writeCompact(out, ',',
-                output_sections[i].first);
+            output_sections[i].second->writeCompact(
+                out, ',', output_sections[i].first);
     } else {
         for (size_t i = 0; i < output_sections.size(); ++i) {
             if (i != 0) out << '\n';

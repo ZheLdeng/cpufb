@@ -396,7 +396,12 @@ SystemInfo collect_system_info(const std::vector<int> &selected_cores)
 
     add_entry(
         info, "Core Selection", format_cores(selected_cores), "--thread_pool");
-    add_entry(info, "Core Migration", "unavailable", "not measured");
+    // Filled in by record_migration_information() once the benchmarks have
+    // run, which is after this table is printed; the result is printed again
+    // at the end and written to --save output.  It used to read "not
+    // measured" here on every platform although it always was measured.
+    add_entry(info, "Core Migration", "pending",
+        "recorded while the benchmarks run, printed after them");
     std::string temperature_source;
     add_entry(info, "Temperature", read_temperature(temperature_source),
         temperature_source);

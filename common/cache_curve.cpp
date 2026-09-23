@@ -294,20 +294,40 @@ double measure_memory_latency(
 
 // Size of the mapping: the sweep itself, grown to the memory-reference region
 // when a quarter of the available memory allows it.
-uint64_t choose_region_bytes(uint64_t max_bytes)
+// Memory this process could get without pushing the machine into swap.
+// sysconf(_SC_AVPHYS_PAGES) answers with MemFree, which on any host that has
+// been up for a while is a small fraction of it: a Kunpeng 920 with 14.4 GB
+// available reported 0.90 GB, so the memory reference below was skipped and
+// every capacity it measured carried a warning that the chase had been
+// prefetched, next to rows that agreed with the OS exactly.
+uint64_t available_memory_bytes()
 {
+#ifdef __linux__
+    std::ifstream meminfo("/proc/meminfo");
+    std::string key;
+    while (meminfo >> key) {
+        unsigned long long value = 0;
+        if (key == "MemAvailable:" && meminfo >> value) return value * 1024;
+        std::getline(meminfo, key);
+    }
+#endif
 #if defined(_SC_AVPHYS_PAGES) && defined(_SC_PAGESIZE)
     const long pages = sysconf(_SC_AVPHYS_PAGES);
     const long page = sysconf(_SC_PAGESIZE);
-    if (pages > 0 && page > 0 &&
-        static_cast<uint64_t>(pages) * page / 4 >= kMemoryReferenceBytes)
+    if (pages > 0 && page > 0)
+        return static_cast<uint64_t>(pages) * static_cast<uint64_t>(page);
+#endif
+    return 0;
+}
+
+uint64_t choose_region_bytes(uint64_t max_bytes)
+{
+    const uint64_t available = available_memory_bytes();
+    // No cheap way to ask on macOS, where this returns 0: 1 GiB is small next
+    // to any Apple Silicon configuration.
+    if (available == 0 || available / 4 >= kMemoryReferenceBytes)
         return std::max(max_bytes, kMemoryReferenceBytes);
     return max_bytes;
-#else
-    // No cheap way to ask (macOS): 1 GiB is small next to any Apple Silicon
-    // configuration.
-    return std::max(max_bytes, kMemoryReferenceBytes);
-#endif
 }
 
 } // namespace

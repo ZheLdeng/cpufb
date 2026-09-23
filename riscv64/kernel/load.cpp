@@ -43,8 +43,13 @@ CacheGeometryProbe probe_cache_geometry(
     // The associativity ring needs a line size to step by; the probe's own
     // answer is preferred, and the OS value is only a fallback for a machine
     // where the line probe found no boundary.
-    result.l1_ways =
-        cpufb::probe_l1_associativity(cpufb::effective_cacheline_size(
-            0, result.cacheline_bytes, reported_cacheline));
+    const int line = cpufb::effective_cacheline_size(
+        0, result.cacheline_bytes, reported_cacheline);
+    result.l1_ways = cpufb::probe_l1_associativity(line);
+    result.l1_way_bytes = cpufb::probe_l1_way_bytes(line, result.l1_ways);
+    result.line_from_sets =
+        cpufb::probe_l1_line_from_sets(result.l1_ways, result.l1_way_bytes);
+    result.l2_ways = cpufb::probe_l2_associativity(line, result.l1_ways);
+    result.l2_line = cpufb::probe_l2_line_from_sets(result.l2_ways);
     return result;
 }

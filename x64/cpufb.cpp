@@ -400,21 +400,63 @@ static bool cpubm_x64_cache(
     cont[5] = cpufb::describe_probe_agreement(
         cache_size.theory_way, cache_size.test_way, 1.0);
     table.addOneItem(cont);
-    cont[0] = "cacheline size";
+    cont[0] = "L2 ways of associativity";
+    cont[1] = format_reported_value(cache_size.theory_l2_way, "");
+    cont[2] = format_reported_value(cache_size.test_l2_way, "");
+    cont[5] = cache_size.test_l2_way > 0
+        ? cpufb::describe_probe_agreement(
+              cache_size.theory_l2_way, cache_size.test_l2_way, 1.0)
+        : "not measured: needs 2 MiB huge pages to place lines in one L2 set";
+    table.addOneItem(cont);
+    cont[0] = "L1 cacheline size";
     cont[1] = format_reported_value(cache_size.theory_cacheline, " B");
     cont[2] = format_reported_value(cache_size.test_cacheline, " B");
     cont[5] = cpufb::describe_probe_agreement(
         cache_size.theory_cacheline, cache_size.test_cacheline, 1.0);
+    {
+        const std::string cross = cpufb::describe_line_cross_check(
+            cache_size.test_cacheline, cache_size.test_line_from_sets);
+        if (!cross.empty()) cont[5] += "; " + cross;
+    }
+    table.addOneItem(cont);
+    cont[0] = "L2 cacheline size";
+    cont[1] = format_reported_value(cache_size.theory_l2_line, " B");
+    cont[2] = format_reported_value(cache_size.test_l2_line, " B");
+    cont[5] = cache_size.test_l2_line > 0
+        ? cpufb::describe_probe_agreement(
+              cache_size.theory_l2_line, cache_size.test_l2_line, 1.0) +
+            "; from set indexing"
+        : "not measured: needs 2 MiB huge pages to place lines in one L2 set";
+    {
+        const std::string deeper = cpufb::describe_deeper_line_sizes(
+            set_of_threads[0], cache_size.theory_l2_line);
+        if (!deeper.empty()) cont[5] += "; " + deeper;
+    }
     table.addOneItem(cont);
     cont[0] = "L1 cache size";
     cont[1] = format_reported_value(cache_size.theory_L1, " KB");
     cont[2] = format_reported_value(cache_size.test_L1, " KB");
     cont[5] = cpufb::describe_probe_agreement(
         cache_size.theory_L1, cache_size.test_L1, 1.3);
-    if (!cache_size.test_L1_note.empty())
-        cont[5] = cache_size.test_L1 <= 0
-            ? cache_size.test_L1_note
-            : cont[5] + "; " + cache_size.test_L1_note;
+    {
+        std::string note = cache_size.test_L1_note;
+        const std::string check = cpufb::describe_l1_curve_check(
+            cache_size.test_L1, cache_size.test_way, cache_size.test_way_bytes);
+        if (!check.empty()) note = note.empty() ? check : note + "; " + check;
+        if (!note.empty())
+            cont[5] = cache_size.test_L1 <= 0 ? note : cont[5] + "; " + note;
+    }
+    table.addOneItem(cont);
+    cont[0] = "L1 capacity from set conflicts";
+    cont[1] = format_reported_value(cache_size.theory_L1, " KB");
+    cont[2] = cache_size.test_way > 0 && cache_size.test_way_bytes > 0
+        ? cpufb::format_cache_capacity(
+              static_cast<uint64_t>(cache_size.test_way) *
+              cache_size.test_way_bytes)
+        : "-";
+    cont[5] = cpufb::describe_l1_geometry(
+        static_cast<uint64_t>(cache_size.theory_L1) * 1024, cache_size.test_way,
+        cache_size.test_way_bytes);
     table.addOneItem(cont);
     cont[0] = "L2 cache size";
     cont[1] = format_reported_value(cache_size.theory_L2, " KB");

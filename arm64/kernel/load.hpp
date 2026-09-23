@@ -56,8 +56,20 @@ struct CacheData
     std::string test_L1_note, test_L2_note, test_L3_note;
     int theory_way = 0;
     int test_way = 0;
+    // Bytes one L1 way spans, from set conflicts; test_way x this is an L1
+    // capacity that does not come from the latency curve.
+    size_t test_way_bytes = 0;
+    // L1 line size read from set indexing, immune to neighbour prefetch.
+    int test_line_from_sets = 0;
+    int theory_l2_way = 0;
+    int test_l2_way = 0;
+    int theory_l2_line = 0;
+    int test_l2_line = 0;
     int theory_cacheline = 0;
     int test_cacheline = 0;
+    // False when the curve fell or never reached memory; its capacities are
+    // then not used to size anything else.
+    bool curve_trusted = true;
 };
 
 void get_reported_cache_info(struct CacheData *cache_size, int cpu_id);

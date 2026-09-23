@@ -1,6 +1,7 @@
 #ifndef CPUFB_CACHE_TOPOLOGY_HPP
 #define CPUFB_CACHE_TOPOLOGY_HPP
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -14,6 +15,12 @@ struct CacheLevelInfo
     std::uint64_t bytes = 0;
     int level = 0;
     std::string source;
+    // Linux sysfs only; 0 where the OS does not say.  shared_cpus is how many
+    // CPUs the OS lists as sharing this cache: for a last level shared by a
+    // whole chip, `bytes` is that chip's total, not what one core reaches.
+    int line_bytes = 0;
+    int ways = 0;
+    int shared_cpus = 0;
 };
 
 CacheLevelInfo detect_data_cache_level(int cpu, int level);
@@ -50,6 +57,33 @@ std::string format_probed_l3(int l3_kib, bool hierarchy_complete);
 // The ratio is part of the label whenever it is not exactly 1.
 std::string describe_probe_agreement(
     double reported, double measured, double tolerance);
+
+// L1 capacity measured from set conflicts, ways x bytes per way (see
+// probe_l1_way_bytes).  The verdict names both factors.
+std::string describe_l1_geometry(
+    std::uint64_t reported_bytes, int ways, std::size_t way_bytes);
+
+// Note for the latency curve's L1 row when set conflicts place the L1
+// elsewhere: the curve measures how far a pointer chase stays at L1 latency,
+// which a prefetcher can stretch, and the conflicts measure the cache.
+// Empty when they agree within a quarter-octave step or either is missing.
+std::string describe_l1_curve_check(
+    int curve_kib, int ways, std::size_t way_bytes);
+
+// Note for a probed level smaller than an OS value that several CPUs share:
+// the OS reports the whole cache, the probe what one core reaches.
+std::string describe_shared_level(const CacheLevelInfo &os, int probe_kib);
+
+// Note for the L2 line row when the OS reports a different line size for the
+// L3.  L1 and L2 lines are read from set indexing; a last level shared by a
+// chip is hashed across slices, so no set of it can be targeted, and a line
+// read from reuse timing cannot be told apart from a shorter line whose
+// neighbour is fetched with it.  Empty when the L3 line matches.
+std::string describe_deeper_line_sizes(int cpu, int l2_line_bytes);
+
+// Cross-check of the reuse-based line probe against the line read from set
+// indexing (probe_l1_line_from_sets), which no prefetcher can widen.
+std::string describe_line_cross_check(int reuse_line_bytes, int set_line_bytes);
 
 } // namespace cpufb
 

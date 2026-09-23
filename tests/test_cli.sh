@@ -465,17 +465,25 @@ case "${test_case}" in
             run_success "${binary}" "${thread_arg}" "${cache_args[@]}" \
                 --save="${cache_output}" >/dev/null
         }
+        # The L1 capacity from set conflicts is the independent check on the
+        # latency curve's L1, so it has to report too.  L2 ways need huge
+        # pages and may legitimately read "not measured", but a value that
+        # is printed must not contradict the OS.
         probes_agree()
         {
             awk -F',' '
-                $1 == "cache" && ($2 == "cacheline size" ||
-                        $2 == "L1 ways of associativity") {
+                $1 == "cache" && ($2 == "L1 cacheline size" ||
+                        $2 == "L1 ways of associativity" ||
+                        $2 == "L1 capacity from set conflicts") {
                     rows++
                     if ($4 == "" || $4 == "-" || $0 ~ /not observed/) exit 5
                     if ($0 ~ /DISAGREES/) exit 6
                 }
+                $1 == "cache" && $2 == "L2 ways of associativity" {
+                    if ($0 ~ /DISAGREES/) exit 8
+                }
                 END {
-                    if (rows != 2) exit 7
+                    if (rows != 3) exit 7
                 }
             ' "${cache_output}"
         }
@@ -496,10 +504,10 @@ case "${test_case}" in
         # spoil one run (seen once on a Kunpeng 920F straight after a 32-way
         # build); a real regression fails every attempt.
         if ! probes_agree; then
-            first_attempt="$(grep -E 'cacheline size|ways of associativity' \
+            first_attempt="$(grep -E 'cacheline size|ways of associativity|set conflicts' \
                 "${cache_output}" | tr '\n' ' ')"
             probe_cache_run
-            probes_agree || fail "cache-line or associativity probe did not report a value that agrees with the OS, twice: ${first_attempt}| $(grep -E 'cacheline size|ways of associativity' "${cache_output}" | tr '\n' ' ')"
+            probes_agree || fail "cache-line, associativity or set-conflict probe did not report a value that agrees with the OS, twice: ${first_attempt}| $(grep -E 'cacheline size|ways of associativity|set conflicts' "${cache_output}" | tr '\n' ' ')"
         fi
         ;;
 

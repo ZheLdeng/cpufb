@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <fstream>
+#include <string>
 #include <random>
 #include <vector>
 
@@ -130,6 +132,274 @@ int probe_with_placement(uint64_t *base, const std::vector<int> &slots,
 }
 
 } // namespace
+
+namespace {
+
+// Line i of `order` lives at byte offsets[line]; a non-zero skew moves it
+// (line + 1) skews further, which gives the control ring one set per line.
+uint64_t build_ring_at(uint64_t *base, const std::vector<int> &order,
+    const std::vector<size_t> &offsets, size_t skew_bytes)
+{
+    auto word_index = [&](int line) {
+        return static_cast<uint64_t>(
+            (offsets[line] + (line + 1) * skew_bytes) / sizeof(uint64_t));
+    };
+    const size_t count = order.size();
+    for (size_t i = 0; i < count; ++i)
+        base[word_index(order[i])] = word_index(order[(i + 1) % count]);
+    return word_index(order[0]);
+}
+
+// Smallest power-of-two stride at which `lines` lines conflict, for one
+// placement of their slots, or 0.  A conflict must persist at twice the
+// stride, since every multiple of the way size maps to the same set.
+size_t way_bytes_for_placement(uint64_t *base, const std::vector<int> &slots,
+    size_t line, int lines, const char *placement, bool debug)
+{
+    std::vector<int> order(lines);
+    for (int i = 0; i < lines; ++i) order[i] = i;
+    std::mt19937 generator(0x9e3779b9U + lines);
+    std::shuffle(order.begin(), order.end(), generator);
+
+    auto conflicts = [&](size_t stride) {
+        std::vector<size_t> offsets(lines);
+        for (int i = 0; i < lines; ++i)
+            offsets[i] = static_cast<size_t>(slots[i]) * kSlotBytes +
+                (static_cast<size_t>(i) * stride) % kSlotBytes;
+        const uint64_t control = build_ring_at(base, order, offsets, line);
+        const uint64_t test = build_ring_at(base, order, offsets, 0);
+        const double ratio = conflict_ratio(base, test, control);
+        if (debug)
+            std::fprintf(stderr,
+                "way-size probe [%s]: lines=%d stride=%zu ratio=%.3f\n",
+                placement, lines, stride, ratio);
+        return ratio >= kConflictRatio;
+    };
+    for (size_t stride = std::max<size_t>(line * 2, 1024); stride <= kSlotBytes;
+        stride *= 2) {
+        if (!conflicts(stride)) continue;
+        if (stride == kSlotBytes || conflicts(stride * 2)) return stride;
+    }
+    return 0;
+}
+
+} // namespace
+
+int probe_l1_line_from_sets(int ways, size_t way_bytes)
+{
+    if (ways <= 0 || way_bytes == 0) return 0;
+    const int lines = std::min(2 * ways, kMaxLines);
+    const size_t bytes = kSlotBytes * kSlotCount + kSlotBytes;
+    void *allocation = nullptr;
+    if (posix_memalign(&allocation, kSlotBytes, bytes) != 0) return 0;
+#if defined(__linux__) && defined(MADV_NOHUGEPAGE)
+    (void)madvise(allocation, bytes, MADV_NOHUGEPAGE);
+#endif
+    uint64_t *base = static_cast<uint64_t *>(allocation);
+    const bool debug = debug_enabled();
+    std::vector<int> order(lines);
+    for (int i = 0; i < lines; ++i) order[i] = i;
+    std::mt19937 generator(0x9e3779b9U + lines);
+    std::shuffle(order.begin(), order.end(), generator);
+
+    // Smallest shift that splits the set, for one placement.  A way
+    // predictor collision can only keep a conflict alive longer, so across
+    // placements the smallest answer is the line.
+    auto line_for = [&](const std::vector<int> &slots, const char *placement) {
+        for (size_t shift = 16; shift <= 512; shift *= 2) {
+            std::vector<size_t> offsets(lines);
+            for (int i = 0; i < lines; ++i)
+                offsets[i] = static_cast<size_t>(slots[i]) * kSlotBytes +
+                    (i % 2 ? shift : 0);
+            // Control: every line in a set of its own, 4 KiB-aligned skews
+            // keep them clear of the test lines' two sets.
+            const uint64_t control =
+                build_ring_at(base, order, offsets, way_bytes / 8);
+            const uint64_t test = build_ring_at(base, order, offsets, 0);
+            const double ratio = conflict_ratio(base, test, control);
+            if (debug)
+                std::fprintf(stderr,
+                    "line-from-sets probe [%s]: shift=%zu ratio=%.3f\n",
+                    placement, shift, ratio);
+            if (ratio < kConflictRatio) return static_cast<int>(shift);
+        }
+        return 0;
+    };
+    int detected = 0;
+    std::vector<int> slots(lines);
+    for (int i = 0; i < lines; ++i) slots[i] = i * 16;
+    detected = line_for(slots, "regular");
+    const unsigned seeds[] = {0x43505546U, 0x9e3779b9U, 0x7f4a7c15U};
+    for (unsigned seed : seeds) {
+        std::vector<int> shuffled(kSlotCount);
+        for (int i = 0; i < kSlotCount; ++i) shuffled[i] = i;
+        std::mt19937 slot_generator(seed);
+        std::shuffle(shuffled.begin(), shuffled.end(), slot_generator);
+        shuffled.resize(lines);
+        const int line = line_for(shuffled, "random");
+        if (line > 0 && (detected == 0 || line < detected)) detected = line;
+    }
+    std::free(allocation);
+    return detected;
+}
+
+size_t probe_l1_way_bytes(int cacheline_bytes, int ways)
+{
+    if (ways <= 0) return 0;
+    const size_t line = cacheline_bytes > 0 ? cacheline_bytes : 64;
+    // Twice the ways: one set cannot hold them, two sets hold exactly `ways`
+    // each, which any replacement policy keeps without a miss.
+    const int lines = std::min(2 * ways, kMaxLines);
+    const size_t bytes = kSlotBytes * kSlotCount + kSlotBytes;
+    void *allocation = nullptr;
+    if (posix_memalign(&allocation, kSlotBytes, bytes) != 0) return 0;
+#if defined(__linux__) && defined(MADV_NOHUGEPAGE)
+    (void)madvise(allocation, bytes, MADV_NOHUGEPAGE);
+#endif
+    uint64_t *base = static_cast<uint64_t *>(allocation);
+    const bool debug = debug_enabled();
+
+    // As with the associativity, an address-hashed way predictor can make a
+    // placement conflict early and never late, so the largest answer over
+    // several placements is the one without such a collision.
+    size_t detected = 0;
+    std::vector<int> slots(lines);
+    for (int i = 0; i < lines; ++i) slots[i] = i * 16;
+    detected = std::max(detected,
+        way_bytes_for_placement(base, slots, line, lines, "regular", debug));
+    const unsigned seeds[] = {0x43505546U, 0x9e3779b9U, 0x7f4a7c15U};
+    for (unsigned seed : seeds) {
+        std::vector<int> shuffled(kSlotCount);
+        for (int i = 0; i < kSlotCount; ++i) shuffled[i] = i;
+        std::mt19937 slot_generator(seed);
+        std::shuffle(shuffled.begin(), shuffled.end(), slot_generator);
+        shuffled.resize(lines);
+        detected = std::max(detected,
+            way_bytes_for_placement(
+                base, shuffled, line, lines, "random", debug));
+    }
+    std::free(allocation);
+    return detected;
+}
+
+int probe_l2_associativity(int cacheline_bytes, int l1_ways)
+{
+#if defined(__linux__) && defined(MADV_HUGEPAGE)
+    if (l1_ways <= 0) return 0;
+    std::ifstream thp("/sys/kernel/mm/transparent_hugepage/enabled");
+    std::string policy;
+    if (!thp || !std::getline(thp, policy) ||
+        policy.find("[never]") != std::string::npos)
+        return 0;
+    const size_t line = cacheline_bytes > 0 ? cacheline_bytes : 64;
+    const size_t huge_bytes = 2ULL * 1024 * 1024;
+    const size_t bytes = huge_bytes * (kMaxLines + 1);
+    void *allocation = nullptr;
+    if (posix_memalign(&allocation, huge_bytes, bytes) != 0) return 0;
+    (void)madvise(allocation, bytes, MADV_HUGEPAGE);
+    // Touch one line per page so each is faulted in as a huge page now,
+    // rather than as small pages when the rings are written.
+    for (size_t page = 0; page <= static_cast<size_t>(kMaxLines); ++page)
+        static_cast<volatile char *>(allocation)[page * huge_bytes] = 0;
+    uint64_t *base = static_cast<uint64_t *>(allocation);
+    const bool debug = debug_enabled();
+
+    std::vector<size_t> offsets(kMaxLines);
+    for (int i = 0; i < kMaxLines; ++i)
+        offsets[i] = static_cast<size_t>(i) * huge_bytes;
+    double l2_level = 0.0; // test/control ratio while hitting in L2
+    int pending = 0;
+    int result = 0;
+    for (int lines = l1_ways + 2; lines <= kMaxLines; ++lines) {
+        std::vector<int> order(lines);
+        for (int i = 0; i < lines; ++i) order[i] = i;
+        std::mt19937 generator(0x9e3779b9U + lines);
+        std::shuffle(order.begin(), order.end(), generator);
+        const uint64_t control = build_ring_at(base, order, offsets, line);
+        const uint64_t test = build_ring_at(base, order, offsets, 0);
+        const double ratio = conflict_ratio(base, test, control);
+        if (debug)
+            std::fprintf(stderr,
+                "L2 associativity probe: lines=%d ratio=%.3f\n", lines, ratio);
+        // Just past the L1 ways every access is an L2 hit; that ratio is the
+        // level the second transition is measured against.
+        if (l2_level == 0.0) {
+            l2_level = ratio;
+            if (ratio < kConflictRatio) break; // no L1 conflict: no targeting
+            continue;
+        }
+        // Leaving L2 costs at least what entering it did, so 1.5 times the L2
+        // level is well clear of its noise.
+        if (ratio >= 1.5 * l2_level) {
+            if (pending != 0) {
+                result = pending - 1;
+                break;
+            }
+            pending = lines;
+        } else {
+            pending = 0;
+        }
+    }
+    std::free(allocation);
+    return result;
+#else
+    (void)cacheline_bytes;
+    (void)l1_ways;
+    return 0;
+#endif
+}
+
+int probe_l2_line_from_sets(int l2_ways)
+{
+#if defined(__linux__) && defined(MADV_HUGEPAGE)
+    if (l2_ways <= 0) return 0;
+    const int lines = std::min(2 * l2_ways, kMaxLines);
+    const size_t huge_bytes = 2ULL * 1024 * 1024;
+    const size_t bytes = huge_bytes * (lines + 1);
+    void *allocation = nullptr;
+    if (posix_memalign(&allocation, huge_bytes, bytes) != 0) return 0;
+    (void)madvise(allocation, bytes, MADV_HUGEPAGE);
+    for (int page = 0; page <= lines; ++page)
+        static_cast<volatile char *>(allocation)[page * huge_bytes] = 0;
+    uint64_t *base = static_cast<uint64_t *>(allocation);
+    const bool debug = debug_enabled();
+    std::vector<int> order(lines);
+    for (int i = 0; i < lines; ++i) order[i] = i;
+    std::mt19937 generator(0x9e3779b9U + lines);
+    std::shuffle(order.begin(), order.end(), generator);
+
+    // The first shift is inside any line, so its ratio is the L2-thrashing
+    // level; the line is the first shift that brings the ratio well below it.
+    double thrashing = 0.0;
+    int result = 0;
+    for (size_t shift = 32; shift <= 1024; shift *= 2) {
+        std::vector<size_t> offsets(lines);
+        for (int i = 0; i < lines; ++i)
+            offsets[i] =
+                static_cast<size_t>(i) * huge_bytes + (i % 2 ? shift : 0);
+        const uint64_t control = build_ring_at(base, order, offsets, 4096);
+        const uint64_t test = build_ring_at(base, order, offsets, 0);
+        const double ratio = conflict_ratio(base, test, control);
+        if (debug)
+            std::fprintf(stderr,
+                "L2 line-from-sets probe: shift=%zu ratio=%.3f\n", shift,
+                ratio);
+        if (thrashing == 0.0) {
+            thrashing = ratio;
+            continue;
+        }
+        if (ratio * 1.5 < thrashing) {
+            result = static_cast<int>(shift);
+            break;
+        }
+    }
+    std::free(allocation);
+    return result;
+#else
+    (void)l2_ways;
+    return 0;
+#endif
+}
 
 int probe_l1_associativity(int cacheline_bytes)
 {

@@ -181,6 +181,7 @@ cpufb::CacheCurveResult measure_cache_hierarchy(
     result = cpufb::measure_cache_curve(load_ptr32, line_size, max_bytes);
     std::string deeper_steps;
     const std::string doubt = cpufb::describe_prefetch_doubt(result);
+    cache_data->curve_trusted = doubt.empty();
     for (const auto &level : result.levels) {
         // Every level the curve resolved is reported; the note says when
         // its boundary was not sharp.
@@ -320,4 +321,18 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
     // and needs no OS-reported geometry.
     cache_size->test_way =
         cpufb::probe_l1_associativity(static_cast<int>(cacheline));
+    // Ways x bytes per way is the L1 capacity from set conflicts, which a
+    // prefetcher cannot stretch the way it stretches the latency curve's
+    // plateau (a MediaTek MT6993 big core: 64 KiB here, 160-256 KiB there).
+    cache_size->test_way_bytes = cpufb::probe_l1_way_bytes(
+        static_cast<int>(cacheline), cache_size->test_way);
+    cache_size->test_line_from_sets = cpufb::probe_l1_line_from_sets(
+        cache_size->test_way, cache_size->test_way_bytes);
+    cache_size->theory_l2_way = cpufb::detect_data_cache_level(cpu_id, 2).ways;
+    cache_size->test_l2_way = cpufb::probe_l2_associativity(
+        static_cast<int>(cacheline), cache_size->test_way);
+    cache_size->theory_l2_line =
+        cpufb::detect_data_cache_level(cpu_id, 2).line_bytes;
+    cache_size->test_l2_line =
+        cpufb::probe_l2_line_from_sets(cache_size->test_l2_way);
 }

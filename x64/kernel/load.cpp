@@ -112,6 +112,7 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     cache_size->test_L3 = 0;
     std::string deeper_steps;
     const std::string doubt = cpufb::describe_prefetch_doubt(curve);
+    cache_size->curve_trusted = doubt.empty();
     for (const cpufb::CacheLevelEstimate &level : curve.levels) {
         // Every level the curve resolved is reported; the note says when
         // its boundary was not sharp.
@@ -174,8 +175,18 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
 
     // The shared probe takes no OS-reported cache geometry, so the result is
     // an independent measurement rather than a confirmation of sysfs.
-    detected_way = cpufb::probe_l1_associativity(
+    const int line =
         cpufb::effective_cacheline_size(cache_size->theory_cacheline,
-            cache_size->test_cacheline, kDefaultCacheLineBytes));
+            cache_size->test_cacheline, kDefaultCacheLineBytes);
+    detected_way = cpufb::probe_l1_associativity(line);
     cache_size->test_way = detected_way;
+    cache_size->test_way_bytes = cpufb::probe_l1_way_bytes(line, detected_way);
+    cache_size->test_line_from_sets = cpufb::probe_l1_line_from_sets(
+        detected_way, cache_size->test_way_bytes);
+    cache_size->theory_l2_way = cpufb::detect_data_cache_level(cpu_id, 2).ways;
+    cache_size->test_l2_way = cpufb::probe_l2_associativity(line, detected_way);
+    cache_size->theory_l2_line =
+        cpufb::detect_data_cache_level(cpu_id, 2).line_bytes;
+    cache_size->test_l2_line =
+        cpufb::probe_l2_line_from_sets(cache_size->test_l2_way);
 }

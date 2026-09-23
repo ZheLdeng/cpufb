@@ -122,7 +122,41 @@ struct LinuxCacheEntry
     std::uint64_t bytes;
     int level;
     std::string source;
+    int line_bytes;
+    int ways;
+    int shared_cpus;
 };
+
+int read_sysfs_int(const std::string &path)
+{
+    std::string text;
+    std::uint64_t value = 0;
+    if (!read_text_file(path, text) || !parse_positive_integer(text, value) ||
+        value > static_cast<std::uint64_t>(std::numeric_limits<int>::max()))
+        return 0;
+    return static_cast<int>(value);
+}
+
+// Number of CPUs in a range list such as "0-3,8".
+int count_cpu_list(const std::string &list)
+{
+    int count = 0;
+    const char *cursor = list.c_str();
+    while (*cursor != '\0') {
+        char *end = nullptr;
+        const long first = std::strtol(cursor, &end, 10);
+        if (end == cursor) break;
+        long last = first;
+        if (*end == '-') {
+            const char *range = end + 1;
+            last = std::strtol(range, &end, 10);
+            if (end == range) break;
+        }
+        if (last >= first) count += static_cast<int>(last - first + 1);
+        cursor = *end == ',' ? end + 1 : end;
+    }
+    return count;
+}
 
 std::vector<LinuxCacheEntry> read_linux_data_caches(int cpu)
 {
@@ -156,10 +190,15 @@ std::vector<LinuxCacheEntry> read_linux_data_caches(int cpu)
             continue;
 
         const int cache_level = static_cast<int>(level);
+        std::string shared_list;
+        read_text_file(root + "shared_cpu_list", shared_list);
         entries.push_back({bytes, cache_level,
             "Linux sysfs cpu" + std::to_string(cpu) + "/cache/index" +
                 std::to_string(index) + " (L" + std::to_string(cache_level) +
-                " " + type + ")"});
+                " " + type + ")",
+            read_sysfs_int(root + "coherency_line_size"),
+            read_sysfs_int(root + "ways_of_associativity"),
+            count_cpu_list(shared_list)});
     }
     return entries;
 }
@@ -169,8 +208,11 @@ CacheLevelInfo detect_linux_data_cache_level(int cpu, int level)
     CacheLevelInfo best;
     if (level <= 0) return best;
     for (const LinuxCacheEntry &entry : read_linux_data_caches(cpu)) {
-        if (entry.level == level)
-            consider_cache_level(best, entry.bytes, entry.level, entry.source);
+        if (entry.level != level || entry.bytes <= best.bytes) continue;
+        consider_cache_level(best, entry.bytes, entry.level, entry.source);
+        best.line_bytes = entry.line_bytes;
+        best.ways = entry.ways;
+        best.shared_cpus = entry.shared_cpus;
     }
     return best;
 }
@@ -292,6 +334,63 @@ std::uint64_t recommended_stream_workset_bytes(const LastLevelCacheInfo &cache)
         return std::numeric_limits<std::uint64_t>::max();
     const std::uint64_t cache_scaled = cache.bytes * kCacheMultiplier;
     return cache_scaled > recommended ? cache_scaled : recommended;
+}
+
+std::string describe_l1_geometry(
+    std::uint64_t reported_bytes, int ways, std::size_t way_bytes)
+{
+    if (ways <= 0 || way_bytes == 0)
+        return "probe: no set conflict observed (L1 not virtually indexed?)";
+    const std::uint64_t measured = static_cast<std::uint64_t>(ways) * way_bytes;
+    return describe_probe_agreement(static_cast<double>(reported_bytes),
+               static_cast<double>(measured), 1.0) +
+        "; " + std::to_string(ways) + " ways x " +
+        format_cache_capacity(way_bytes) + " per way";
+}
+
+std::string describe_l1_curve_check(
+    int curve_kib, int ways, std::size_t way_bytes)
+{
+    if (curve_kib <= 0 || ways <= 0 || way_bytes == 0) return "";
+    const double geometry_kib =
+        static_cast<double>(ways) * static_cast<double>(way_bytes) / 1024.0;
+    const double ratio = curve_kib / geometry_kib;
+    if (ratio <= 1.3 && ratio >= 1.0 / 1.3) return "";
+    return "set conflicts put L1 at " +
+        format_cache_capacity(static_cast<std::uint64_t>(ways) * way_bytes) +
+        " (" + std::to_string(ways) + " ways x " +
+        format_cache_capacity(way_bytes) +
+        "), so this plateau is a prefetcher staying ahead of the chase past it";
+}
+
+std::string describe_shared_level(const CacheLevelInfo &os, int probe_kib)
+{
+    if (os.shared_cpus <= 1 || os.bytes == 0 || probe_kib <= 0 ||
+        static_cast<std::uint64_t>(probe_kib) * 1024 >= os.bytes)
+        return "";
+    return "the OS value is the whole cache shared by " +
+        std::to_string(os.shared_cpus) +
+        " CPUs; the probe measures what one core reaches";
+}
+
+std::string describe_line_cross_check(int reuse_line_bytes, int set_line_bytes)
+{
+    if (set_line_bytes <= 0) return "";
+    if (reuse_line_bytes == set_line_bytes) return "set indexing agrees";
+    if (reuse_line_bytes > set_line_bytes)
+        return "set indexing gives " + std::to_string(set_line_bytes) +
+            " B, so the " + std::to_string(reuse_line_bytes) +
+            " B reuse reading includes a neighbouring line fetched with it";
+    return "set indexing gives " + std::to_string(set_line_bytes) + " B";
+}
+
+std::string describe_deeper_line_sizes(int cpu, int l2_line_bytes)
+{
+    const CacheLevelInfo l3 = detect_data_cache_level(cpu, 3);
+    if (l3.line_bytes <= 0 || l3.line_bytes == l2_line_bytes) return "";
+    return "the OS reports " + std::to_string(l3.line_bytes) +
+        " B lines at L3, which cannot be probed: a shared last level is "
+        "hashed across slices";
 }
 
 std::string describe_probe_agreement(

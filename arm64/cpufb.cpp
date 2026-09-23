@@ -590,8 +590,27 @@ static bool cpubm_arm_cache(
         : "-";
     cont[2] =
         cache_size.test_L1 > 0 ? to_string(cache_size.test_L1) + " KiB" : "-";
-    cont[5] = with_agreement(cache_size.theory_L1_source, cache_size.theory_L1,
-        cache_size.test_L1, 1.3, cache_size.test_L1_note);
+    {
+        string note = cache_size.test_L1_note;
+        const string check = cpufb::describe_l1_curve_check(
+            cache_size.test_L1, cache_size.test_way, cache_size.test_way_bytes);
+        if (!check.empty()) note = note.empty() ? check : note + "; " + check;
+        cont[5] = with_agreement(cache_size.theory_L1_source,
+            cache_size.theory_L1, cache_size.test_L1, 1.3, note);
+    }
+    table.addOneItem(cont);
+    cont[0] = "L1 capacity from set conflicts";
+    cont[1] = cache_size.theory_L1 > 0
+        ? to_string(cache_size.theory_L1) + " KiB"
+        : "-";
+    cont[2] = cache_size.test_way > 0 && cache_size.test_way_bytes > 0
+        ? cpufb::format_cache_capacity(
+              static_cast<uint64_t>(cache_size.test_way) *
+              cache_size.test_way_bytes)
+        : "-";
+    cont[5] = cpufb::describe_l1_geometry(
+        static_cast<uint64_t>(cache_size.theory_L1) * 1024, cache_size.test_way,
+        cache_size.test_way_bytes);
     table.addOneItem(cont);
     cont[0] = "L2/unified cache capacity";
     cont[1] = cache_size.theory_L2 > 0
@@ -626,15 +645,47 @@ static bool cpubm_arm_cache(
     cont[5] =
         with_agreement("", cache_size.theory_way, cache_size.test_way, 1.0, "");
     table.addOneItem(cont);
-    cont[0] = "cacheline size";
+    cont[0] = "L2 ways of associativity";
+    cont[1] = cache_size.theory_l2_way > 0 ? to_string(cache_size.theory_l2_way)
+                                           : "-";
+    cont[2] =
+        cache_size.test_l2_way > 0 ? to_string(cache_size.test_l2_way) : "-";
+    cont[5] = cache_size.test_l2_way > 0
+        ? with_agreement(
+              "", cache_size.theory_l2_way, cache_size.test_l2_way, 1.0, "")
+        : "not measured: needs 2 MiB huge pages to place lines in one L2 set";
+    table.addOneItem(cont);
+    cont[0] = "L1 cacheline size";
     cont[1] = cache_size.theory_cacheline > 0
         ? to_string(cache_size.theory_cacheline) + " B"
         : "-";
     cont[2] = cache_size.test_cacheline > 0
         ? to_string(cache_size.test_cacheline) + " B"
         : "-";
-    cont[5] = with_agreement(
-        "", cache_size.theory_cacheline, cache_size.test_cacheline, 1.0, "");
+    cont[5] = with_agreement("", cache_size.theory_cacheline,
+        cache_size.test_cacheline, 1.0,
+        cpufb::describe_line_cross_check(
+            cache_size.test_cacheline, cache_size.test_line_from_sets));
+    table.addOneItem(cont);
+    cont[0] = "L2 cacheline size";
+    cont[1] = cache_size.theory_l2_line > 0
+        ? to_string(cache_size.theory_l2_line) + " B"
+        : "-";
+    cont[2] = cache_size.test_l2_line > 0
+        ? to_string(cache_size.test_l2_line) + " B"
+        : "-";
+    {
+        const string deeper = cpufb::describe_deeper_line_sizes(
+            set_of_threads[0], cache_size.theory_l2_line);
+        string verdict = cache_size.test_l2_line > 0
+            ? cpufb::describe_probe_agreement(
+                  cache_size.theory_l2_line, cache_size.test_l2_line, 1.0) +
+                "; from set indexing"
+            : string("not measured: needs 2 MiB huge pages to place lines in "
+                     "one L2 set");
+        if (!deeper.empty()) verdict += "; " + deeper;
+        cont[5] = verdict;
+    }
     table.addOneItem(cont);
 
     // Cache-hierarchy latency curve: emit the dependent-load working-set

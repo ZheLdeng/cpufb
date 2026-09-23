@@ -627,18 +627,22 @@ CacheCurveResult measure_cache_curve(
             chase, buffer, region_bytes, 0x4d454d4f52595245ULL);
 
     const std::vector<uint64_t> sizes = build_cache_curve_sizes(max_bytes);
+    auto seed_for = [](size_t i, int ring) {
+        return 0x4350554642ULL + i * 0x9e3779b97f4a7c15ULL +
+            static_cast<uint64_t>(ring) * 0xd1b54a32d192ed03ULL;
+    };
     auto sweep = [&](size_t lines_per_group) {
         std::vector<CacheLatencyPoint> points;
         for (size_t i = 0; i < sizes.size(); ++i) {
             CacheLatencyPoint point;
             point.working_set_bytes = sizes[i];
-            point.latency_ns = measure_pointer_chase(chase, buffer, sizes[i],
-                line, lines_per_group,
-                0x4350554642ULL + i * 0x9e3779b97f4a7c15ULL);
+            point.latency_ns = measure_pointer_chase(
+                chase, buffer, sizes[i], line, lines_per_group, seed_for(i, 0));
             points.push_back(point);
         }
         return points;
     };
+    size_t sweep_groups = group_lines;
     result.points = sweep(group_lines);
 
     // Page-grouped order visits all the lines of a page in a row, which is
@@ -654,9 +658,56 @@ CacheCurveResult measure_cache_curve(
         !result.points.empty() &&
         result.points.back().latency_ns <
             kMemoryLatencyFraction * result.memory_latency_ns) {
+        sweep_groups = 0;
         result.points = sweep(0);
         result.translation_mode = "global order (page-grouped order never "
                                   "reached memory)";
+    }
+
+    // A handful of samples decide every answer: the ones either side of each
+    // capacity, and the ones either side of any fall.  Each is measured once
+    // in the sweep, on one ring, keeping the fastest of seven passes, and
+    // that is where the run-to-run spread comes from -- an Apple M4 Pro's
+    // 16 MiB L2 read 12 or 14 in a fifth of its runs, and a MediaTek MT6993
+    // curve fell by a factor of three at one working set and not its
+    // neighbours.  Those samples are measured twice more on independent
+    // rings and replaced by the median of the three, so that a ring that was
+    // lucky, or a moment the core ran fast, no longer decides the result.
+    // The rules reading the curve do not change; only the noise in the
+    // samples they read does.
+    {
+        std::vector<bool> decisive(sizes.size(), false);
+        const std::vector<CacheLevelEstimate> first_levels =
+            estimate_cache_levels(result.points, result.memory_latency_ns);
+        for (const CacheLevelEstimate &level : first_levels) {
+            for (size_t i = 0; i < result.points.size(); ++i) {
+                if (result.points[i].working_set_bytes != level.capacity_bytes)
+                    continue;
+                for (size_t j = (i > 0 ? i - 1 : 0);
+                    j <= i + 2 && j < result.points.size(); ++j)
+                    decisive[j] = true;
+            }
+        }
+        const double floor_ns = result.memory_latency_ns > 0.0
+            ? kMemoryLatencyFraction * result.memory_latency_ns
+            : 0.0;
+        for (size_t i = 1; i < result.points.size(); ++i) {
+            const double before = result.points[i - 1].latency_ns;
+            const double after = result.points[i].latency_ns;
+            if (before > 0.0 && before < floor_ns &&
+                before - after >= kMinimumLatencyDropNs &&
+                after <= before * (1.0 - kMaximumLatencyDrop))
+                decisive[i - 1] = decisive[i] = true;
+        }
+        for (size_t i = 0; i < result.points.size(); ++i) {
+            if (!decisive[i]) continue;
+            double samples[3] = {result.points[i].latency_ns, 0.0, 0.0};
+            for (int ring = 1; ring <= 2; ++ring)
+                samples[ring] = measure_pointer_chase(chase, buffer, sizes[i],
+                    line, sweep_groups, seed_for(i, ring));
+            std::sort(samples, samples + 3);
+            result.points[i].latency_ns = samples[1];
+        }
     }
 #ifdef __linux__
     munmap(mapping, mapping_bytes);

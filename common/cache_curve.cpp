@@ -357,21 +357,58 @@ std::string describe_transition(const CacheLevelEstimate &level)
     return text;
 }
 
-// A pointer chase over a working set far larger than any cache has to miss,
-// and a miss costs what memory costs.  A MediaTek MT6993 big core answered a
-// 128 MiB chase in 12.6 ns, 25 cycles at its 2 GHz, which no DRAM does: its
-// prefetcher followed the ring at every size.  Its L1 plateau then reached
-// 128 KiB for a 64 KiB cache, and the curve carried no other sign of it.
+// Two ways a curve can fail to be a measurement of the cache hierarchy.
+//
+// The first is that it never gets to memory.  A pointer chase over a working
+// set far larger than any cache has to miss, and a miss costs what memory
+// costs; a MediaTek MT6993 big core answered a 128 MiB chase in 12.6 ns,
+// 25 cycles at its 2 GHz, which no DRAM does.
+//
+// The second is that it falls.  A larger working set cannot be served faster
+// by a cache hierarchy, so a fall means something outside the sweep's control
+// is answering, and every capacity read from that curve is that thing's, not
+// the cache's.  This is the case the first test misses: on that same device
+// the far end reached 146 ns against a 156 ns reference, which clears the
+// first test, while the middle of the curve collapsed from 17.8 ns to 5.9 ns
+// and the L1 read 256 KiB for a 64 KiB cache.  Only falls below half the
+// memory latency count, where the curve should still be climbing steeply;
+// the DRAM plateau itself is noisy and a Kunpeng 920F dips 19% inside it.
+const double kMaximumLatencyDrop = 0.10;
+const double kMinimumLatencyDropNs = 0.5;
+
 std::string describe_prefetch_doubt(const CacheCurveResult &result)
 {
-    if (result.reached_memory || result.points.empty()) return "";
+    if (result.points.empty()) return "";
+    char text[224];
+
+    const double memory_floor = result.memory_latency_ns > 0.0
+        ? kMemoryLatencyFraction * result.memory_latency_ns
+        : 0.0;
+    for (size_t i = 1; i < result.points.size(); ++i) {
+        const double before = result.points[i - 1].latency_ns;
+        const double after = result.points[i].latency_ns;
+        if (before <= 0.0 || before >= memory_floor) continue;
+        if (before - after < kMinimumLatencyDropNs ||
+            after > before * (1.0 - kMaximumLatencyDrop))
+            continue;
+        std::snprintf(text, sizeof(text),
+            "latency fell from %.1f ns to %.1f ns between %s and %s, which no "
+            "cache does, so the capacities here are a prefetcher's",
+            before, after,
+            format_approximate_capacity(result.points[i - 1].working_set_bytes)
+                .c_str(),
+            format_approximate_capacity(result.points[i].working_set_bytes)
+                .c_str());
+        return text;
+    }
+
+    if (result.reached_memory) return "";
     const double deepest = result.points.back().latency_ns;
     // 40 cycles at 4 GHz, below any DRAM and above any cache hit.
     const double kMemoryFloorNs = 10.0;
     if (deepest >= kMemoryFloorNs && result.memory_latency_ns > 0.0 &&
-        deepest >= kMemoryLatencyFraction * result.memory_latency_ns)
+        deepest >= memory_floor)
         return "";
-    char text[192];
     std::snprintf(text, sizeof(text),
         "a %s working set still answered in %.1f ns, so the chase was "
         "prefetched throughout and every capacity here may be too large",

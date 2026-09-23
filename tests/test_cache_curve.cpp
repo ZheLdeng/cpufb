@@ -429,6 +429,51 @@ int main()
         }
     }
 
+    // A cache hierarchy cannot answer a larger working set faster.  When the
+    // curve falls anyway, something outside the sweep is answering and the
+    // capacities are its, not the cache's.  The far-end test alone misses
+    // this: on an MT6993 big core the deepest point reached 146 ns against a
+    // 156 ns reference, which clears it, while the middle of the curve
+    // collapsed and the L1 read 256 KiB for a 64 KiB cache.
+    {
+        struct Case
+        {
+            const char *name;
+            const MeasuredPoint *points;
+            size_t count;
+            double memory_ns;
+            bool expect_doubt;
+        };
+        const Case cases[] = {
+            {"Kunpeng 920", kKunpeng920,
+                sizeof(kKunpeng920) / sizeof(*kKunpeng920), 84.1, false},
+            {"Apple M4 Pro", kAppleM4Pro,
+                sizeof(kAppleM4Pro) / sizeof(*kAppleM4Pro), 123.1, false},
+            {"Kunpeng 920F", kKunpeng920F,
+                sizeof(kKunpeng920F) / sizeof(*kKunpeng920F), 135.0, false},
+            {"MT6993 cpu0", kMediaTekCpu0,
+                sizeof(kMediaTekCpu0) / sizeof(*kMediaTekCpu0), 212.0, true},
+            {"MT6993 cpu1", kMediaTekCpu1,
+                sizeof(kMediaTekCpu1) / sizeof(*kMediaTekCpu1), 212.0, true},
+        };
+        for (const Case &item : cases) {
+            CacheCurveResult curve;
+            curve.points = measured_curve(item.points, item.count);
+            curve.memory_latency_ns = item.memory_ns;
+            curve.levels = estimate_cache_levels(
+                curve.points, item.memory_ns, &reached_memory);
+            curve.reached_memory = reached_memory;
+            const bool doubted = !describe_prefetch_doubt(curve).empty();
+            if (doubted != item.expect_doubt) {
+                std::cerr << item.name << ": "
+                          << (doubted ? "doubted but should not be"
+                                      : "not doubted but should be")
+                          << '\n';
+                ok = false;
+            }
+        }
+    }
+
     ok &= expect_levels("flat curve", make_curve(2.0, {}), {});
 
     // Bandwidth worksets live in a level but not in the one below it.

@@ -13,6 +13,7 @@
 
 #include "associativity_probe.hpp"
 #include "cache_curve.hpp"
+#include "cache_topology.hpp"
 #include "cacheline_probe.hpp"
 #include "compute.hpp"
 #include "frequency.hpp"
@@ -109,6 +110,7 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     cache_size->test_L1 = 0;
     cache_size->test_L2 = 0;
     cache_size->test_L3 = 0;
+    std::string deeper_steps;
     const std::string doubt = cpufb::describe_prefetch_doubt(curve);
     for (const cpufb::CacheLevelEstimate &level : curve.levels) {
         // Every level the curve resolved is reported; the note says when
@@ -117,18 +119,33 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
         // The doubt applies to the whole curve, so it goes on every level.
         std::string note = cpufb::describe_transition(level);
         if (!doubt.empty()) note = note.empty() ? doubt : note + "; " + doubt;
-        if (level.level == "L1")
-            cache_size->test_L1_note = note;
-        else if (level.level == "L2")
-            cache_size->test_L2_note = note;
-        else if (level.level == "L3")
-            cache_size->test_L3_note = note;
-        if (level.level == "L1")
+        if (level.level == "L1") {
             cache_size->test_L1 = size_kb;
-        else if (level.level == "L2")
+            cache_size->test_L1_note = note;
+        } else if (level.level == "L2") {
             cache_size->test_L2 = size_kb;
-        else if (level.level == "L3")
+            cache_size->test_L2_note = note;
+        } else {
+            // The L3 row is the deepest level the curve resolved, not its
+            // third: a Kunpeng 920 resolves a step inside its 32 MiB L3 and
+            // so reports four, and naming the third one L3 made the row read
+            // "DISAGREES with OS, 0.12x" about a curve that had found the
+            // 32 MiB exactly.  Anything between L2 and the deepest is named
+            // in the note instead.
+            if (cache_size->test_L3 > 0)
+                deeper_steps += (deeper_steps.empty() ? "" : ", ") +
+                    cpufb::format_cache_capacity(
+                        static_cast<uint64_t>(cache_size->test_L3) * 1024);
             cache_size->test_L3 = size_kb;
+            cache_size->test_L3_note = note;
+        }
+    }
+    if (!deeper_steps.empty()) {
+        const std::string extra =
+            "the curve also stepped at " + deeper_steps + " below this level";
+        cache_size->test_L3_note = cache_size->test_L3_note.empty()
+            ? extra
+            : cache_size->test_L3_note + "; " + extra;
     }
     cache_size->memory_latency_ns = curve.memory_latency_ns;
     cache_size->hierarchy_complete = curve.reached_memory;

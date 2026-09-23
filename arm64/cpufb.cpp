@@ -664,11 +664,12 @@ static bool cpubm_arm_cache(
 
     Table estimate_table;
     estimate_table.setColumnNum(4);
+    // Every level, not just L1 and L2: a Kunpeng 920 resolves four, and
+    // with the deeper ones hidden the only sign of that was a debug dump.
     vector<string> estimate_head = {
         "Level", "Measured Capacity", "Latency", "Jump"};
     estimate_table.addOneItem(estimate_head);
     for (const auto &level : curve.levels) {
-        if (level.level != "L1" && level.level != "L2") continue;
         vector<string> row(4);
         row[0] = level.level;
         // Not every capacity is a whole number of MiB (1280 KiB is not 1 MB).

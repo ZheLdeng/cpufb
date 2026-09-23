@@ -384,6 +384,51 @@ int main()
         }
     }
 
+    // A HiSilicon Kunpeng 920 (64 KiB L1, 512 KiB L2, 32 MiB L3 shared by
+    // eight cores).  Its L3 is not one plateau: the latency settles near
+    // 13.6 ns between 1.25 and 2.5 MiB, climbs again, and settles near 36 ns
+    // between 12 and 16 MiB before memory at 84 ns, which is what a sliced
+    // last level looks like from one core.  The curve therefore resolves
+    // four levels, and the deepest is the 32 MiB the OS reports.  Reporting
+    // the third one as "L3" made the row read "DISAGREES with OS, 0.12x"
+    // about a curve that had placed the real boundary exactly.
+    static const MeasuredPoint kKunpeng920[] = {{4, 1.924}, {5, 1.924},
+        {6, 1.924}, {7, 1.924}, {8, 1.924}, {10, 1.924}, {12, 1.924},
+        {14, 1.924}, {16, 1.924}, {20, 1.924}, {24, 1.924}, {28, 1.924},
+        {32, 1.924}, {40, 1.924}, {48, 1.924}, {56, 1.924}, {64, 1.924},
+        {80, 2.932}, {96, 3.309}, {112, 3.480}, {128, 3.583}, {160, 3.693},
+        {192, 3.739}, {224, 3.766}, {256, 3.783}, {320, 3.803}, {384, 3.815},
+        {448, 3.821}, {512, 3.836}, {640, 7.815}, {768, 9.866}, {896, 11.072},
+        {1024, 11.806}, {1280, 12.738}, {1536, 13.322}, {1792, 13.589},
+        {2048, 13.763}, {2560, 13.946}, {3072, 14.180}, {3584, 14.900},
+        {4096, 16.811}, {5120, 21.810}, {6144, 25.238}, {7168, 27.693},
+        {8192, 29.626}, {10240, 32.491}, {12288, 34.880}, {14336, 36.093},
+        {16384, 37.335}, {20480, 39.138}, {24576, 40.652}, {28672, 41.900},
+        {32768, 49.241}, {40960, 65.605}, {49152, 73.861}, {57344, 77.900},
+        {65536, 79.977}, {81920, 82.162}, {98304, 83.124}, {114688, 83.712},
+        {131072, 84.105}};
+    {
+        const std::vector<CacheLevelEstimate> levels = estimate_cache_levels(
+            measured_curve(
+                kKunpeng920, sizeof(kKunpeng920) / sizeof(*kKunpeng920)),
+            84.1, &reached_memory);
+        if (levels.size() != 4 || levels[0].capacity_bytes != 64 * kKiB ||
+            levels[1].capacity_bytes != 512 * kKiB ||
+            levels.back().capacity_bytes != 32 * 1024 * kKiB) {
+            std::cerr << "Kunpeng 920: expected four levels ending at 32 MiB, "
+                      << "got " << levels.size() << ":";
+            for (const CacheLevelEstimate &level : levels)
+                std::cerr << ' ' << level.capacity_bytes / kKiB << " KiB";
+            std::cerr << '\n';
+            ok = false;
+        }
+        if (!reached_memory) {
+            std::cerr << "Kunpeng 920: a curve ending at 84 ns against an "
+                         "84 ns reference did not reach memory\n";
+            ok = false;
+        }
+    }
+
     ok &= expect_levels("flat curve", make_curve(2.0, {}), {});
 
     // Bandwidth worksets live in a level but not in the one below it.

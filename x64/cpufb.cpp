@@ -406,7 +406,7 @@ static bool cpubm_x64_cache(
     cont[5] = cache_size.test_l2_way > 0
         ? cpufb::describe_probe_agreement(
               cache_size.theory_l2_way, cache_size.test_l2_way, 1.0)
-        : "not measured: needs 2 MiB huge pages to place lines in one L2 set";
+        : cpufb::describe_l2_unmeasured(cache_size.test_l2_way);
     table.addOneItem(cont);
     cont[0] = "L1 cacheline size";
     cont[1] = format_reported_value(cache_size.theory_cacheline, " B");
@@ -426,7 +426,7 @@ static bool cpubm_x64_cache(
         ? cpufb::describe_probe_agreement(
               cache_size.theory_l2_line, cache_size.test_l2_line, 1.0) +
             "; from set indexing"
-        : "not measured: needs 2 MiB huge pages to place lines in one L2 set";
+        : cpufb::describe_l2_unmeasured(cache_size.test_l2_line);
     {
         const std::string deeper = cpufb::describe_deeper_line_sizes(
             set_of_threads[0], cache_size.theory_l2_line);

@@ -373,6 +373,15 @@ std::string describe_shared_level(const CacheLevelInfo &os, int probe_kib)
         " CPUs; the probe measures what one core reaches";
 }
 
+std::string describe_l2_unmeasured(int status)
+{
+    if (status < 0)
+        return "not measured: needs 2 MiB huge pages to place lines in one "
+               "L2 set";
+    return "not measured: lines sharing every physical bit below 21 never "
+           "conflicted in L2, so its set index is hashed";
+}
+
 std::string describe_line_cross_check(int reuse_line_bytes, int set_line_bytes)
 {
     if (set_line_bytes <= 0) return "";

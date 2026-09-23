@@ -659,7 +659,7 @@ static bool cpubm_arm_cache(
     cont[5] = cache_size.test_l2_way > 0
         ? with_agreement(
               "", cache_size.theory_l2_way, cache_size.test_l2_way, 1.0, "")
-        : "not measured: needs 2 MiB huge pages to place lines in one L2 set";
+        : cpufb::describe_l2_unmeasured(cache_size.test_l2_way);
     table.addOneItem(cont);
     cont[0] = "L1 cacheline size";
     cont[1] = cache_size.theory_cacheline > 0
@@ -687,8 +687,7 @@ static bool cpubm_arm_cache(
             ? cpufb::describe_probe_agreement(
                   cache_size.theory_l2_line, cache_size.test_l2_line, 1.0) +
                 "; from set indexing"
-            : string("not measured: needs 2 MiB huge pages to place lines in "
-                     "one L2 set");
+            : cpufb::describe_l2_unmeasured(cache_size.test_l2_line);
         if (!deeper.empty()) verdict += "; " + deeper;
         cont[5] = verdict;
     }

@@ -44,14 +44,20 @@ int probe_l1_line_from_sets(int ways, size_t way_bytes);
 // apart in 2 MiB huge pages share every physical address bit below 21, so
 // they compete for one set in L1 and in L2 alike: a ring of n of them stays
 // in L1 up to the L1 ways, then misses to L2, and misses L2 once n passes the
-// L2 ways.  The second transition is the answer.  Without huge pages the
-// physical placement of lines is random above the page size and no set can
-// be targeted, so the probe returns 0 rather than guess: that is every
-// platform with 4 KiB pages and transparent huge pages off, and macOS.
+// L2 ways.  The second transition is the answer.
+//
+// Returns the ways, or kL2NoHugePages when no 2 MiB huge page could be had
+// (physical placement is then random above the page size and no set can be
+// targeted: 4 KiB pages with transparent huge pages off, and macOS), or 0
+// when huge pages were there but the lines never conflicted in L2.  That
+// last case is an L2 whose set index folds in address bits above 21: a
+// Kunpeng 920F keeps 32 such lines at L2 latency against 12 ways.
+const int kL2NoHugePages = -1;
 int probe_l2_associativity(int cacheline_bytes, int l1_ways);
 
 // L2 line size from set indexing, by the method of probe_l1_line_from_sets
-// applied to one L2 set in 2 MiB huge pages; 0 without them.  A last level
+// applied to one L2 set in 2 MiB huge pages.  Takes the result of
+// probe_l2_associativity and passes its kL2NoHugePages or 0 straight on.  A last level
 // shared across a chip is address-hashed over slices on every machine tried,
 // so neither its ways nor its line can be targeted this way.
 int probe_l2_line_from_sets(int l2_ways);

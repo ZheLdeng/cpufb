@@ -85,6 +85,11 @@ std::string describe_deeper_line_sizes(int cpu, int l2_line_bytes);
 // indexing (probe_l1_line_from_sets), which no prefetcher can widen.
 std::string describe_line_cross_check(int reuse_line_bytes, int set_line_bytes);
 
+// Verdict for an L2 ways or line row the set-conflict probe could not fill:
+// status is the probe's return value (negative: no huge pages; 0: huge
+// pages, but lines placed in one set by address never conflicted).
+std::string describe_l2_unmeasured(int status);
+
 } // namespace cpufb
 
 #endif

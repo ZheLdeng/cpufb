@@ -267,7 +267,7 @@ static void cpubm_riscv64_cache(std::vector<int> &set_of_threads, Table &table)
     cont[2] = geometry.l2_ways > 0 ? to_string(geometry.l2_ways) : "-";
     cont[5] = geometry.l2_ways > 0
         ? cpufb::describe_probe_agreement(l2.ways, geometry.l2_ways, 1.0)
-        : "not measured: needs 2 MiB huge pages to place lines in one L2 set";
+        : cpufb::describe_l2_unmeasured(geometry.l2_ways);
     table.addOneItem(cont);
 
     cont.assign(table.getCol(), "");
@@ -304,7 +304,7 @@ static void cpubm_riscv64_cache(std::vector<int> &set_of_threads, Table &table)
         ? cpufb::describe_probe_agreement(
               l2.line_bytes, geometry.l2_line, 1.0) +
             "; from set indexing"
-        : "not measured: needs 2 MiB huge pages to place lines in one L2 set";
+        : cpufb::describe_l2_unmeasured(geometry.l2_line);
     {
         const string deeper =
             cpufb::describe_deeper_line_sizes(cpu, l2.line_bytes);

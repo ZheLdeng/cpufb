@@ -290,13 +290,17 @@ int probe_l2_associativity(int cacheline_bytes, int l1_ways)
     std::string policy;
     if (!thp || !std::getline(thp, policy) ||
         policy.find("[never]") != std::string::npos)
-        return 0;
+        return kL2NoHugePages;
     const size_t line = cacheline_bytes > 0 ? cacheline_bytes : 64;
     const size_t huge_bytes = 2ULL * 1024 * 1024;
     const size_t bytes = huge_bytes * (kMaxLines + 1);
     void *allocation = nullptr;
-    if (posix_memalign(&allocation, huge_bytes, bytes) != 0) return 0;
-    (void)madvise(allocation, bytes, MADV_HUGEPAGE);
+    if (posix_memalign(&allocation, huge_bytes, bytes) != 0)
+        return kL2NoHugePages;
+    if (madvise(allocation, bytes, MADV_HUGEPAGE) != 0) {
+        std::free(allocation);
+        return kL2NoHugePages;
+    }
     // Touch one line per page so each is faulted in as a huge page now,
     // rather than as small pages when the rings are written.
     for (size_t page = 0; page <= static_cast<size_t>(kMaxLines); ++page)
@@ -310,6 +314,10 @@ int probe_l2_associativity(int cacheline_bytes, int l1_ways)
     double l2_level = 0.0; // test/control ratio while hitting in L2
     int pending = 0;
     int result = 0;
+    // Past the huge-page TLB (32 entries on a Kunpeng 920F) both rings miss
+    // it and the ratio falls; that is not a cache event and must not be read
+    // as one, so a fall ends the search.
+    double previous = 0.0;
     for (int lines = l1_ways + 2; lines <= kMaxLines; ++lines) {
         std::vector<int> order(lines);
         for (int i = 0; i < lines; ++i) order[i] = i;
@@ -325,9 +333,12 @@ int probe_l2_associativity(int cacheline_bytes, int l1_ways)
         // level the second transition is measured against.
         if (l2_level == 0.0) {
             l2_level = ratio;
+            previous = ratio;
             if (ratio < kConflictRatio) break; // no L1 conflict: no targeting
             continue;
         }
+        if (ratio < previous / 1.2) break;
+        previous = ratio;
         // Leaving L2 costs at least what entering it did, so 1.5 times the L2
         // level is well clear of its noise.
         if (ratio >= 1.5 * l2_level) {
@@ -345,19 +356,20 @@ int probe_l2_associativity(int cacheline_bytes, int l1_ways)
 #else
     (void)cacheline_bytes;
     (void)l1_ways;
-    return 0;
+    return kL2NoHugePages;
 #endif
 }
 
 int probe_l2_line_from_sets(int l2_ways)
 {
 #if defined(__linux__) && defined(MADV_HUGEPAGE)
-    if (l2_ways <= 0) return 0;
+    if (l2_ways <= 0) return l2_ways;
     const int lines = std::min(2 * l2_ways, kMaxLines);
     const size_t huge_bytes = 2ULL * 1024 * 1024;
     const size_t bytes = huge_bytes * (lines + 1);
     void *allocation = nullptr;
-    if (posix_memalign(&allocation, huge_bytes, bytes) != 0) return 0;
+    if (posix_memalign(&allocation, huge_bytes, bytes) != 0)
+        return kL2NoHugePages;
     (void)madvise(allocation, bytes, MADV_HUGEPAGE);
     for (int page = 0; page <= lines; ++page)
         static_cast<volatile char *>(allocation)[page * huge_bytes] = 0;
@@ -397,7 +409,7 @@ int probe_l2_line_from_sets(int l2_ways)
     return result;
 #else
     (void)l2_ways;
-    return 0;
+    return kL2NoHugePages;
 #endif
 }
 

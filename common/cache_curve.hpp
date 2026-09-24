@@ -42,9 +42,18 @@ struct CacheLevelEstimate
     double plateau_drift = 1.0;
 };
 
+// A sample measured on three independent rings because it decides a result
+// (see measure_cache_curve); the point keeps the median.
+struct RemeasuredPoint
+{
+    uint64_t working_set_bytes = 0;
+    double samples_ns[3] = {0.0, 0.0, 0.0};
+};
+
 struct CacheCurveResult
 {
     std::vector<CacheLatencyPoint> points;
+    std::vector<RemeasuredPoint> remeasured;
     std::vector<CacheLevelEstimate> levels;
     // Latency of a working set that no cache can hold (0 when not measured),
     // and whether the sweep climbed up to it.  When it did, `levels` is the

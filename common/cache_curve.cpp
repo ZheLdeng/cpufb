@@ -427,6 +427,13 @@ void debug_print_cache_curve(const CacheCurveResult &result)
         std::fprintf(stderr, "  %8llu KB %8.3f ns/load\n",
             static_cast<unsigned long long>(point.working_set_bytes / 1024),
             point.latency_ns);
+    // Which samples decided the answer, and whether the three rings agreed:
+    // an outlier that survives the median shows up here as two of three.
+    for (const RemeasuredPoint &point : result.remeasured)
+        std::fprintf(stderr,
+            "  re-measured %s: %.3f / %.3f / %.3f ns, median used\n",
+            format_approximate_capacity(point.working_set_bytes).c_str(),
+            point.samples_ns[0], point.samples_ns[1], point.samples_ns[2]);
     for (const CacheLevelEstimate &level : result.levels)
         std::fprintf(stderr,
             "  %s: capacity %s, %.3f ns, jump %.2fx, plateau drift %.2fx, "
@@ -701,12 +708,17 @@ CacheCurveResult measure_cache_curve(
         }
         for (size_t i = 0; i < result.points.size(); ++i) {
             if (!decisive[i]) continue;
-            double samples[3] = {result.points[i].latency_ns, 0.0, 0.0};
+            RemeasuredPoint record;
+            record.working_set_bytes = sizes[i];
+            record.samples_ns[0] = result.points[i].latency_ns;
             for (int ring = 1; ring <= 2; ++ring)
-                samples[ring] = measure_pointer_chase(chase, buffer, sizes[i],
-                    line, sweep_groups, seed_for(i, ring));
-            std::sort(samples, samples + 3);
-            result.points[i].latency_ns = samples[1];
+                record.samples_ns[ring] = measure_pointer_chase(chase, buffer,
+                    sizes[i], line, sweep_groups, seed_for(i, ring));
+            double sorted[3] = {record.samples_ns[0], record.samples_ns[1],
+                record.samples_ns[2]};
+            std::sort(sorted, sorted + 3);
+            result.points[i].latency_ns = sorted[1];
+            result.remeasured.push_back(record);
         }
     }
 #ifdef __linux__

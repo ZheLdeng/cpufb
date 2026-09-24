@@ -386,10 +386,17 @@ std::string describe_line_cross_check(int reuse_line_bytes, int set_line_bytes)
 {
     if (set_line_bytes <= 0) return "";
     if (reuse_line_bytes == set_line_bytes) return "set indexing agrees";
+    // The two probes bound the line from either side and cannot pick a point
+    // inside the bound: the set index can change every 64 B in a cache with
+    // 128 B lines kept in 64 B sectors (an Apple M4 Pro), and a reuse test
+    // can read 128 B on a 64 B line whose neighbour is always fetched with
+    // it.  Both look identical from here, so neither is overruled.
     if (reuse_line_bytes > set_line_bytes)
-        return "set indexing gives " + std::to_string(set_line_bytes) +
-            " B, so the " + std::to_string(reuse_line_bytes) +
-            " B reuse reading includes a neighbouring line fetched with it";
+        return "set indexing changes every " + std::to_string(set_line_bytes) +
+            " B, so the line is between " + std::to_string(set_line_bytes) +
+            " and " + std::to_string(reuse_line_bytes) +
+            " B: either the cache indexes " + std::to_string(set_line_bytes) +
+            " B sectors of the line, or a neighbour is fetched with it";
     return "set indexing gives " + std::to_string(set_line_bytes) + " B";
 }
 

@@ -81,8 +81,9 @@ std::string describe_shared_level(const CacheLevelInfo &os, int probe_kib);
 // neighbour is fetched with it.  Empty when the L3 line matches.
 std::string describe_deeper_line_sizes(int cpu, int l2_line_bytes);
 
-// Cross-check of the reuse-based line probe against the line read from set
-// indexing (probe_l1_line_from_sets), which no prefetcher can widen.
+// Cross-check of the reuse-based line probe against the set-index granule
+// (probe_l1_line_from_sets).  The granule is a lower bound on the line, the
+// reuse reading an upper bound; when they differ the note states the bound.
 std::string describe_line_cross_check(int reuse_line_bytes, int set_line_bytes);
 
 // Verdict for an L2 ways or line row the set-conflict probe could not fill:

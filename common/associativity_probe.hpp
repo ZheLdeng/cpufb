@@ -31,13 +31,14 @@ int probe_l1_associativity(int cacheline_bytes);
 // address bits, which holds on every core measured so far (VIPT L1).
 size_t probe_l1_way_bytes(int cacheline_bytes, int ways);
 
-// L1 line size from set indexing, or 0 when it could not be told.  Of twice
+// Granule of the L1 set index, or 0 when it could not be told.  Of twice
 // `ways` lines that share one set, every other one is moved by d bytes: while
-// d is inside a line they stay in the set and still conflict, and once d
-// reaches the line size they land in the next set and the conflict goes.
-// A prefetcher that brings in the neighbouring line cannot make it share a
-// set, so unlike the reuse-based probe this cannot read a 64-byte line as
-// 128 bytes on a core that prefetches both neighbours.
+// d is inside the granule they stay in the set and still conflict, and once
+// d reaches it they land in the next set and the conflict goes.  That
+// granule is the line size unless the cache keeps its lines in smaller
+// indexed sectors: an Apple M4 Pro has 128 B lines and reads 64 B here.  It
+// is therefore a lower bound on the line, as the reuse probe, which a
+// prefetcher of neighbours can widen, is an upper one.
 int probe_l1_line_from_sets(int ways, size_t way_bytes);
 
 // Empirical L2 associativity, or 0 when it cannot be measured.  Lines 2 MiB

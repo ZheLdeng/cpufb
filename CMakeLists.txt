@@ -72,6 +72,7 @@ add_library(cpufb_common OBJECT
     "${CPUFB_COMMON_DIR}/associativity_probe.cpp"
     "${CPUFB_COMMON_DIR}/cacheline_probe.cpp"
     "${CPUFB_COMMON_DIR}/cli.cpp"
+    "${CPUFB_COMMON_DIR}/issue_probe.cpp"
     "${CPUFB_COMMON_DIR}/system_info.cpp"
     "${CPUFB_COMMON_DIR}/table.cpp"
     "${CPUFB_COMMON_DIR}/thread_pool.cpp"
@@ -147,7 +148,10 @@ endif()
 
 if(_simd_sources)
     add_library(cpufb_simd OBJECT ${_simd_sources})
-    target_include_directories(cpufb_simd PRIVATE "${CPUFB_ASM_DIR}")
+    # The issue-probe generator (_ISSUE_.S) includes the kernel directory's
+    # class list and the shared layout header.
+    target_include_directories(cpufb_simd PRIVATE
+        "${CPUFB_ASM_DIR}" "${CPUFB_KERNEL_DIR}" "${CPUFB_COMMON_DIR}")
     target_compile_options(cpufb_simd PRIVATE -g -w)
     # Pass detected SIMD feature tokens through to the .S preprocessor so
     # asm files can do conditional compilation (e.g. fp16 lanes inside an
@@ -170,9 +174,11 @@ if(CPUFB_ARCH STREQUAL "arm64" AND CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 endif()
 if(CPUFB_ARCH STREQUAL "arm64" OR CPUFB_ARCH STREQUAL "x64")
     # The stream benchmark is shared; only the kernel selection is per arch.
+    # issue_kernels.cpp holds the tables of the generated issue-probe kernels.
     list(APPEND _kernel_sources
         "${CPUFB_COMMON_DIR}/memory_bandwidth.cpp"
-        "${CPUFB_KERNEL_DIR}/stream_kernel.cpp")
+        "${CPUFB_KERNEL_DIR}/stream_kernel.cpp"
+        "${CPUFB_KERNEL_DIR}/issue_kernels.cpp")
 endif()
 if(CPUFB_ARCH STREQUAL "x64")
     # The frequency probe is an x86-64 SSE/SSE2 baseline and must not depend
@@ -298,6 +304,19 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
         TIMEOUT 30
     )
 
+    add_executable(cpufb_issue_probe_test
+        "${CMAKE_SOURCE_DIR}/tests/test_issue_probe.cpp"
+    )
+    target_link_libraries(cpufb_issue_probe_test PRIVATE cpufb_common)
+    add_test(
+        NAME cpufb_issue_probe
+        COMMAND cpufb_issue_probe_test
+    )
+    set_tests_properties(cpufb_issue_probe PROPERTIES
+        LABELS "unit"
+        TIMEOUT 30
+    )
+
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
         add_test(
@@ -341,6 +360,7 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND
                 sweep_output
                 memory_bandwidth
                 cache_bandwidth
+                issue_probe
             )
         endif()
         foreach(test_name IN LISTS _cli_test_names)

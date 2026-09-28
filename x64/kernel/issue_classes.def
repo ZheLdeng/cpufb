@@ -1,0 +1,35 @@
+/* Instruction classes and mixes of the x86-64 issue probe. */
+/* */
+/* Included several times, by x64/asm/_ISSUE_.S to emit the kernels and by */
+/* x64/kernel/issue_kernels.cpp to build the tables; no include guard. */
+/* */
+/*   ISSUE_CLASS(name, instruction, unit, bank, mode, width, feature) */
+/*     name        symbol token; the assembly defines ISSUE_INS_<name> \r */
+/*     instruction display form */
+/*     unit        "ALU", "FSU" or "LSU" */
+/*     bank        GPR or VEC */
+/*     mode        NORMAL (x86 has no second mode) */
+/*     width       0 xmm, 1 ymm, 2 zmm: the widest register the kernel must */
+/*                 zero at entry and clean up with vzeroupper at exit */
+/*     feature     CPUID feature name checked before the class is run */
+/* */
+/*   ISSUE_PAIR(A, B, label)      every ratio of the Farey grid, both schedules */
+/*   ISSUE_TRIPLE(A, B, C, label) the triple grid, interleaved */
+
+ISSUE_CLASS(alu, "add r64", "ALU", GPR, NORMAL, 0, "")
+ISSUE_CLASS(sse_add, "addps xmm", "FSU", VEC, NORMAL, 0, "")
+ISSUE_CLASS(sse_load, "movups xmm", "LSU", VEC, NORMAL, 0, "")
+ISSUE_CLASS(avx_fma, "vfmadd231ps ymm", "FSU", VEC, NORMAL, 1, "fma")
+ISSUE_CLASS(avx_load, "vmovups ymm", "LSU", VEC, NORMAL, 1, "avx")
+ISSUE_CLASS(avx512_fma, "vfmadd231ps zmm", "FSU", VEC, NORMAL, 2, "avx512f")
+ISSUE_CLASS(avx512_load, "vmovups zmm", "LSU", VEC, NORMAL, 2, "avx512f")
+
+ISSUE_PAIR(avx_fma, avx_load, "AVX compute:load")
+ISSUE_PAIR(avx512_fma, avx512_load, "AVX-512 compute:load")
+ISSUE_PAIR(avx_fma, avx512_fma, "AVX + AVX-512")
+ISSUE_PAIR(avx_fma, alu, "FSU + ALU")
+ISSUE_PAIR(avx_load, alu, "LSU + ALU")
+ISSUE_PAIR(sse_add, sse_load, "SSE compute:load")
+
+ISSUE_TRIPLE(alu, avx_fma, avx_load, "Issue width")
+ISSUE_TRIPLE(alu, sse_add, sse_load, "Issue width (SSE)")

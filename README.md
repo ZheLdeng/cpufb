@@ -7,7 +7,7 @@ It includes the following features:
 floating-points and AI peak performance, L1 and L2 cache size,
 L1 and L2 cache bandwidth, number of ways of L1 cache,
 IPC of floating-point instruction, IPC of load instruction,
-multiple issue.
+issue peaks per instruction class and how classes share the core when mixed.
 
 * `Multiple issue / cache size / cache bandwidth / multi-way of cache` only for single core. If you test using multiple cores, you will get results from a random core.
 
@@ -398,10 +398,58 @@ be measured, `Test Freq` is `-` and IPC is normalized by the reported value,
 labelled `OS-reported frequency (not measured)`. Do not compare estimated
 clocks directly with PMU-derived IPC from Linux.
 
+## Issue probe
+
+The `multi_issue` category is measured by the issue probe
+(`common/issue_probe.cpp`) on the first selected core. It answers, per
+instruction class and per pair of classes, how the core issues them:
+
+```sh
+./cpufb --thread_pool='[0]' --include-test=multi_issue
+```
+
+1. **Peaks.** Every class (`add x`, NEON `fmla`, NEON `ldr q`, SVE `fmla` and
+   `ld1w`, SME `fmopa` and the streaming-mode SVE forms on ARM64; scalar
+   `add`, SSE/AVX/AVX-512 FMA and loads on x86-64) runs as a stream of
+   independent instructions rotating over its own registers. The peak is the
+   IPC over all chains; a half-chain run must agree within 2%, otherwise the
+   row says the accumulator latency, not the issue width, bounded it.
+2. **Mixes.** For a pair (A, B) the probe measures the total IPC of a stream
+   with a fraction x of class-A instructions on the Farey grid of small-integer
+   ratios (a + b <= 8, 21 ratios) plus the two pure endpoints. Total IPC is
+   unimodal in x, so the maximum is found by golden-section search in about
+   seven kernel runs, and the interval of ratios within 3% of the maximum by
+   bisection on either side, a few runs more; the grid itself is never run
+   in full. Each ratio is run evenly interleaved and in
+   blocks; the faster schedule counts, and a gap above 3% is noted.
+3. **Verdict.** The maximum T* against the peaks: T* near max(P_A, P_B)
+   means one shared set of issue ports (mixing adds nothing); T* near
+   P_A + P_B means independent ports; anything between is a shared budget of
+   P_A + P_B - T* instructions per cycle.
+4. **Issue width.** The three-class mix (ALU, FSU, LSU) nearest to the
+   peak-proportional shares, and its grid neighbours, give the total IPC the
+   front end sustains; when it reaches the sum of the class peaks the front
+   end is not the limit.
+
+The table has five columns: Item, Classes, IPC, Frontier (the best ratio and
+the near-optimal interval, or the chain check for a peak) and Verdict.
+
+Every kernel is generated at build time by assembler macros from a class list,
+`<arch>/kernel/issue_classes.def`, which the C++ tables include too, so the
+two cannot drift apart. Adding a class takes one line there, one three-line
+`ISSUE_INS_<name>` macro in `<arch>/asm/_ISSUE_.S` that emits the instruction
+on register `\r`, and the pairs it should be tested against. Classes carry a
+register bank (general, vector or ZA), a processor mode (normal or streaming;
+the assembler refuses to mix modes) and a runtime feature token; mixes whose
+class the machine lacks print "not available" with the missing feature.
+
 ## Experimental pair-issue test
 
-`tools/pair_issue_test.py` measures isolated and joint IPC for two Linux
-AArch64 instruction classes without scanning a full ratio grid. It currently
+`tools/pair_issue_test.py` predates the built-in issue probe above, which
+answers the same questions on every supported platform without a local
+toolchain or `perf`; the script remains for research that needs generated
+kernels beyond the built-in class list. It measures isolated and joint IPC
+for two Linux AArch64 instruction classes without scanning a full ratio grid. It currently
 supports SVE FP32 FMLA, SVE `ld1h` as its single default load class, NEON FP32
 FMLA, integer scalar ADD, and scalar FP32 FADD. For example:
 

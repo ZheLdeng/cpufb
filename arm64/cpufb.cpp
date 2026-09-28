@@ -89,15 +89,6 @@ struct cpubm_t
 // Every ARM64 compute kernel unrolls 24 benchmarked instructions per loop.
 static constexpr int64_t kComputeInstructionsPerLoop = 24;
 
-struct cache_bm_t
-{
-    float *cache_data;
-    int inner_loop;
-    int loop_time;
-    void (*bench)(float *, int, int64_t);
-    bool count_cycles;
-};
-
 static vector<cpubm_t> bm_list;
 static const char *registration_required_feature = "_ASIMD_";
 
@@ -209,27 +200,6 @@ static void thread_func(void *params)
     }
 #endif
     ((void (*)(int64_t))bm->bench)(bm->loop_time);
-}
-
-static void cache_thread_func(void *params)
-{
-    cache_bm_t *bm = (cache_bm_t *)params;
-#ifdef __linux__
-    PerfEventCycle cycle_counter(0, false);
-    if (bm->count_cycles && cycle_counter.available()) {
-        cycle_counter.start();
-        bm->bench(bm->cache_data, bm->inner_loop, bm->loop_time);
-        cycle_counter.stop();
-        const long long cycles = cycle_counter.get_cycle();
-        if (cycles > 0) {
-            compute_cycle_sum.fetch_add(
-                static_cast<uint64_t>(cycles), std::memory_order_relaxed);
-            compute_cycle_samples.fetch_add(1, std::memory_order_relaxed);
-        }
-        return;
-    }
-#endif
-    bm->bench(bm->cache_data, bm->inner_loop, bm->loop_time);
 }
 
 static bool cpubm_standalone_warmup(vector<int> &set_of_threads)
@@ -750,69 +720,23 @@ static bool cpubm_arm_cache(
     return append_cache_memory_bandwidth(options, table, measured_last_level);
 }
 
-static void cpubm_arm_multiple_issue(tpool_t *tm, cpubm_t &item, Table &table)
+// Issue probe: pure peaks per instruction class and how classes share the
+// core when mixed; see common/issue_probe.hpp.  Runs on the first selected
+// core before the benchmark pool exists, so no worker competes with it.
+static void cpubm_arm_issue(
+    std::vector<int> &set_of_threads, const CliOptions &options, Table &table)
 {
-    struct timespec start, end;
-    cache_bm_t bm;
-    const size_t size = 2048;
-    // Line-aligned so that wide loads never straddle two lines.
-    void *allocation = nullptr;
-    if (posix_memalign(&allocation, 64, size) != 0) return;
-    float *cache_data = static_cast<float *>(allocation);
-    //Preventing Compiler Optimization
-    for (size_t i = 0; i < size / sizeof(float); i++) {
-        cache_data[i] = i;
+    cpufb::IssueProbeOptions probe;
+    if (!freq.empty() && freq[0] > 0.0) probe.clock_hz = freq[0] * 1e9;
+    if (options.loop_scale > 1) {
+        probe.sample_seconds =
+            std::max(0.0005, probe.sample_seconds / options.loop_scale);
+        probe.samples = 3;
     }
-    const int inner_loop = 1024;
-    bm.bench = reinterpret_cast<void (*)(float *, int, int64_t)>(item.bench);
-    bm.cache_data = cache_data;
-    bm.inner_loop = inner_loop;
-    bm.loop_time = item.loop_time;
-    bm.count_cycles = false;
-
-    // Every pinned worker runs the kernel once and the result is the
-    // per-core rate.  tpool_add_work() would hand one job to an arbitrary
-    // worker while the rate was normalized by core 0's clock.
-    tpool_run_all(tm, cache_thread_func, (void *)&bm, &start, &end);
-
-    double perf = 0.0;
-    // item.comp_pl is the instruction count of the inner loop including its
-    // loop control; the outer loop adds four more.
-    const double instructions =
-        (double)item.loop_time * ((double)inner_loop * item.comp_pl + 4);
-    bm.count_cycles = true;
-#ifdef __linux__
-    compute_cycle_sum.store(0, std::memory_order_relaxed);
-    compute_cycle_samples.store(0, std::memory_order_relaxed);
-#endif
-    if (tpool_run_all(tm, cache_thread_func, (void *)&bm, &start, &end)) {
-        const double time_used = get_time(&start, &end);
-#ifdef __linux__
-        const uint64_t cycles =
-            compute_cycle_sum.load(std::memory_order_relaxed);
-        if (cycles > 0 &&
-            compute_cycle_samples.load(std::memory_order_relaxed) ==
-                static_cast<int>(tm->thread_num))
-            perf = instructions * tm->thread_num / cycles;
-#endif
-        if (perf <= 0.0 && time_used > 0.0 && !freq.empty() && freq[0] > 0)
-            perf = instructions / (time_used * freq[0] * 1e9);
-    }
-
-    stringstream ss;
-    if (perf > 0.0)
-        ss << setprecision(5) << perf << " " << item.dim;
-    else
-        ss << "-";
-
-    vector<string> cont;
-    cont.resize(table.getCol());
-    cont[0] = item.isa;
-    cont[1] = item.type;
-    cont[2] = ss.str();
-    table.addOneItem(cont);
-    free(cache_data);
+    cpufb::run_issue_probe(
+        arm64_issue_probe_input(), set_of_threads[0], probe, table);
 }
+
 // compute: instruction throughput/IPC; load: cache-resident load bandwidth;
 // cache: capacity, associativity, and cache-line probes; freq: core frequency.
 static void init_table(vector<Table *> &tables)
@@ -876,10 +800,12 @@ static void init_table(vector<Table *> &tables)
     tables[3]->setColumnNum(ti.size());
     tables[3]->addOneItem(ti);
 
-    ti.resize(3);
+    ti.resize(5);
     ti[0] = "Item";
-    ti[1] = "Core Instruction";
+    ti[1] = "Classes";
     ti[2] = "IPC";
+    ti[3] = "Frontier";
+    ti[4] = "Verdict";
     tables[4]->setColumnNum(ti.size());
     tables[4]->addOneItem(ti);
 }
@@ -1019,6 +945,8 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
         }
         if (should_run_test(filter, "load"))
             prepare_arm_load_cache(set_of_threads);
+        if (should_run_test(filter, "multi_issue"))
+            cpubm_arm_issue(set_of_threads, options, *tables[4]);
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);
@@ -1055,8 +983,8 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
                 cpubm_arm_load(tm, bm_list[i], *tables[1]);
                 break;
             case BENCHMARK_MULTI_ISSUE:
-                sleep(idle_time);
-                cpubm_arm_multiple_issue(tm, bm_list[i], *tables[4]);
+                // Issue rows come from the probe, not from registered
+                // kernels; nothing registers with this kind any more.
                 break;
             }
             benches_run++;
@@ -1081,12 +1009,10 @@ static void cpufb_register_isa()
     constexpr int64_t kComputeLoopTime = 0x40000LL;
     constexpr int64_t kLatencyLoopTime = 0x4000LL;
     constexpr int64_t kLoadLoopTime = 0x40000LL;
-    constexpr int64_t kMultiIssueLoopTime = 0x40000LL;
 #else
     constexpr int64_t kComputeLoopTime = 0x100000LL;
     constexpr int64_t kLatencyLoopTime = 0x10000LL;
     constexpr int64_t kLoadLoopTime = 0x186A00LL;
-    constexpr int64_t kMultiIssueLoopTime = 0x186A00LL;
 #endif
 
 #ifdef _I8MM_
@@ -1552,10 +1478,6 @@ static void cpufb_register_isa()
         192LL, (void *)sme_usmopa_vv_s32u8s8);
     reg_new_isa("SME", "sme_sumopa.vv(s32,s8,u8)", "OPS", kComputeLoopTime,
         192LL, (void *)sme_sumopa_vv_s32s8u8);
-    require_feature("_SME_F32F32_");
-    // 24 FMOPA + 16 LDR + loop control, counted like the other issue rows.
-    reg_new_isa("SME_MULTI_ISSUE", "ldr/fmopa", "IPC", 0x186A0LL, 42LL,
-        (void *)sme_multiple_issue);
 #endif
 
 #ifdef _SME_F16F16_
@@ -1759,28 +1681,8 @@ static void cpufb_register_isa()
     //     kLoadLoopTime, 32LL, (void*)load_benchmark_4);
 
 #endif
-#ifdef _SVE_
-    require_feature("_SVE_");
-    reg_new_isa("SVE_MULTI_ISSUE", "ld1w/fmla", "IPC", kMultiIssueLoopTime,
-        34LL, (void *)sve_multiple_issue);
-    reg_new_isa("SVE_ADD_MULTI_ISSUE", "ld1w/fmla+add(5:1)", "IPC",
-        kMultiIssueLoopTime, 26LL, (void *)sve_scalar_add_5_1);
-    reg_new_isa("SVE_ADD_MULTI_ISSUE", "ld1w/fmla+add(5:2)", "IPC",
-        kMultiIssueLoopTime, 30LL, (void *)sve_scalar_add_5_2);
-    reg_new_isa("SVE_ADD_MULTI_ISSUE", "ld1w/fmla+add(5:3)", "IPC",
-        kMultiIssueLoopTime, 34LL, (void *)sve_scalar_add_5_3);
-    reg_new_isa("SVE_ADD_MULTI_ISSUE", "ld1w/fmla+add(5:4)", "IPC",
-        kMultiIssueLoopTime, 38LL, (void *)sve_scalar_add_5_4);
-    reg_new_isa("SVE_ADD_MULTI_ISSUE", "ld1w/fmla+add(5:5)", "IPC",
-        kMultiIssueLoopTime, 42LL, (void *)sve_scalar_add_5_5);
-    reg_new_isa("SVE_ADD_MULTI_ISSUE", "ld1w/fmla+add(5:6)", "IPC",
-        kMultiIssueLoopTime, 46LL, (void *)sve_scalar_add_5_6);
-#endif
-    require_feature("_ISSUE_");
-    reg_new_isa("NEON_MULTI_ISSUE", "ldr/fmla", "IPC", kMultiIssueLoopTime,
-        34LL, (void *)neon_multiple_issue);
-    reg_new_isa("MULTI_ISSUE", "ldr/fmla", "IPC", kMultiIssueLoopTime, 50LL,
-        (void *)multiple_issue);
+    // Multi-issue rows are produced by the issue probe (cpubm_arm_issue), not
+    // registered here; its classes live in kernel/issue_classes.def.
 
 #if defined(__linux__) && !defined(__APPLE__)
     const Arm64RuntimeFeatures &features = arm64_runtime_features();

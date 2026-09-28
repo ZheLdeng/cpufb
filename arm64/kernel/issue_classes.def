@@ -1,0 +1,49 @@
+// Instruction classes and mixes of the ARM64 issue probe.
+//
+// This file is included several times, by arm64/asm/_ISSUE_.S to emit the
+// kernels and by arm64/kernel/issue_kernels.cpp to build the tables, with
+// ISSUE_CLASS / ISSUE_PAIR / ISSUE_TRIPLE defined by the includer.  It has no
+// include guard on purpose.
+//
+//   ISSUE_CLASS(name, instruction, unit, bank, mode, needs_sve, feature)
+//     name        symbol token; the assembly defines a macro ISSUE_INS_<name>
+//                 that emits one instruction on register number \r
+//     instruction display form
+//     unit        "ALU", "FSU", "LSU" or "SME": the execution resource
+//     bank        GPR, VEC or ZA: which registers the class rotates over
+//     mode        NORMAL or STREAMING: classes of different modes never mix
+//     needs_sve   1 when the kernel prologue must set up predicates
+//     feature     runtime feature token checked before the class is run
+//
+//   ISSUE_PAIR(A, B, label)      every ratio of the Farey grid, both schedules
+//   ISSUE_TRIPLE(A, B, C, label) the triple grid, interleaved
+//
+// To add a class: one ISSUE_CLASS line here, one ISSUE_INS_<name> macro in
+// the assembly, and the pairs it should be tested against.
+
+ISSUE_CLASS(alu, "add x", "ALU", GPR, NORMAL, 0, "")
+ISSUE_CLASS(neon_fmla, "fmla v.4s", "FSU", VEC, NORMAL, 0, "")
+ISSUE_CLASS(neon_ldr, "ldr q", "LSU", VEC, NORMAL, 0, "")
+#ifdef _SVE_
+ISSUE_CLASS(sve_fmla, "fmla z.s", "FSU", VEC, NORMAL, 1, "_SVE_")
+ISSUE_CLASS(sve_ld1w, "ld1w z.s", "LSU", VEC, NORMAL, 1, "_SVE_")
+#endif
+#ifdef _SME_
+ISSUE_CLASS(sme_fmopa, "fmopa za.s", "SME", ZA, STREAMING, 1, "_SME_")
+ISSUE_CLASS(ssve_fmla, "fmla z.s (streaming)", "FSU", VEC, STREAMING, 1, "_SME_")
+ISSUE_CLASS(ssve_ld1w, "ld1w z.s (streaming)", "LSU", VEC, STREAMING, 1, "_SME_")
+#endif
+
+ISSUE_PAIR(neon_fmla, neon_ldr, "NEON compute:load")
+ISSUE_PAIR(neon_fmla, alu, "FSU + ALU")
+ISSUE_PAIR(neon_ldr, alu, "LSU + ALU")
+#ifdef _SVE_
+ISSUE_PAIR(sve_fmla, neon_fmla, "SVE + NEON")
+ISSUE_PAIR(sve_fmla, sve_ld1w, "SVE compute:load")
+#endif
+#ifdef _SME_
+ISSUE_PAIR(sme_fmopa, ssve_fmla, "SME + streaming SVE compute")
+ISSUE_PAIR(sme_fmopa, ssve_ld1w, "SME + streaming SVE load")
+#endif
+
+ISSUE_TRIPLE(alu, neon_fmla, neon_ldr, "Issue width")

@@ -511,6 +511,34 @@ case "${test_case}" in
         fi
         ;;
 
+    issue_probe)
+        # The issue probe derives its rows from generated kernels; a missing
+        # class kernel, a broken table or a search that never evaluates a
+        # mix all show up as an empty IPC.  Every class the build enabled and
+        # the machine supports must report a peak, every mix either a joint
+        # IPC or a "not available" reason, and the cycle source must be named.
+        issue_output="${test_tmp}/issue-probe.csv"
+        run_success "${binary}" "${thread_arg}" --include-test=multi_issue \
+            --loop_scale=20 --save="${issue_output}" >/dev/null
+        awk -F',' '
+            $1 == "multi_issue" && $2 ~ / peak$/ {
+                peaks++
+                if ($4 + 0 <= 0) exit 3
+            }
+            $1 == "multi_issue" && ($2 ~ /:/ || $2 ~ / \+ / || $2 ~ /^Issue width/) {
+                mixes++
+                if ($4 + 0 <= 0 && $6 !~ /not available/) exit 4
+                if ($4 + 0 > 0 && $5 == "") exit 5
+            }
+            $1 == "multi_issue" && $2 == "Cycle source" { source++ }
+            END {
+                if (peaks < 2) exit 6
+                if (mixes < 1) exit 7
+                if (source != 1) exit 8
+            }
+        ' "${issue_output}" || fail "issue probe rows are incomplete: $(grep multi_issue "${issue_output}" | cut -c1-160 | tr '\n' '|')"
+        ;;
+
     *)
         fail "unknown test case"
         ;;

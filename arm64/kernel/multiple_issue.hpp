@@ -1,19 +1,10 @@
 #ifndef CPUFB_ARM64_MULTIPLE_ISSUE_HPP
 #define CPUFB_ARM64_MULTIPLE_ISSUE_HPP
-#include <cstdint>
-extern "C"
-{
-    void multiple_issue(float *, int, int64_t);
-    void neon_multiple_issue(float *, int, int64_t);
-#ifdef _SVE_
-    void sve_multiple_issue(float *, int, int64_t);
-    void sve_scalar_add_5_1(float *, int, int64_t);
-    void sve_scalar_add_5_2(float *, int, int64_t);
-    void sve_scalar_add_5_3(float *, int, int64_t);
-    void sve_scalar_add_5_4(float *, int, int64_t);
-    void sve_scalar_add_5_5(float *, int, int64_t);
-    void sve_scalar_add_5_6(float *, int, int64_t);
-#endif
-    void sme_multiple_issue(float *, int, int64_t);
-}
+
+#include "issue_probe.hpp"
+
+// The ARM64 issue-probe kernels and mixes, generated from
+// issue_classes.def; see common/issue_probe.hpp for the method.
+const cpufb::IssueProbeInput &arm64_issue_probe_input();
+
 #endif

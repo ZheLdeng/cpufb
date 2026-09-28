@@ -104,6 +104,43 @@ done
 2. **If any of the eight L2 readings is not 16 MiB**, send its re-measured
    lines. Those show which working sets decided it and what each ring read.
 
+## Issue probe — first hardware run, every platform
+
+New this round: the `multi_issue` category is now the issue probe
+(`common/issue_probe.cpp`, kernels generated from
+`<arch>/kernel/issue_classes.def`). It has been assembled and audited on this
+host (330 ARM64 kernels, counts and register partitions checked from the
+disassembly) but has not yet run on hardware. Please run, on one core:
+
+```bash
+./cpufb '--thread_pool=[0]' --include-test=multi_issue --save=issue.csv
+```
+
+1. **Every peak row has a value** and reads `chain count sufficient`. A
+   `peak limited by chain count` note on FMLA means the accumulator latency
+   times the pipe count exceeds 24; report it, it is information.
+2. **Known references.** Graviton3 (Neoverse V1): SVE `fmla` about 1.8-2,
+   loads 2, `SVE compute:load` joint 3.6-3.7 with the optimum near 1:1
+   (`ISSUE_MODEL.md`). Neoverse V3: `fmla` 4, loads 3, joint 5, best ratio
+   near 4:3 and `>= 97%` roughly from 1:1 to 3:1. Kunpeng 920F: `fmla` 2,
+   loads 2.
+3. **`SVE + NEON`** should read `shared issue ports` on every Arm core tried
+   so far. If it reads otherwise, send the row.
+4. **SME rows** exist only on the 920F and the M4 Pro. The `SME + streaming
+   SVE compute` and `SME + streaming SVE load` rows say whether FMOPA and
+   the streaming-mode vector pipes co-issue.
+5. **`Issue width`** should be at least the largest single peak and at most
+   the sum of the ALU, FSU and LSU peaks.
+6. **Run time.** The whole category should take well under a minute; report
+   it if it does not.
+
+**PAC (Kunpeng 920F, SME) rules.** Work only inside `/home/share/zhounan`:
+untar the source there, build into a `build/` under that tree, submit the
+run as a non-interactive `dsub` job to `q_pacopt` so an SSH drop cannot cut
+it, copy `issue.csv` and the table out, then delete the whole tree so the
+directory is left as it was found. Never build or write anywhere else on that
+cluster.
+
 ## Kunpeng 920, Graviton3 — nothing to run
 
 Both passed everything that applies to them last round, and this round

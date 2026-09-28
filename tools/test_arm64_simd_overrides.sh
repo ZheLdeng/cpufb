@@ -246,7 +246,7 @@ build_and_run_variant()
 
     require_symbol "${variant}" "${binary}" asimd_fmla_vv_f32f32f32
     require_symbol "${variant}" "${binary}" load_ldp_kernel
-    require_symbol "${variant}" "${binary}" multiple_issue
+    require_symbol "${variant}" "${binary}" issue_alu_pure_f
     if [[ -n "${required_symbol}" ]]; then
         require_symbol "${variant}" "${binary}" "${required_symbol}"
     fi

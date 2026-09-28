@@ -112,17 +112,6 @@ struct cpubm_t
     std::atomic<int> *cycle_samples;
 #endif
 };
-struct cache_bm_t
-{
-    float *cache_data;
-    int inner_loop;
-    int loop_time;
-    void (*bench)(float *, int, int64_t);
-#ifdef __linux__
-    std::atomic<uint64_t> *cycle_count;
-    std::atomic<int> *cycle_samples;
-#endif
-};
 static vector<cpubm_t> bm_list;
 
 static BenchmarkCatalog build_benchmark_catalog()
@@ -178,15 +167,6 @@ static void reg_load_kernel(const std::string &label, const std::string &type,
     bm_list.back().bytes_per_load = bytes_per_load;
 }
 
-// instructions_per_loop counts the inner loop including its loop control.
-static void reg_multi_issue(const std::string &name, const std::string &type,
-    int64_t instructions_per_loop, CacheKernel kernel)
-{
-    reg_new_isa(name, type, "IPC", 0x40000LL, 0, nullptr, nullptr,
-        instructions_per_loop);
-    bm_list.back().cache_kernel = kernel;
-}
-
 static void warn_estimated_cycles_once()
 {
     static bool warned = false;
@@ -225,29 +205,6 @@ static void thread_func(void *params)
         bm->bench(bm->loop_time, nullptr);
     }
 }
-static void cache_thread_func(void *params)
-{
-    cache_bm_t *bm = (cache_bm_t *)params;
-#ifdef __linux__
-    if (bm->cycle_count != nullptr && bm->cycle_samples != nullptr) {
-        PerfEventCycle cycle_counter(0, false);
-        if (cycle_counter.available()) {
-            cycle_counter.start();
-            bm->bench(bm->cache_data, bm->inner_loop, bm->loop_time);
-            cycle_counter.stop();
-            const long long cycles = cycle_counter.get_cycle();
-            if (cycles > 0) {
-                bm->cycle_count->fetch_add(
-                    static_cast<uint64_t>(cycles), std::memory_order_relaxed);
-                bm->cycle_samples->fetch_add(1, std::memory_order_relaxed);
-            }
-            return;
-        }
-    }
-#endif
-    bm->bench(bm->cache_data, bm->inner_loop, bm->loop_time);
-}
-
 static ComputeResult cpubm_run_compute(tpool_t *tm, cpubm_t &item)
 {
     struct timespec start, end;
@@ -498,76 +455,24 @@ static bool cpubm_x64_cache(
     return append_cache_memory_bandwidth(options, table, measured_last_level);
 }
 
-static void cpubm_x64_multiple_issue(tpool_t *tm, cpubm_t &item, Table &table)
+// Issue probe: pure peaks per instruction class and how classes share the
+// core when mixed; see common/issue_probe.hpp.  Runs on the first selected
+// core before the benchmark pool exists, so no worker competes with it.
+static void cpubm_x64_issue(
+    std::vector<int> &set_of_threads, const CliOptions &options, Table &table)
 {
-    struct timespec start, end;
-    cache_bm_t bm;
-    const size_t size = 1024;
-    // 64-byte alignment keeps the 512-byte zmm window from splitting lines.
-    void *allocation = nullptr;
-    if (posix_memalign(&allocation, 64, size) != 0) return;
-    float *cache_data = static_cast<float *>(allocation);
-    //Preventing Compiler Optimization
-    for (size_t i = 0; i < size / sizeof(float); i++) {
-        cache_data[i] = i;
+    cpufb::IssueProbeOptions probe;
+    if (!freq.empty() && freq[0] > 0.0) probe.clock_hz = freq[0] * 1e9;
+    probe.clock_source = cpu_freq_counter_source();
+    if (options.loop_scale > 1) {
+        probe.sample_seconds =
+            std::max(0.0005, probe.sample_seconds / options.loop_scale);
+        probe.samples = 3;
     }
-    int inner_loop = 1024;
-    bm.bench = item.cache_kernel;
-    bm.cache_data = cache_data;
-    bm.inner_loop = inner_loop;
-    bm.loop_time = item.loop_time;
-#ifdef __linux__
-    bm.cycle_count = nullptr;
-    bm.cycle_samples = nullptr;
-#endif
-
-    // Every pinned worker runs the kernel once (tpool_add_work would hand a
-    // single job to an arbitrary worker); the result is the per-core rate.
-    tpool_run_all(tm, cache_thread_func, (void *)&bm, &start, &end);
-
-#ifdef __linux__
-    std::atomic<uint64_t> cycle_count(0);
-    std::atomic<int> cycle_samples(0);
-    bm.cycle_count = &cycle_count;
-    bm.cycle_samples = &cycle_samples;
-#endif
-    double perf = 0.0;
-    const double instructions =
-        (double)item.loop_time * ((double)inner_loop * item.inst_pl + 4);
-    if (tpool_run_all(tm, cache_thread_func, (void *)&bm, &start, &end)) {
-        const double time_used = get_time(&start, &end);
-#ifdef __linux__
-        const uint64_t cycles = cycle_count.load(std::memory_order_relaxed);
-        if (cycles > 0 &&
-            cycle_samples.load(std::memory_order_relaxed) ==
-                (int)tm->thread_num)
-            perf = instructions * tm->thread_num / cycles;
-#endif
-        if (perf <= 0.0 && time_used > 0.0 && !freq.empty() && freq[0] > 0.0) {
-            perf = instructions / (time_used * freq[0] * 1e9);
-            warn_estimated_cycles_once();
-        }
-    }
-    stringstream ss;
-
-    if (perf > 0.0)
-        ss << setprecision(5) << perf;
-    else
-        ss << "-";
-
-    vector<string> cont;
-    cont.resize(table.getCol());
-    cont[0] = item.isa;
-    cont[1] = item.type;
-    cont[2] = ss.str();
-    table.addOneItem(cont);
-    free(cache_data);
+    cpufb::run_issue_probe(
+        x64_issue_probe_input(), set_of_threads[0], probe, table);
 }
 
-//comupte: Instruction Set / Core Computation / Peak Performance / IPC
-//cachesize: cache level / Core Computation / bandwith / size / IPC / way
-//frequency : core id / theory freq / test freq
-//multi issue
 static void init_table(vector<Table *> &tables)
 {
     tables.resize(5);
@@ -620,10 +525,12 @@ static void init_table(vector<Table *> &tables)
     tables[3]->setColumnNum(ti.size());
     tables[3]->addOneItem(ti);
 
-    ti.resize(3);
+    ti.resize(5);
     ti[0] = "Item";
-    ti[1] = "Core Instruction";
+    ti[1] = "Classes";
     ti[2] = "IPC";
+    ti[3] = "Frontier";
+    ti[4] = "Verdict";
     tables[4]->setColumnNum(ti.size());
     tables[4]->addOneItem(ti);
 }
@@ -697,6 +604,8 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
         return false;
     } else if (should_run_test(filter, "load"))
         get_theory_cache(&cache_size, set_of_threads[0]);
+    if (should_run_test(filter, "multi_issue"))
+        cpubm_x64_issue(set_of_threads, options, *tables[4]);
 
     tpool_t *tm = tpool_create(set_of_threads);
     if (tm == nullptr) {
@@ -729,8 +638,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
             cpubm_x64_load(tm, bm_list[i], *tables[1]);
             break;
         case BENCHMARK_MULTI_ISSUE:
-            sleep(idle_time);
-            cpubm_x64_multiple_issue(tm, bm_list[i], *tables[4]);
+            // Issue rows come from the probe, not from registered kernels.
             break;
         }
     }
@@ -977,19 +885,8 @@ static void cpufb_register_isa()
 #endif
     }
 
-    // 32 benchmarked instructions plus the two loop-control instructions.
-    if (runtime_features.sse)
-        reg_multi_issue("MULTI_ISSUE", "movups/mulps.xmm", 34, multiple_issue);
-#ifdef _FMA_
-    if (runtime_features.fma)
-        reg_multi_issue(
-            "MULTI_ISSUE_AVX", "vmovups/vfmadd.ymm", 34, multiple_issue_avx);
-#endif
-#ifdef _AVX512F_
-    if (runtime_features.avx512f && runtime_features.fma)
-        reg_multi_issue("MULTI_ISSUE_AVX512", "vmovups/vfmadd.zmm", 34,
-            multiple_issue_avx512);
-#endif
+    // Multi-issue rows are produced by the issue probe (cpubm_x64_issue), not
+    // registered here; its classes live in kernel/issue_classes.def.
 }
 
 // Same contract as ARM64: divide every registered loop count for smoke runs.

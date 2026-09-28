@@ -27,3 +27,6 @@ Thumbs.db
 # Python bytecode
 __pycache__/
 *.pyc
+
+# local-only paper backup, never push
+bdma.tex

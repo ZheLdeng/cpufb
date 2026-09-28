@@ -67,9 +67,15 @@ function(cpufb_simd_asm_flags arch feature out_var)
         elseif(feature STREQUAL "_ASIMD_HP_")
             set(flag "-march=armv8.2-a+fp16")
         elseif(feature STREQUAL "_ISSUE_")
-            # _ISSUE_.S contains both the baseline and SVE-only variants when
-            # the multi-ISA object is built.
-            set(flag "-march=armv8-a+sve")
+            # _ISSUE_.S generates the issue-probe kernels for every class the
+            # build enables; its SVE and SME classes are guarded by the
+            # feature macros, and the assembler must accept whichever the
+            # build turned on.  CPUFB_SIMD_FEATURES is the caller's list.
+            if("_SME_" IN_LIST CPUFB_SIMD_FEATURES)
+                set(flag "-march=armv9-a+sme")
+            else()
+                set(flag "-march=armv8-a+sve")
+            endif()
         else()
             # Mandatory AArch64/ASIMD, LDP and other baseline sources use an
             # explicit architecture so an x86-hosted cross compiler works.

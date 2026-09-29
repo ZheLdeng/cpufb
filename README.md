@@ -274,7 +274,9 @@ last column only labels the agreement (`probe (agrees with OS)`,
   touches the same pages but different sets, which cancels the DTLB conflicts
   that a bare power-of-two stride otherwise reports as cache ways. Four
   placements are tried and the largest result kept, because address-hashed way
-  predictors make some placements conflict early.
+  predictors make some placements conflict early. L2 ways use lines 2 MiB
+  apart in huge pages; the transition must repeat on a second ring, otherwise
+  the row says so instead of printing a number.
 - L1/L2/L3 capacity: the dependent-load latency curve on a fixed quarter-octave
   grid up to 128 MiB; plateaus are detected from the curve alone and each
   capacity is the last working set that still performs like the lower of two
@@ -284,10 +286,13 @@ last column only labels the agreement (`probe (agrees with OS)`,
   effective capacity seen by the pinned core, so a busy SMT sibling or a
   co-tenant lowers it.
 - L3 versus memory: the same run measures the latency of a ring scattered over
-  1 GiB, which no cache can hold. A plateau at least half that slow is memory,
-  not a cache level. A machine without an L3 (Kunpeng 920F, Apple Silicon)
-  therefore reports `none (L2 is followed by memory)`; if the sweep never
-  reaches memory latency the L3 row says `not determined` instead of guessing.
+  1 GiB, which no cache can hold, or over 512 or 256 MiB when a quarter of the
+  available memory is less than that. A plateau at least half that slow is
+  memory, not a cache level. A machine without an L3 (Kunpeng 920F, Apple
+  Silicon) therefore reports `none (L2 is followed by memory)`; if the sweep
+  never reaches memory latency (or, without a reference, stays under 40 ns at
+  its deepest point, which no DRAM does) the L3 row says `not determined`
+  instead of guessing, and a page-grouped sweep is repeated in global order.
 
 The `load` category is the L1/L2 read-bandwidth table (`common/cache_bandwidth`):
 

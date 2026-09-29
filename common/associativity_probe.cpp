@@ -282,6 +282,61 @@ size_t probe_l1_way_bytes(int cacheline_bytes, int ways)
     return detected;
 }
 
+namespace {
+
+#if defined(__linux__) && defined(MADV_HUGEPAGE)
+// One pass of the L2 search over lines 2 MiB apart in huge pages: the ways,
+// or 0 when the ring never left L2 latency.  `salt` gives the pass its own
+// ring orders.
+int l2_ways_once(uint64_t *base, size_t line, int l1_ways, unsigned salt,
+    bool debug)
+{
+    std::vector<size_t> offsets(kMaxLines);
+    for (int i = 0; i < kMaxLines; ++i)
+        offsets[i] = static_cast<size_t>(i) * (2ULL * 1024 * 1024);
+    double l2_level = 0.0; // test/control ratio while hitting in L2
+    int pending = 0;
+    // Past the huge-page TLB (32 entries on a Kunpeng 920F) both rings miss
+    // it and the ratio falls; that is not a cache event and must not be read
+    // as one, so a fall ends the search.
+    double previous = 0.0;
+    for (int lines = l1_ways + 2; lines <= kMaxLines; ++lines) {
+        std::vector<int> order(lines);
+        for (int i = 0; i < lines; ++i) order[i] = i;
+        std::mt19937 generator(0x9e3779b9U + lines + salt);
+        std::shuffle(order.begin(), order.end(), generator);
+        const uint64_t control = build_ring_at(base, order, offsets, line);
+        const uint64_t test = build_ring_at(base, order, offsets, 0);
+        const double ratio = conflict_ratio(base, test, control);
+        if (debug)
+            std::fprintf(stderr,
+                "L2 associativity probe [pass %u]: lines=%d ratio=%.3f\n",
+                salt, lines, ratio);
+        // Just past the L1 ways every access is an L2 hit; that ratio is the
+        // level the second transition is measured against.
+        if (l2_level == 0.0) {
+            l2_level = ratio;
+            previous = ratio;
+            if (ratio < kConflictRatio) return 0; // no L1 conflict: no targeting
+            continue;
+        }
+        if (ratio < previous / 1.2) return 0;
+        previous = ratio;
+        // Leaving L2 costs at least what entering it did, so 1.5 times the L2
+        // level is well clear of its noise.
+        if (ratio >= 1.5 * l2_level) {
+            if (pending != 0) return pending - 1;
+            pending = lines;
+        } else {
+            pending = 0;
+        }
+    }
+    return 0;
+}
+#endif
+
+} // namespace
+
 int probe_l2_associativity(int cacheline_bytes, int l1_ways)
 {
 #if defined(__linux__) && defined(MADV_HUGEPAGE)
@@ -308,51 +363,12 @@ int probe_l2_associativity(int cacheline_bytes, int l1_ways)
     uint64_t *base = static_cast<uint64_t *>(allocation);
     const bool debug = debug_enabled();
 
-    std::vector<size_t> offsets(kMaxLines);
-    for (int i = 0; i < kMaxLines; ++i)
-        offsets[i] = static_cast<size_t>(i) * huge_bytes;
-    double l2_level = 0.0; // test/control ratio while hitting in L2
-    int pending = 0;
-    int result = 0;
-    // Past the huge-page TLB (32 entries on a Kunpeng 920F) both rings miss
-    // it and the ratio falls; that is not a cache event and must not be read
-    // as one, so a fall ends the search.
-    double previous = 0.0;
-    for (int lines = l1_ways + 2; lines <= kMaxLines; ++lines) {
-        std::vector<int> order(lines);
-        for (int i = 0; i < lines; ++i) order[i] = i;
-        std::mt19937 generator(0x9e3779b9U + lines);
-        std::shuffle(order.begin(), order.end(), generator);
-        const uint64_t control = build_ring_at(base, order, offsets, line);
-        const uint64_t test = build_ring_at(base, order, offsets, 0);
-        const double ratio = conflict_ratio(base, test, control);
-        if (debug)
-            std::fprintf(stderr,
-                "L2 associativity probe: lines=%d ratio=%.3f\n", lines, ratio);
-        // Just past the L1 ways every access is an L2 hit; that ratio is the
-        // level the second transition is measured against.
-        if (l2_level == 0.0) {
-            l2_level = ratio;
-            previous = ratio;
-            if (ratio < kConflictRatio) break; // no L1 conflict: no targeting
-            continue;
-        }
-        if (ratio < previous / 1.2) break;
-        previous = ratio;
-        // Leaving L2 costs at least what entering it did, so 1.5 times the L2
-        // level is well clear of its noise.
-        if (ratio >= 1.5 * l2_level) {
-            if (pending != 0) {
-                result = pending - 1;
-                break;
-            }
-            pending = lines;
-        } else {
-            pending = 0;
-        }
-    }
+    // A transition that does not repeat on an independent ring is noise
+    // (a huge-page TLB edge, a co-tenant), not the associativity.
+    const int first = l2_ways_once(base, line, l1_ways, 1, debug);
+    const int second = l2_ways_once(base, line, l1_ways, 2, debug);
     std::free(allocation);
-    return result;
+    return first == second ? first : kL2Unrepeatable;
 #else
     (void)cacheline_bytes;
     (void)l1_ways;

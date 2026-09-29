@@ -375,6 +375,9 @@ std::string describe_shared_level(const CacheLevelInfo &os, int probe_kib)
 
 std::string describe_l2_unmeasured(int status)
 {
+    if (status == -2)
+        return "not measured: the L2 conflict transition did not repeat on a "
+               "second ring";
     if (status < 0)
         return "not measured: needs 2 MiB huge pages to place lines in one "
                "L2 set";

@@ -49,9 +49,19 @@ const double kMinimumLevelDeltaNs = 0.20;
 // the measured memory latency separates the two with margin on both sides.
 const double kMemoryLatencyFraction = 0.5;
 // The memory reference walks this many lines spread over a region far larger
-// than any cache: 4M lines are 256 MiB of distinct cache lines.
+// than any cache: 4M lines are 256 MiB of distinct cache lines.  The region
+// is 1 GiB where the host can spare it and halves down to twice the sweep
+// (256 MiB) where it cannot: an Android phone with 3 GiB available used to
+// get no reference at all, and without one the page-grouped fallback below
+// could never fire.
 const size_t kMemoryReferenceLines = 4u << 20;
 const uint64_t kMemoryReferenceBytes = 1ULL << 30;
+// Without a reference, a deepest working set answered faster than this was
+// not served by memory on any machine measured: DRAM is 60 ns and up on
+// servers and over 100 ns on phones, while a MediaTek MT6993 core answered
+// 128 MiB in 12.6 ns and a Snapdragon 888 in 13 ns.  It is the memory test
+// only when no reference latency could be measured.
+const double kNoReferenceMemoryNs = 40.0;
 
 double elapsed_ns(const timespec &start, const timespec &end)
 {
@@ -325,9 +335,24 @@ uint64_t choose_region_bytes(uint64_t max_bytes)
     const uint64_t available = available_memory_bytes();
     // No cheap way to ask on macOS, where this returns 0: 1 GiB is small next
     // to any Apple Silicon configuration.
-    if (available == 0 || available / 4 >= kMemoryReferenceBytes)
-        return std::max(max_bytes, kMemoryReferenceBytes);
+    if (available == 0) return std::max(max_bytes, kMemoryReferenceBytes);
+    for (uint64_t region = kMemoryReferenceBytes; region >= max_bytes * 2;
+        region /= 2)
+        if (available / 4 >= region) return std::max(max_bytes, region);
     return max_bytes;
+}
+
+// Whether the deepest working set of the sweep was still served faster than
+// memory: against the measured reference when there is one, against the
+// absolute floor otherwise.
+bool never_reached_memory(
+    const std::vector<CacheLatencyPoint> &points, double memory_latency_ns)
+{
+    if (points.empty()) return false;
+    const double deepest = points.back().latency_ns;
+    if (memory_latency_ns > 0.0)
+        return deepest < kMemoryLatencyFraction * memory_latency_ns;
+    return deepest < kNoReferenceMemoryNs;
 }
 
 } // namespace
@@ -403,18 +428,22 @@ std::string describe_prefetch_doubt(const CacheCurveResult &result)
     }
 
     if (result.reached_memory) return "";
-    const double deepest = result.points.back().latency_ns;
-    // 40 cycles at 4 GHz, below any DRAM and above any cache hit.
-    const double kMemoryFloorNs = 10.0;
-    if (deepest >= kMemoryFloorNs && result.memory_latency_ns > 0.0 &&
-        deepest >= memory_floor)
+    // Without a reference the curve cannot be cleared: a deepest point that
+    // is clearly not memory means the chase was prefetched throughout;
+    // anything slower is merely unverified, and the note says which.
+    if (result.memory_latency_ns <= 0.0 &&
+        !never_reached_memory(result.points, result.memory_latency_ns))
+        return "no memory reference could be measured (too little free "
+               "memory), so the capacities are not checked against memory "
+               "latency";
+    if (!never_reached_memory(result.points, result.memory_latency_ns))
         return "";
     std::snprintf(text, sizeof(text),
         "a %s working set still answered in %.1f ns, so the chase was "
         "prefetched throughout and every capacity here may be too large",
         format_approximate_capacity(result.points.back().working_set_bytes)
             .c_str(),
-        deepest);
+        result.points.back().latency_ns);
     return text;
 }
 
@@ -629,7 +658,7 @@ CacheCurveResult measure_cache_curve(
     int32_t *buffer = static_cast<int32_t *>(allocation);
 
     // Measured first, while nothing of the region is cache resident.
-    if (region_bytes > max_bytes * 2)
+    if (region_bytes >= max_bytes * 2)
         result.memory_latency_ns = measure_memory_latency(
             chase, buffer, region_bytes, 0x4d454d4f52595245ULL);
 
@@ -661,10 +690,8 @@ CacheCurveResult measure_cache_curve(
     // agreed about L1.  So the grouping is kept for the translation misses it
     // saves, and dropped when the reference says it bought a curve that never
     // left the prefetcher.
-    if (group_by_page && result.memory_latency_ns > 0.0 &&
-        !result.points.empty() &&
-        result.points.back().latency_ns <
-            kMemoryLatencyFraction * result.memory_latency_ns) {
+    if (group_by_page &&
+        never_reached_memory(result.points, result.memory_latency_ns)) {
         sweep_groups = 0;
         result.points = sweep(0);
         result.translation_mode = "global order (page-grouped order never "

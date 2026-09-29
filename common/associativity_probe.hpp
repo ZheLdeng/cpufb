@@ -52,8 +52,12 @@ int probe_l1_line_from_sets(int ways, size_t way_bytes);
 // targeted: 4 KiB pages with transparent huge pages off, and macOS), or 0
 // when huge pages were there but the lines never conflicted in L2.  That
 // last case is an L2 whose set index folds in address bits above 21: a
-// Kunpeng 920F keeps 32 such lines at L2 latency against 12 ways.
+// Kunpeng 920F keeps 32 such lines at L2 latency against 12 ways.  The
+// transition is measured twice on independent rings and must repeat;
+// kL2Unrepeatable says it did not (a SpacemiT X60 read 12, 9 and "never"
+// for a 16-way L2 across runs).
 const int kL2NoHugePages = -1;
+const int kL2Unrepeatable = -2;
 int probe_l2_associativity(int cacheline_bytes, int l1_ways);
 
 // L2 line size from set indexing, by the method of probe_l1_line_from_sets

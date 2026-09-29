@@ -18,10 +18,13 @@
  *   ISSUE_KERNEL_BEGIN name, mode, attr / ISSUE_KERNEL_END mode, attr
  *
  * The ratio grids of issue_layout.h are handed to the assembler as ONE macro
- * call with a variadic tail (ISSUE_PAIRS A, B, 1, 7, 1, 6, ...), consumed one
- * ratio per recursion.  The preprocessor cannot emit line breaks, and a ';'
- * between entries is a statement separator only in GNU as: the Apple
- * assembler reads it as a comment and dropped 219 of 242 kernels.
+ * call with a variadic tail (ISSUE_PAIRS A, B, 1, 7, 1, 6, ...), consumed
+ * four ratios per recursion.  The preprocessor cannot emit line breaks, and
+ * a ';' between entries is a statement separator only in GNU as: the Apple
+ * assembler reads it as a comment and dropped 219 of 242 kernels.  That
+ * assembler also stops at 20 nested macros, so one ratio per level put the
+ * 21-entry grid one level too deep; four per level keeps the whole
+ * expansion, inner macros included, near twelve.
  */
 
 #ifndef CPUFB_ISSUE_ASM_H
@@ -199,16 +202,35 @@
     ISSUE_KERNEL_END ISSUE_MODE_\A, issue_attr
 .endm
 
-/* The whole grid of one pair or triple, one ratio per recursion. */
-.macro ISSUE_PAIRS A, B, a, b, rest:vararg
-    ISSUE_PAIR_KERNEL \A, \B, \a, \b
+/* The whole grid of one pair or triple, four ratios per recursion; a
+ * missing ratio (the last level) is blank and emits nothing. */
+.macro ISSUE_PAIR_IF A, B, a, b
+    .ifnb \a
+        ISSUE_PAIR_KERNEL \A, \B, \a, \b
+    .endif
+.endm
+
+.macro ISSUE_PAIRS A, B, a1, b1, a2, b2, a3, b3, a4, b4, rest:vararg
+    ISSUE_PAIR_IF \A, \B, \a1, \b1
+    ISSUE_PAIR_IF \A, \B, \a2, \b2
+    ISSUE_PAIR_IF \A, \B, \a3, \b3
+    ISSUE_PAIR_IF \A, \B, \a4, \b4
     .ifnb \rest
         ISSUE_PAIRS \A, \B, \rest
     .endif
 .endm
 
-.macro ISSUE_TRIPLES A, B, C, a, b, c, rest:vararg
-    ISSUE_TRIPLE_KERNEL \A, \B, \C, \a, \b, \c
+.macro ISSUE_TRIPLE_IF A, B, C, a, b, c
+    .ifnb \a
+        ISSUE_TRIPLE_KERNEL \A, \B, \C, \a, \b, \c
+    .endif
+.endm
+
+.macro ISSUE_TRIPLES A, B, C, a1, b1, c1, a2, b2, c2, a3, b3, c3, a4, b4, c4, rest:vararg
+    ISSUE_TRIPLE_IF \A, \B, \C, \a1, \b1, \c1
+    ISSUE_TRIPLE_IF \A, \B, \C, \a2, \b2, \c2
+    ISSUE_TRIPLE_IF \A, \B, \C, \a3, \b3, \c3
+    ISSUE_TRIPLE_IF \A, \B, \C, \a4, \b4, \c4
     .ifnb \rest
         ISSUE_TRIPLES \A, \B, \C, \rest
     .endif

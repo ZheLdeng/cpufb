@@ -27,7 +27,7 @@
 #include <memory_bandwidth.hpp>
 #include <compute.hpp>
 #include <frequency.hpp>
-#include <multiple_issue.hpp>
+#include <issue_kernels.hpp>
 #include <common.hpp>
 #include <cache_bandwidth.hpp>
 #include <cache_topology.hpp>
@@ -720,23 +720,6 @@ static bool cpubm_arm_cache(
     return append_cache_memory_bandwidth(options, table, measured_last_level);
 }
 
-// Issue probe: pure peaks per instruction class and how classes share the
-// core when mixed; see common/issue_probe.hpp.  Runs on the first selected
-// core before the benchmark pool exists, so no worker competes with it.
-static void cpubm_arm_issue(
-    std::vector<int> &set_of_threads, const CliOptions &options, Table &table)
-{
-    cpufb::IssueProbeOptions probe;
-    if (!freq.empty() && freq[0] > 0.0) probe.clock_hz = freq[0] * 1e9;
-    if (options.loop_scale > 1) {
-        probe.sample_seconds =
-            std::max(0.0005, probe.sample_seconds / options.loop_scale);
-        probe.samples = 3;
-    }
-    cpufb::run_issue_probe(
-        arm64_issue_probe_input(), set_of_threads[0], probe, table);
-}
-
 // compute: instruction throughput/IPC; load: cache-resident load bandwidth;
 // cache: capacity, associativity, and cache-line probes; freq: core frequency.
 static void init_table(vector<Table *> &tables)
@@ -800,14 +783,7 @@ static void init_table(vector<Table *> &tables)
     tables[3]->setColumnNum(ti.size());
     tables[3]->addOneItem(ti);
 
-    ti.resize(5);
-    ti[0] = "Item";
-    ti[1] = "Classes";
-    ti[2] = "IPC";
-    ti[3] = "Frontier";
-    ti[4] = "Verdict";
-    tables[4]->setColumnNum(ti.size());
-    tables[4]->addOneItem(ti);
+    cpufb::issue_probe_table_header(*tables[4]);
 }
 
 static void init_frequency_table(Table &table)
@@ -945,8 +921,12 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
         }
         if (should_run_test(filter, "load"))
             prepare_arm_load_cache(set_of_threads);
+        // The issue probe runs on the first selected core before the pool
+        // exists, so no worker competes with it; see common/issue_probe.hpp.
         if (should_run_test(filter, "multi_issue"))
-            cpubm_arm_issue(set_of_threads, options, *tables[4]);
+            cpufb::run_issue_probe_category(cpufb::issue_probe_input(),
+                set_of_threads[0], freq.empty() ? 0.0 : freq[0],
+                cpu_freq_counter_source(), options.loop_scale, *tables[4]);
         // set thread pool
         tpool_t *tm;
         tm = tpool_create(set_of_threads);
@@ -1681,7 +1661,7 @@ static void cpufb_register_isa()
     //     kLoadLoopTime, 32LL, (void*)load_benchmark_4);
 
 #endif
-    // Multi-issue rows are produced by the issue probe (cpubm_arm_issue), not
+    // Multi-issue rows are produced by the issue probe (run_issue_probe_category), not
     // registered here; its classes live in kernel/issue_classes.def.
 
 #if defined(__linux__) && !defined(__APPLE__)

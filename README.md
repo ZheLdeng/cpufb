@@ -436,12 +436,20 @@ the near-optimal interval, or the chain check for a peak) and Verdict.
 
 Every kernel is generated at build time by assembler macros from a class list,
 `<arch>/kernel/issue_classes.def`, which the C++ tables include too, so the
-two cannot drift apart. Adding a class takes one line there, one three-line
-`ISSUE_INS_<name>` macro in `<arch>/asm/_ISSUE_.S` that emits the instruction
-on register `\r`, and the pairs it should be tested against. Classes carry a
-register bank (general, vector or ZA), a processor mode (normal or streaming;
-the assembler refuses to mix modes) and a runtime feature token; mixes whose
-class the machine lacks print "not available" with the missing feature.
+two cannot drift apart. The framework is shared: `common/issue_asm.h` holds
+the slot, partition, pattern and kernel-shape macros and expands the class
+list, `common/issue_kernel_tables.inc` builds the C++ tables, and
+`run_issue_probe_category()` is the driver both backends call. An
+architecture file `<arch>/asm/_ISSUE_.S` supplies only the instruction of
+each class, its register banks and the function entry and exit. Adding a
+class takes one line in the `.def`, one three-line `ISSUE_INS_<name>` macro
+in the `.S` that emits the instruction on register `\r`, and the pairs it
+should be tested against. Classes carry a register bank (general, vector or
+ZA), a processor mode (normal or streaming; the assembler refuses to mix
+modes), an architecture attribute (SVE predicates on ARM64, register width
+on x86) and a runtime feature token; mixes whose class the machine lacks
+print "not available" with the missing feature, and classes the toolchain
+could not compile (an assembler without `+sme`) have no rows at all.
 
 ## Experimental pair-issue test
 

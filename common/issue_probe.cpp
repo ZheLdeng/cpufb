@@ -641,4 +641,31 @@ bool run_issue_probe(const IssueProbeInput &input, int cpu,
     return true;
 }
 
+void issue_probe_table_header(Table &table)
+{
+    std::vector<std::string> head(5);
+    head[0] = "Item";
+    head[1] = "Classes";
+    head[2] = "IPC";
+    head[3] = "Frontier";
+    head[4] = "Verdict";
+    table.setColumnNum(static_cast<int>(head.size()));
+    table.addOneItem(head);
+}
+
+bool run_issue_probe_category(const IssueProbeInput &input, int cpu,
+    double clock_ghz, const std::string &clock_source, unsigned loop_scale,
+    Table &table)
+{
+    IssueProbeOptions options;
+    if (clock_ghz > 0.0) options.clock_hz = clock_ghz * 1e9;
+    if (!clock_source.empty()) options.clock_source = clock_source;
+    if (loop_scale > 1) {
+        options.sample_seconds =
+            std::max(0.0005, options.sample_seconds / loop_scale);
+        options.samples = 3;
+    }
+    return run_issue_probe(input, cpu, options, table);
+}
+
 } // namespace cpufb

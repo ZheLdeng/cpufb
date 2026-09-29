@@ -33,6 +33,7 @@
 
 using namespace std;
 vector<double> freq;
+static std::string freq_counter_source = "unavailable";
 
 // Some virtualized Linux hosts deliberately deny unprivileged PMU cycle
 // counters.  A caller can then supply a documented fixed core clock through
@@ -296,12 +297,19 @@ void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
         // performance-core samples: report one row and share its clock.
         if (t + 1 == num_thread) {
             freq[0] = result->clock_ghz;
+            freq_counter_source = result->counter_source;
             append_frequency_row(table, "p-core", *result);
         }
 #else
         freq[t] = result->clock_ghz;
+        if (t == 0) freq_counter_source = result->counter_source;
         append_frequency_row(table, to_string(set_of_threads[t]), *result);
 #endif
         delete result;
     }
+}
+
+const std::string &cpu_freq_counter_source()
+{
+    return freq_counter_source;
 }

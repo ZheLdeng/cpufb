@@ -3,166 +3,130 @@
 Rewritten in full at the end of every round. It describes what the branch
 needs verified *now*; it is not a log, and nothing is appended to it.
 
-- **Under test:** `fix/review-high-medium` @ `455f40e`
-- **Already validated:** x86-64 (14/14)
-- **Still to run:** MediaTek MT6993 and Milk-V X60, which both missed the
-  last round; a short pass on the M4 Pro
+- **Under test:** `fix/review-high-medium` @ the commit after `7bf8930`
+  (this checklist's own commit)
+- **This round fixes what the last round found:** the Apple-assembler link
+  failure, the ARM64 clock-source label, and three wrong expectations of the
+  previous checklist. The issue probe's method and its kernels are unchanged;
+  the arm64 and x86 generators now share one framework header.
+- **Still to run:** Apple M4 Pro (the build must now link as committed),
+  MediaTek MT6993 (never run), and the carried-over cache items.
 
 ## Where the last round left things
 
-Three of five platforms reported on `c1b0eff`.
-
-| | result |
-|---|---|
-| Graviton3 | **all seven checks passed.** The L3 stream, capped from 24 MiB to 12 MiB, rose from 56.0 to 58.0 GB/s, which confirms the old row was partly measuring memory. The shared-L3 note appeared, and core 4 steps at 14 MiB as core 0 does. |
-| Kunpeng 920 (siat920) | **five of six.** L1 from set conflicts 64 KiB (4 x 16 KiB); L2 ways and line filled in and agree with sysfs (8 ways, 64 B); the L2 line row names the 128 B L3 line. The sixth was my mistake, below. |
-| Apple M4 Pro | L1 from set conflicts 128 KiB (8 x 16 KiB), as predicted. The set-indexing line read 64 B against the OS's 128 B; see the first change below. L2 read 16 MiB seven times of eight and 20 MiB once. |
-| MT6993, Milk-V X60 | not run; see their sections. |
-
-**My mistake on siat920.** The last checklist expected its L3 row to say the
-OS value is shared by 8 CPUs. That note only explains a probe reading *below*
-the OS value, as on Graviton3 (16 against 32 MiB). On siat920 the probe reads
-32 MiB, equal to the OS, so there is nothing to explain and the note is
-correctly absent. The code was right and the expectation was wrong.
+| | issue probe | notes |
+|---|---|---|
+| Kunpeng 920F (PAC) | 3/2/2/0.5, `Issue width` 4, FMOPA blocks streaming FMLA | run by me, `perf_event` cycles |
+| Neoverse V3 (192 cores) | 6/4/3, `compute:load` 5 at 3:1, band 1:1 to 4:1 | matches `ISSUE_MODEL.md` |
+| Graviton3 | 4/2/3, SVE `fmla` 1.84, `SVE compute:load` 3.61 at 1:1, width 7.9 | all seven references hit |
+| Kunpeng 920 (siat920) | 3/2/2, width 4, `NEON compute:load` **2.92 at 2:1, partially shared** | see the corrected expectation below |
+| Xeon Platinum VM | 4/2/2, AVX FMA 1.8, width 4 | estimated clock |
+| Apple M4 Pro | **did not link** at `88699a0`; after a manual fix: ALU 7.9, FSU 3.23, LSU 3.0, `fmopa` 0.94, streaming `fmla` 0.23 | the fix is now in the tree |
+| MT6993, Milk-V X60 | not run / not covered | |
 
 ## What changed this round
 
-**The set-index granule now bounds the line instead of overruling it.** The M4
-has 128 B lines kept in 64 B indexed sectors, so moving an address by 64 B
-changes its set without leaving the line. The set-indexing probe measures that
-granule. It is a lower bound on the line, as the reuse probe is an upper one,
-and a 64 B-sectored 128 B line looks exactly like a 64 B line whose neighbour
-is always fetched with it. Last round the row picked the second explanation
-and told the M4 its correct 128 B was inflated. It now states the bound and
-both explanations, and picks neither.
+**The kernels link on Apple's assembler.** The ratio grid used to reach the
+assembler as one line of `;`-separated macro calls; `;` is a statement
+separator in GNU as and a comment in Apple's, which dropped 219 of 242
+kernels. The grid is now handed over as one macro call with a variadic tail
+(`ISSUE_PAIRS A, B, 1, 7, 1, 6, ...`) that the assembler unrolls one ratio per
+recursion. GNU as verified here (330 kernels, counts and register partitions
+audited from the disassembly); Apple's assembler needs the M4 run below.
 
-**The debug dump shows the three rings behind every re-measured sample**, as
-the macOS report asked, so an outlier that survives the median can be seen
-to be two rings out of three rather than one.
+**One framework, two architecture files.** `common/issue_asm.h` holds the
+slot, partition, pattern and kernel-shape macros and the `.def` expansion;
+`common/issue_kernel_tables.inc` holds the C++ tables; `<arch>/asm/_ISSUE_.S`
+keeps only the instruction of each class, the register banks and the function
+entry and exit, and `<arch>/kernel/issue_kernels.cpp` only the feature check.
+Both drivers call `run_issue_probe_category()`.
 
-## MediaTek MT6993 (Android) — last run at `dcd07f2`, two rounds behind
+**The `Cycle source` row on ARM64 names the frequency table's clock**
+(`ADD-chain estimate`, `kperf fixed counters`, ...) instead of the generic
+`frequency-table clock`, as x86 already did.
 
-**Blocked last round, not by cpufb.** The phone enumerates with USB vendor
-`22d9`, which siat920's udev rules do not cover, so `adb` cannot open it and
-that account has no passwordless sudo. Someone with sudo on siat920 needs to
-run:
+**Three expectations of the last checklist were wrong**, not the code:
 
-```bash
-echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="22d9", MODE="0666", GROUP="plugdev"' \
-  | sudo tee /etc/udev/rules.d/52-oneplus.rules
-sudo udevadm control --reload-rules && sudo udevadm trigger
-# then unplug and replug the phone
-```
+- *Kunpeng 920 `NEON compute:load`.* I copied the 920F's 3.97 at 1:1. The
+  920 measures 2.92 at 2:1, partially shared, three runs alike, while its
+  `LSU + ALU` also stops at the 4-wide front end: a `ldr q` takes more than
+  one issue slot there. The two cores differ; "equal peaks give a one-point
+  band at 1:1" holds only when the classes are independent.
+- *SME rows on a toolchain that rejects `+sme`* (GCC 12/13). The SME classes
+  are not compiled, so there are no SME rows at all; the "not available"
+  reason appears only for classes that were compiled and are absent at run
+  time (SVE on the 920).
+- *M4 `Cycle source` text*: see above.
 
-Then, for cores 0, 1 and 7, three runs each:
-
-```bash
-CPUFB_DEBUG_CACHE_CURVE=1 ./cpufb "--thread_pool=[$c]" --mode=cache \
-  >table.txt 2>curve.txt
-```
-
-1. **cpu7's `L1 capacity from set conflicts`.** Its L1 is 64 KiB, 4 ways; the
-   expected reading is `64 KiB, 4 ways x 16 KiB per way`, and the L1 row
-   should then add that the curve's 160-256 KiB plateau is a prefetcher
-   staying ahead of the chase. **This is still the most important line
-   outstanding anywhere.**
-2. **Do cpu0 and cpu1 still fall between 6 and 14 MiB?** The dump now lists
-   the three rings behind every re-measured sample. If a fall survives, those
-   lines show whether all three rings saw it.
-3. **Is the middle level stable across three runs?**
-4. L2 ways and line will read `needs 2 MiB huge pages`; Android has THP off.
-
-## Milk-V X60 (RISC-V) — last run at `dcd07f2`, two rounds behind
+## Apple M4 Pro (macOS) — must link as committed
 
 ```bash
-cmake --build build/native-release -j8 && cd build/native-release && ctest
-./cpufb '--thread_pool=[0]' --mode=cache
-```
-
-1. **ctest 10/10.** `--list-instructions` no longer needs a thread pool.
-2. **`L1 capacity from set conflicts`: 32 KiB, 4 ways x 8 KiB.** This is the
-   one platform whose L1 way (8 KiB) is larger than its page (4 KiB), so it
-   tests whether that L1 is virtually indexed. `no set conflict observed`
-   would mean it is not, which is information, not a bug.
-3. **L2 ways and line**: it has huge pages and sysfs says 8 ways / 64 B.
-   Filled in and agreeing, or `hashed`, are both valid answers.
-
-## Apple M4 Pro (macOS) — short pass
-
-```bash
-./cpufb '--thread_pool=[0]' --mode=cache | grep cacheline
-for i in $(seq 8); do
-  CPUFB_DEBUG_CACHE_CURVE=1 ./cpufb '--thread_pool=[0]' --mode=cache 2>&1 >/dev/null \
-    | grep -E '^  (L2:|re-measured)'
-done
-```
-
-1. **The L1 line row should read** `probe (agrees with OS); set indexing
-   changes every 64 B, so the line is between 64 and 128 B: either the cache
-   indexes 64 B sectors of the line, or a neighbour is fetched with it`. It
-   must no longer say the 128 B reading is inflated.
-2. **If any of the eight L2 readings is not 16 MiB**, send its re-measured
-   lines. Those show which working sets decided it and what each ring read.
-
-## Issue probe — first hardware run, every platform
-
-New this round: the `multi_issue` category is now the issue probe
-(`common/issue_probe.cpp`, kernels generated from
-`<arch>/kernel/issue_classes.def`). It has been assembled and audited on this
-host (330 ARM64 kernels, counts and register partitions checked from the
-disassembly) but has not yet run on hardware. Please run, on one core:
-
-```bash
+cd ~/cpufb-m4-test && git checkout --detach <this commit>
+cmake --preset native-release && cmake --build build/native-release -j8
+cd build/native-release && ctest
 ./cpufb '--thread_pool=[0]' --include-test=multi_issue --save=issue.csv
 ```
 
-1. **Every peak row has a value** and reads `chain count sufficient`. A
-   `peak limited by chain count` note on FMLA means the accumulator latency
-   times the pipe count exceeds 24; report it, it is information.
-2. **Known references.** Graviton3 (Neoverse V1): SVE `fmla` about 1.8-2,
-   loads 2, `SVE compute:load` joint 3.6-3.7 with the optimum near 1:1
-   (`ISSUE_MODEL.md`). Neoverse V3: `fmla` 4, loads 3, joint 5, best ratio
-   near 4:3 and `>= 97%` roughly from 1:1 to 3:1. Kunpeng 920F: `fmla` 2,
-   loads 2.
-3. **`SVE + NEON`** should read `shared issue ports` on every Arm core tried
-   so far. If it reads otherwise, send the row.
-4. **SME rows** exist only on the 920F and the M4 Pro. The `SME + streaming
-   SVE compute` and `SME + streaming SVE load` rows say whether FMOPA and
-   the streaming-mode vector pipes co-issue.
-5. **`Issue width`** should be at least the largest single peak and at most
-   the sum of the ALU, FSU and LSU peaks.
-6. **Run time.** The whole category should take well under a minute; report
-   it if it does not.
+1. **The build links** without any edit; `nm` on `_ISSUE_.S.o` lists 242
+   `issue_*` kernels (no SVE classes on this core).
+2. **`Cycle source` reads `time x ADD-chain estimate (no cycle counter); ...`.**
+3. **The table repeats the manual-fix run within 5%**: ALU about 7.9, FSU
+   3.2, LSU 3.0, `fmopa` 0.94, streaming `fmla` 0.23, streaming `ld1w` 1.85,
+   `NEON compute:load` about 6.3, `Issue width` about 9.8.
+4. **Streaming `fmla` at 0.23 IPC** is the finding of the last run: on this
+   core streaming-mode vector FMLA goes through a long-latency path, so
+   `SME + streaming SVE compute` (1.17) is almost all FMOPA. If it repeats,
+   it goes into the paper.
 
-**PAC (Kunpeng 920F, SME) rules.** Work only inside `/home/share/zhounan`:
-untar the source there, build into a `build/` under that tree, submit the
-run as a non-interactive `dsub` job to `q_pacopt` so an SSH drop cannot cut
-it, copy `issue.csv` and the table out, then delete the whole tree so the
-directory is left as it was found. Never build or write anywhere else on that
-cluster.
+## MediaTek MT6993 (Android) — never run
 
-## Kunpeng 920, Graviton3 — nothing to run
+Blocked on the udev rule for USB vendor `22d9` on siat920 (see the Android
+report); the phone was not in `adb devices` on 2026-09-28. When it is back,
+for cores 0, 1 and 7:
 
-Both passed everything that applies to them last round, and this round
-changes only a message they do not print (their two line probes agree) and a
-debug line.
+```bash
+/data/local/tmp/cpufb "--thread_pool=[$c]" --include-test=multi_issue --save=issue$c.csv
+CPUFB_DEBUG_CACHE_CURVE=1 /data/local/tmp/cpufb "--thread_pool=[$c]" --mode=cache >table$c.txt 2>curve$c.txt
+```
+
+Issue probe: perf is root-only, so the clock is estimated and the frequency
+table's `Test Freq` is the clock used (cpu7 runs at 2.0 GHz against a 4.2 GHz
+maximum). Expect the little cores at FSU 2 and the big core at FSU 4 with the
+`full chains needed` note. Cache: cpu7's `L1 capacity from set conflicts`
+should read `64 KiB, 4 ways x 16 KiB per way`, and the `re-measured` lines
+show whether the 6 to 14 MiB fall on cpu0/cpu1 is one ring or all three.
+
+## Milk-V X60 (RISC-V) — cache probes only
+
+`L2 ways of associativity` flaps between 12, 9 and `hashed` (OS 16), which
+fails `cpufb_cli_cache_probes` about half the time. Nothing changed there this
+round; it is listed under Known gaps until the probe gets a two-pass agreement
+rule. `L1 capacity from set conflicts` (32 KiB, 4 x 8 KiB) and both line rows
+are correct and need no re-run.
+
+## Graviton3, Kunpeng 920, Kunpeng 920F, V3 — nothing to run
+
+Their issue tables were measured on the same kernels; this round changes only
+how the kernels are emitted and one label. A quick `--include-test=multi_issue`
+confirming the values did not move is welcome but not required.
 
 ## Known gaps — please do not re-report these
 
 | Gap | Status |
 |---|---|
-| L3 ways and L3 line | Not measurable by any method here. A last level shared by a chip is address-hashed over slices, and a line read from reuse timing cannot be told from a shorter line whose neighbour is fetched with it. The OS value is shown, labelled as such. |
-| L2 ways and line on a hashed L2 (920F, Graviton3) or without huge pages (Android, macOS) | Reported as not measured, with which of the two reasons applies. |
-| L1 line where the two probes differ (M4) | Reported as a bound, 64-128 B, with both explanations. Only the OS knows which. |
-| Why the MT6993 curve falls | Unresolved; the device has not been reachable since the median was added. |
-| MT6993 has no OS cache values | The set-conflict L1 is the independent check that exists. |
-| Kunpeng 920 resolves a step at 4 MiB inside its 32 MiB L3 | A sliced last level seen from one core, reported as a step below the L3. |
-| Graviton3's L3 bandwidth workset varies between 9 and 12 MiB | It is 3/4 of the L3 one core measured, which itself reads 12-16 MiB. Both give 57-58 GB/s. |
-| Capacities land on the sampling grid | By design: the answer is a working set that was actually measured. |
-| riscv64 line-size probe runs without a flush instruction | By design: `cbo.flush` needs Zicbom and kernel permission. |
-| riscv64 has no memory-bandwidth, instruction sweep or loop scaling | A deliberate subset; the backend rejects those options. |
+| Estimated clock under downclocking kernels (AVX-512 licences) | Charged as lost IPC; the Cycle source row says so. |
+| One-point 97% band when two independent classes have equal peaks | Correct: T(x) = min(P/x, P/(1-x)) is a sharp peak. |
+| Kunpeng 920 `NEON compute:load` 2.92 at 2:1 | A property of that core (loads cost more than one slot), not of the probe. |
+| Three-class stream below a pair (V3: 8.0 against 9.8) | Loads take two dispatch slots; the width is taken from the pair and the row says so. |
+| SME rows absent on GCC 12/13 builds | The toolchain rejects `+sme`; a row for classes that were not compiled may be added later. |
+| Graviton3 L3 capacity reads 8 to 16 MiB or `none` across runs | Sliced last level seen from one core; the `re-measured` lines show 25 against 105 ns on the same working set. The L3 bandwidth row's workset follows it. |
+| X60 `L2 ways` flaps 12 / 9 / `hashed` | Needs a two-pass agreement rule in `probe_l2_associativity`; not changed this round. |
+| riscv64 has no issue probe | Deliberate subset. |
+| L3 ways and line; L2 ways on hashed L2 or without huge pages; M4 L1 line bound | As before: not measured or a bound, never guessed. |
 
 ## Reporting
 
-State the commit tested. Send the whole cache table and the re-measured lines
-for anything that is not the expected value.
+State the commit tested. Send the whole `multi_issue` table (or `issue.csv`)
+and, for anything that is not the expected value, the Frontier and Verdict
+text of that row verbatim. For the M4, `nm` output of `_ISSUE_.S.o` if the
+link fails.

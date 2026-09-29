@@ -21,5 +21,8 @@ struct FrequencyData
 #endif
 };
 void get_cpu_freq(std::vector<int> &set_of_threads, Table &table);
+// Source of the clock in freq[0] ("perf_event cycles", "ADD-chain estimate",
+// ...), for tables that fall back to it.
+const std::string &cpu_freq_counter_source();
 
 #endif

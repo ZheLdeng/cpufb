@@ -141,6 +141,17 @@ struct IssueProbeOptions
 bool run_issue_probe(const IssueProbeInput &input, int cpu,
     const IssueProbeOptions &options, Table &table);
 
+// The header row of that table.
+void issue_probe_table_header(Table &table);
+
+// The `multi_issue` category as every backend runs it: the frequency table's
+// clock (GHz, 0 when none) and its source name are the fallback for hosts
+// without a cycle counter, and loop_scale shortens the samples for smoke
+// runs.
+bool run_issue_probe_category(const IssueProbeInput &input, int cpu,
+    double clock_ghz, const std::string &clock_source, unsigned loop_scale,
+    Table &table);
+
 } // namespace cpufb
 
 #endif

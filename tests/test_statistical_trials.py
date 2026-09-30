@@ -53,6 +53,19 @@ class StatisticalTrialsTest(unittest.TestCase):
             self.assertEqual(samples[key], [4.0])
             self.assertEqual(units[key], "cycles")
 
+    def test_writes_summary_with_unix_line_endings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trial = Path(directory) / "trial.csv"
+            output = Path(directory) / "summary.csv"
+            with trial.open("w", newline="") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["section", "Instruction Set", "Core Computation", "IPC"])
+                writer.writerow(["compute", "asimd", "fmla", "2"])
+            MODULE.write_summary([trial], output)
+            contents = output.read_bytes()
+            self.assertIn(b"\n", contents)
+            self.assertNotIn(b"\r\n", contents)
+
     def test_distinguishes_issue_rows_with_the_same_item(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "trial.csv"

@@ -263,7 +263,7 @@ def require_trial_count(paths):
 def write_summary(paths, output):
     samples, units = aggregate(paths)
     with output.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
+        writer = csv.writer(handle, lineterminator="\n")
         writer.writerow([
             "section", "row", "metric", "unit", "n", "median", "q1",
             "q3", "iqr", "mean_ci95_low", "mean_ci95_high", "samples",

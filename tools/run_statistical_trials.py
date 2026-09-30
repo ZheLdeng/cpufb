@@ -50,11 +50,11 @@ IDENTIFIER_COLUMNS = {
     "load": {"Cache Level", "Core Instruction"},
     "cache": {"Item"},
     "freq": {"Core ID"},
-    "multi_issue": {"Item", "Core Instruction"},
+    "multi_issue": {"Item", "Core Instruction", "Classes"},
     "memory_bandwidth": {"Core ID", "Workset", "Kernel"},
 }
 METRIC_COLUMNS = {
-    "compute": {"Peak Performance", "IPC", "Latency"},
+    "compute": {"Peak Performance", "IPC", "Latency", "Latency (cycles)"},
     "load": {"Bandwidth (per core)", "Cache Capacity", "Workset", "Bandwidth (GB/s)"},
     "cache": {"Topology / Core", "Probe / Kernel", "Median Bandwidth", "Workset"},
     # "Theory Freq" is the pre-rename name of "Reported Max Freq"; both are
@@ -65,6 +65,9 @@ METRIC_COLUMNS = {
     "multi_issue": {"IPC"},
     "memory_bandwidth": {"Median GB/s", "B/cycle", "Load IPC", "Min GB/s",
                          "Max GB/s"},
+}
+METRIC_ALIASES = {
+    ("compute", "Latency (cycles)"): "Latency",
 }
 REQUIRED_SYSTEM_ITEMS = {
     "Sample Timestamp", "Core Selection", "Temperature", "CPU Frequency",
@@ -119,6 +122,13 @@ def canonicalize_unit(value, unit):
     }
     scale, canonical = conversions.get(unit, (1.0, unit))
     return value * scale, canonical
+
+
+def canonicalize_metric(section, metric, unit):
+    canonical = METRIC_ALIASES.get((section, metric), metric)
+    if section == "compute" and canonical == "Latency" and not unit:
+        unit = "cycles"
+    return canonical, unit
 
 
 def read_sections(path):
@@ -206,7 +216,8 @@ def aggregate(paths):
                         continue
                     value, unit = parsed
                     value, unit = canonicalize_unit(value, unit)
-                    sample_key = (section, key, metric)
+                    metric_name, unit = canonicalize_metric(section, metric, unit)
+                    sample_key = (section, key, metric_name)
                     if sample_key in units and units[sample_key] != unit:
                         raise ValueError(
                             f"inconsistent unit for {sample_key}: {units[sample_key]!r} vs {unit!r}"

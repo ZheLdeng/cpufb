@@ -39,6 +39,38 @@ class StatisticalTrialsTest(unittest.TestCase):
             self.assertEqual(samples[key], [10.0, 20.0])
             self.assertEqual(units[key], "GFLOPS")
 
+    def test_canonicalizes_x86_latency_column(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "trial.csv"
+            with path.open("w", newline="") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["section", "Instruction Set", "Core Computation",
+                                 "Peak Performance", "IPC", "Latency (cycles)"])
+                writer.writerow(["compute", "AVX512F", "FMA(f32,f32,f32)",
+                                 "247.5 GFLOPS", "2.0", "4.00"])
+            samples, units = MODULE.aggregate([path])
+            key = ("compute", "AVX512F / FMA(f32,f32,f32)", "Latency")
+            self.assertEqual(samples[key], [4.0])
+            self.assertEqual(units[key], "cycles")
+
+    def test_distinguishes_issue_rows_with_the_same_item(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "trial.csv"
+            with path.open("w", newline="") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["section", "Item", "Classes", "IPC"])
+                writer.writerow(["multi_issue", "FSU peak", "neon_fmla", "3.5"])
+                writer.writerow(["multi_issue", "FSU peak", "ssve_fmla", "0.25"])
+            samples, _ = MODULE.aggregate([path])
+            self.assertEqual(
+                samples[("multi_issue", "FSU peak / neon_fmla", "IPC")],
+                [3.5],
+            )
+            self.assertEqual(
+                samples[("multi_issue", "FSU peak / ssve_fmla", "IPC")],
+                [0.25],
+            )
+
     def test_canonicalizes_tera_units(self):
         self.assertEqual(MODULE.canonicalize_unit(1.25, "TFLOPS"),
                          (1250.0, "GFLOPS"))

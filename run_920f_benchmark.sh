@@ -10,6 +10,8 @@ source /work_ssd/software/HPCKit/26.1.RC1/setvars.sh >/dev/null
 set -euo pipefail
 
 cd "$(dirname "$0")"
+mkdir -p .tmp
+export TMPDIR="$PWD/.tmp"
 echo "hostname=$(hostname)"
 uname -a
 lscpu

@@ -223,6 +223,32 @@ vector_vfmacc_vf_f32f32f32:
     ret
 
 #ifdef __APPLE__
+.globl _vector_vfmacc_vv_f32f32f32_latency
+_vector_vfmacc_vv_f32f32f32_latency:
+#else
+.globl vector_vfmacc_vv_f32f32f32_latency
+vector_vfmacc_vv_f32f32f32_latency:
+#endif
+    preserve_caller_vec
+    vsetvli x7, x0, e8, m8
+    vxor.vv v0, v0, v0
+    vxor.vv v8, v8, v8
+    vxor.vv v16, v16, v16
+    vxor.vv v24, v24, v24
+    vsetvli x7, x0, e32, m1
+.vector.vfmacc.vv.f32f32f32.latency.L1:
+    .rept 12
+        vfmacc.vv v8, v0, v1
+    .endr
+    addi a0, a0, -1
+    .rept 12
+        vfmacc.vv v8, v0, v1
+    .endr
+    bnez a0, .vector.vfmacc.vv.f32f32f32.latency.L1
+    restore_caller_vec
+    ret
+
+#ifdef __APPLE__
 .globl _vector_vfmacc_vv_f32f32f32
 _vector_vfmacc_vv_f32f32f32:
 #else

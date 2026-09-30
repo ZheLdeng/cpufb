@@ -19,6 +19,7 @@
 #include <load.hpp>
 #include <cmath>
 #include <algorithm>
+#include <atomic>
 #include <fstream>
 using namespace std;
 using namespace cpufb::cli;
@@ -30,7 +31,12 @@ struct cpubm_t
     std::string dim;
     int64_t loop_time;
     int64_t comp_pl;
+    int64_t inst_pl;
     void (*bench)(int64_t);
+#ifdef __linux__
+    std::atomic<uint64_t> *cycle_count;
+    std::atomic<int> *cycle_samples;
+#endif
 };
 static vector<cpubm_t> bm_list;
 
@@ -50,7 +56,8 @@ static double get_time(struct timespec *start, struct timespec *end)
 }
 
 static void reg_new_isa(std::string isa, std::string type, std::string dim,
-    int64_t loop_time, int64_t comp_pl, void (*bench)(int64_t))
+    int64_t loop_time, int64_t comp_pl, void (*bench)(int64_t),
+    int64_t inst_pl = 24)
 {
     cpubm_t new_one;
     new_one.isa = isa;
@@ -58,7 +65,12 @@ static void reg_new_isa(std::string isa, std::string type, std::string dim,
     new_one.dim = dim;
     new_one.loop_time = loop_time;
     new_one.comp_pl = comp_pl;
+    new_one.inst_pl = inst_pl;
     new_one.bench = bench;
+#ifdef __linux__
+    new_one.cycle_count = nullptr;
+    new_one.cycle_samples = nullptr;
+#endif
 
     bm_list.push_back(new_one);
 }
@@ -66,6 +78,23 @@ static void reg_new_isa(std::string isa, std::string type, std::string dim,
 static void thread_func(void *params)
 {
     cpubm_t *bm = (cpubm_t *)params;
+#ifdef __linux__
+    if (bm->cycle_count != nullptr && bm->cycle_samples != nullptr) {
+        PerfEventCycle cycle_counter(0, false);
+        if (cycle_counter.available()) {
+            cycle_counter.start();
+            bm->bench(bm->loop_time);
+            cycle_counter.stop();
+            const long long cycles = cycle_counter.get_cycle();
+            if (cycles > 0) {
+                bm->cycle_count->fetch_add(
+                    static_cast<uint64_t>(cycles), std::memory_order_relaxed);
+                bm->cycle_samples->fetch_add(1, std::memory_order_relaxed);
+            }
+            return;
+        }
+    }
+#endif
     bm->bench(bm->loop_time);
 }
 
@@ -73,43 +102,73 @@ struct ComputeResult
 {
     double perf;
     double ipc;
+    bool hardware_cycles;
 };
+
+static void warn_estimated_cycles_once()
+{
+    static bool warned = false;
+    if (warned) return;
+    warned = true;
+    cerr << "Warning: per-kernel perf_event cycle counts are unavailable; "
+         << "IPC and latency are estimated from elapsed time x frequency."
+         << endl;
+}
 
 static ComputeResult cpubm_run_compute(tpool_t *tm, cpubm_t &item)
 {
     struct timespec start, end;
-    int i;
     int num_threads = tm->thread_num;
 
-    // warm up
-    for (i = 0; i < num_threads; i++) {
-        tpool_add_work(tm, thread_func, (void *)&item);
-    }
-    tpool_wait(tm);
+    cpubm_t warmup = item;
+    warmup.loop_time = max<int64_t>(1, item.loop_time / 32);
+    tpool_run_all(tm, thread_func, (void *)&warmup, &start, &end);
 
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    for (i = 0; i < num_threads; i++) {
-        tpool_add_work(tm, thread_func, (void *)&item);
+    ComputeResult result = {0.0, 0.0, false};
+    double best_time = 1e30;
+    uint64_t best_cycles = 0;
+    for (int sample = 0; sample < 5; ++sample) {
+        cpubm_t measured = item;
+#ifdef __linux__
+        std::atomic<uint64_t> cycle_count(0);
+        std::atomic<int> cycle_samples(0);
+        measured.cycle_count = &cycle_count;
+        measured.cycle_samples = &cycle_samples;
+#endif
+        if (!tpool_run_all(tm, thread_func, (void *)&measured, &start, &end))
+            return result;
+        const double time_used = get_time(&start, &end);
+        if (time_used <= 0.0 || time_used >= best_time) continue;
+        best_time = time_used;
+#ifdef __linux__
+        best_cycles = cycle_samples.load(std::memory_order_relaxed) == num_threads
+            ? cycle_count.load(std::memory_order_relaxed)
+            : 0;
+#endif
     }
-    tpool_wait(tm);
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+    if (best_time == 1e30) return result;
 
-    double time_used = get_time(&start, &end);
-    ComputeResult result;
-    result.perf = item.loop_time * item.comp_pl * num_threads / time_used;
-    result.ipc =
-        item.loop_time * 24 * tm->thread_num / time_used / freq[0] / 1e9;
+    const double instructions =
+        static_cast<double>(item.loop_time) * item.inst_pl * num_threads;
+    result.perf = item.loop_time * item.comp_pl * num_threads / best_time;
+    if (best_cycles > 0) {
+        result.ipc = instructions / best_cycles;
+        result.hardware_cycles = true;
+    } else if (!freq.empty() && freq[0] > 0.0) {
+        result.ipc = instructions / (best_time * freq[0] * 1e9);
+        warn_estimated_cycles_once();
+    }
     return result;
 }
 
-static int64_t cpubm_riscv64_latency(tpool_t *tm, cpubm_t &item)
+static double cpubm_riscv64_latency(tpool_t *tm, cpubm_t &item)
 {
     ComputeResult result = cpubm_run_compute(tm, item);
-    return result.ipc > 0.0 ? static_cast<int64_t>(round(1.0 / result.ipc)) : 0;
+    return result.ipc > 0.0 ? 1.0 / result.ipc : 0.0;
 }
 
 static void cpubm_riscv64_one(
-    tpool_t *tm, cpubm_t &item, int64_t latency, Table &table)
+    tpool_t *tm, cpubm_t &item, double latency, Table &table)
 {
     ComputeResult result = cpubm_run_compute(tm, item);
     vector<string> cont(table.getCol());
@@ -117,7 +176,13 @@ static void cpubm_riscv64_one(
     cont[1] = item.type;
     cont[2] = format_perf_value(result.perf, item.dim);
     cont[3] = to_string(result.ipc);
-    cont[4] = latency > 0 ? to_string(latency) : "-";
+    if (latency > 0.0) {
+        ostringstream value;
+        value << fixed << setprecision(2) << latency;
+        cont[4] = value.str();
+    } else {
+        cont[4] = "-";
+    }
     table.addOneItem(cont);
 }
 
@@ -522,7 +587,7 @@ static bool cpubm_do_bench(std::vector<int> &set_of_threads, uint32_t idle_time,
             if (!should_run_benchmark(filter, bm_list[i].isa, bm_list[i].dim))
                 continue;
             if (bm_list[i].dim.find("OPS") != string::npos) {
-                int64_t latency = 0;
+                double latency = 0.0;
                 if (catalog[i].pair_index >= 0) {
                     sleep(idle_time);
                     latency = cpubm_riscv64_latency(
@@ -580,6 +645,8 @@ static void cpufb_register_isa()
         : "cc");
     reg_new_isa("vector", "vfmacc.vf(f32,f32,f32)", "FLOPS", 0x10000000LL,
         48LL * avl, vector_vfmacc_vf_f32f32f32);
+    reg_new_isa("vector", "vfmacc.vv(f32,f32,f32)_latency", "FLOPS",
+        0x100000LL, 48LL * avl, vector_vfmacc_vv_f32f32f32_latency);
     reg_new_isa("vector", "vfmacc.vv(f32,f32,f32)", "FLOPS", 0x10000000LL,
         48LL * avl, vector_vfmacc_vv_f32f32f32);
 

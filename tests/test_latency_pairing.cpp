@@ -77,12 +77,27 @@ void test_ambiguous_and_non_compute_entries()
         "only compute benchmarks may form throughput/latency pairs");
 }
 
+void test_rvv_latency_pairing()
+{
+    BenchmarkCatalog catalog;
+    catalog.push_back(
+        benchmark("vector", "vfmacc.vv(f32,f32,f32)_latency"));
+    catalog.push_back(benchmark("vector", "vfmacc.vv(f32,f32,f32)"));
+    pair_benchmark_latencies(catalog);
+
+    expect(catalog[0].is_latency && catalog[0].pair_index == 1,
+        "RVV latency kernel must pair with its throughput kernel");
+    expect(catalog[1].pair_index == 0,
+        "RVV throughput kernel must carry its latency pair");
+}
+
 } // namespace
 
 int main()
 {
     test_order_independent_pairing();
     test_ambiguous_and_non_compute_entries();
+    test_rvv_latency_pairing();
     if (failures != 0) return 1;
     std::cout << "latency pairing tests passed\n";
     return 0;

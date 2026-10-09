@@ -4,6 +4,7 @@
 #include "cacheline_probe.hpp"
 #include "table.hpp"
 #include "thread_pool.hpp"
+#include "common.hpp"
 
 #include <unistd.h>
 #include <cstdint>
@@ -48,11 +49,6 @@ static BenchmarkCatalog build_benchmark_catalog()
         catalog.push_back(BenchmarkInfo(item.isa, item.type, item.dim));
     pair_benchmark_latencies(catalog);
     return catalog;
-}
-
-static double get_time(struct timespec *start, struct timespec *end)
-{
-    return end->tv_sec - start->tv_sec + (end->tv_nsec - start->tv_nsec) * 1e-9;
 }
 
 static void reg_new_isa(std::string isa, std::string type, std::string dim,
@@ -154,8 +150,16 @@ static ComputeResult cpubm_run_compute(tpool_t *tm, cpubm_t &item)
     if (best_cycles > 0) {
         result.ipc = instructions / best_cycles;
         result.hardware_cycles = true;
-    } else if (!freq.empty() && freq[0] > 0.0) {
-        result.ipc = instructions / (best_time * freq[0] * 1e9);
+    } else {
+        double aggregate_frequency_hz = 0.0;
+        for (int worker = 0;
+            worker < num_threads && worker < static_cast<int>(freq.size());
+            ++worker) {
+            if (freq[worker] > 0.0)
+                aggregate_frequency_hz += freq[worker] * 1e9;
+        }
+        if (aggregate_frequency_hz <= 0.0) return result;
+        result.ipc = instructions / (best_time * aggregate_frequency_hz);
         warn_estimated_cycles_once();
     }
     return result;
@@ -175,7 +179,7 @@ static void cpubm_riscv64_one(
     cont[0] = item.isa;
     cont[1] = item.type;
     cont[2] = format_perf_value(result.perf, item.dim);
-    cont[3] = to_string(result.ipc);
+    cont[3] = result.ipc > 0.0 ? to_string(result.ipc) : "-";
     if (latency > 0.0) {
         ostringstream value;
         value << fixed << setprecision(2) << latency;

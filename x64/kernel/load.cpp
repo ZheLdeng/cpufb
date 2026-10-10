@@ -1,9 +1,13 @@
 #include <cstdlib>
 #include <pthread.h>
+#ifndef _WIN32
 #include <sched.h> // For CPU affinity
+#endif
 #include <ctime>
 #include <cmath>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 #include <cstring>
 #include <vector>
 #include <iostream>
@@ -25,6 +29,9 @@
 #ifdef __linux__
 #include <sys/syscall.h>
 #endif
+#ifdef _WIN32
+#include "windows_platform.hpp"
+#endif
 // Assumed line size when neither the OS nor the probe provides one.
 static constexpr int kDefaultCacheLineBytes = 64;
 // Sweep limit of the capacity curve.  The plateau after the last cache level
@@ -32,6 +39,40 @@ static constexpr int kDefaultCacheLineBytes = 64;
 static constexpr uint64_t kCacheCurveMaxBytes = 128ULL * 1024 * 1024;
 
 using namespace std;
+
+#ifdef _WIN32
+static void read_windows_theory_cache(CacheData *cache_size, int cpu_id)
+{
+    for (const cpufb::windows::CacheInfo &cache :
+        cpufb::windows::data_caches(cpu_id)) {
+        if (cache.level == 1) {
+            cache_size->theory_L1 = static_cast<int>(cache.bytes / 1024);
+            cache_size->theory_way = cache.ways;
+            cache_size->theory_cacheline = cache.line_bytes;
+        } else if (cache.level == 2) {
+            cache_size->theory_L2 = static_cast<int>(cache.bytes / 1024);
+            cache_size->theory_l2_way = cache.ways;
+            cache_size->theory_l2_line = cache.line_bytes;
+        }
+    }
+}
+#endif
+
+static bool pin_cpu(int cpu_id)
+{
+#ifdef __linux__
+    const pid_t pid = syscall(SYS_gettid);
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(cpu_id, &mask);
+    return sched_setaffinity(pid, sizeof(cpu_set_t), &mask) == 0;
+#elif defined(_WIN32)
+    return cpufb::windows::pin_current_thread(cpu_id);
+#else
+    (void)cpu_id;
+    return true;
+#endif
+}
 
 static void flush_cache_line(void *addr)
 {
@@ -45,17 +86,17 @@ static void finish_cache_line_flush()
 
 void get_cacheline(struct CacheData *cache_size, int cpu_id)
 {
-#ifdef __linux__
-    pid_t pid = syscall(SYS_gettid);
-    cpu_set_t mask;
-    CPU_ZERO(&mask);
-    CPU_SET(cpu_id, &mask);
-    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
+#if defined(__linux__) || defined(_WIN32)
+    if (!pin_cpu(cpu_id)) {
         printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
-        printf("Warning: performance may be impacted \n");
+        printf("Warning: performance may be impacted\n");
     }
+#endif
+#ifdef __linux__
     read_data(cpu_id, &cache_size->theory_cacheline,
         "/cache/index0/coherency_line_size");
+#elif defined(_WIN32)
+    read_windows_theory_cache(cache_size, cpu_id);
 #endif
     cache_size->test_cacheline = cpufb::probe_cacheline_size(
         cache_size->theory_cacheline, flush_cache_line, finish_cache_line_flush,
@@ -74,6 +115,8 @@ void get_theory_cache(struct CacheData *cache_size, int cpu_id)
         cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
     read_data(cpu_id, &cache_size->theory_cacheline,
         "/cache/index0/coherency_line_size");
+#elif defined(_WIN32)
+    read_windows_theory_cache(cache_size, cpu_id);
 #endif
 }
 
@@ -88,15 +131,13 @@ static void chase_ring(int iterations, const int32_t *buffer)
 
 void get_cachesize(struct CacheData *cache_size, int cpu_id)
 {
-#ifdef __linux__
-    pid_t pid = syscall(SYS_gettid);
-    cpu_set_t mask;
-    CPU_ZERO(&mask);
-    CPU_SET(cpu_id, &mask);
-    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
+#if defined(__linux__) || defined(_WIN32)
+    if (!pin_cpu(cpu_id)) {
         printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
         printf("Warning: performance may be impacted \n");
     }
+#endif
+#ifdef __linux__
 
     read_data(cpu_id, &cache_size->theory_L1, "/cache/index0/size");
     read_data(cpu_id, &cache_size->theory_L2, "/cache/index2/size");
@@ -157,20 +198,20 @@ void get_multiway(struct CacheData *cache_size, int cpu_id)
 {
     int detected_way = 0;
 
-#ifdef __linux__
-    pid_t pid = syscall(SYS_gettid);
-    cpu_set_t mask;
-    CPU_ZERO(&mask);
-    CPU_SET(cpu_id, &mask);
-    if (sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
+#if defined(__linux__) || defined(_WIN32)
+    if (!pin_cpu(cpu_id)) {
         printf("Error: cpu id %d sched_setaffinity\n", cpu_id);
         printf("Warning: performance may be impacted \n");
     }
+#endif
+#ifdef __linux__
     read_data(
         cpu_id, &cache_size->theory_way, "/cache/index0/ways_of_associativity");
     read_data(cpu_id, &cache_size->theory_L1, "/cache/index0/size");
     read_data(cpu_id, &cache_size->theory_cacheline,
         "/cache/index0/coherency_line_size");
+#elif defined(_WIN32)
+    read_windows_theory_cache(cache_size, cpu_id);
 #endif
 
     // The shared probe takes no OS-reported cache geometry, so the result is

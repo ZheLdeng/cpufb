@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "calling_convention.hpp"
 #include "table.hpp"
 
 // Issue-rate probe: how many instructions of one class a core sustains per
@@ -33,7 +34,8 @@
 
 namespace cpufb {
 
-typedef void (*IssueKernelFn)(const void *l1_buffer, int64_t loops);
+typedef void (CPUFB_SYSV_ABI *IssueKernelFn)(
+    const void *l1_buffer, int64_t loops);
 
 struct IssueClass
 {

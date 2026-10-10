@@ -9,10 +9,16 @@
 #include <ctime>
 #include <vector>
 
+#ifndef _WIN32
 #include <sys/mman.h>
 #include <unistd.h>
+#endif
 
 #include "common.hpp"
+#include "aligned_memory.hpp"
+#ifdef _WIN32
+#include "windows_platform.hpp"
+#endif
 
 namespace cpufb {
 
@@ -75,6 +81,14 @@ void report_coverage(const LoadKernel &kernel, int count, size_t workset_bytes)
     if (enabled == nullptr || *enabled == '\0' ||
         std::strcmp(enabled, "0") == 0)
         return;
+#ifdef _WIN32
+    (void)kernel;
+    (void)count;
+    (void)workset_bytes;
+    std::fprintf(stderr,
+        "load coverage: unavailable (Windows does not expose mincore)\n");
+    return;
+#else
     const long page_size = sysconf(_SC_PAGESIZE);
     if (page_size <= 0) return;
     const size_t page = static_cast<size_t>(page_size);
@@ -101,6 +115,7 @@ void report_coverage(const LoadKernel &kernel, int count, size_t workset_bytes)
         "load coverage: %-20s read %zu of %zu pages (%zu KiB)\n",
         kernel.name.c_str(), touched, expected, workset_bytes / 1024);
     munmap(region, mapped);
+#endif
 }
 
 } // namespace
@@ -129,7 +144,7 @@ CacheBandwidth measure_cache_bandwidth(const LoadKernel &kernel,
     const size_t stride = (workset_bytes + kGuardBytes + 4095) / 4096 * 4096;
 
     void *allocation = nullptr;
-    if (posix_memalign(&allocation, 4096, stride * workers) != 0) return result;
+    if (aligned_allocate(&allocation, 4096, stride * workers) != 0) return result;
 
     Job job;
     job.cycles.store(0, std::memory_order_relaxed);
@@ -164,7 +179,7 @@ CacheBandwidth measure_cache_bandwidth(const LoadKernel &kernel,
                 best_cycles_per_core = cycles;
         }
     }
-    std::free(allocation);
+    aligned_deallocate(allocation);
     if (best_seconds <= 0.0) return result;
 
     const double bytes_per_core =

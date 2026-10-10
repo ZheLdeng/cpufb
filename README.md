@@ -18,7 +18,7 @@ issue peaks per instruction class and how classes share the core when mixed.
 | ------------ | ------------ | ------------ | ------------ |
 |Linux|yes|yes|yes|
 |MacOS|no|yes|no|
-|Windows|no|no|no|
+|Windows|yes (MinGW-w64)|no|no|
 |Andoroid|no|yes|no|
 
 ## Support x86-64 SIMD|DSA ISA
@@ -71,6 +71,8 @@ issue peaks per instruction class and how classes share the core when mixed.
 * CMake **3.19** or newer (required for `CMakePresets.json`).
 * A C/C++ toolchain (gcc/clang) and `make` (or any other CMake generator).
 * If you need to benchmark the SVE instruction set, please upgrade GCC to version 8.x.
+* Windows x64 builds require MinGW-w64 GCC with the POSIX thread model; MSVC is
+  not supported because the x64 benchmark kernels use GNU assembler sources.
 
 ### Quick start
 
@@ -104,6 +106,29 @@ The output binary is at `build/<preset>/cpufb`.
 cmake --preset native-release
 cmake --build --preset native-release
 ```
+
+### Windows x64 (MinGW-w64)
+
+Install the GCC, CMake, and make packages from an MSYS2 MINGW64 terminal:
+
+```sh
+pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make
+```
+
+Then run from PowerShell with the MSYS2 MINGW64 tools on `PATH`:
+
+```powershell
+$env:Path = "C:\msys64\mingw64\bin;$env:Path"
+cmake --preset windows-mingw
+cmake --build --preset windows-mingw
+build\windows-mingw\cpufb.exe '--thread_pool=[0]' --mode=compute
+```
+
+The Windows backend uses processor-group-aware thread affinity, Windows cache
+topology and memory APIs, and the x64 runtime instruction detector. Linux perf
+counters are unavailable there, so cycle-based IPC falls back to the measured
+clock estimate. The optional page-residency diagnostic is not available on
+Windows.
 
 To cross-compile and bypass runtime SIMD detection, pass the feature list:
 

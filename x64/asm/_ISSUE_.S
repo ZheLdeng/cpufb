@@ -135,7 +135,9 @@
 .macro ISSUE_KERNEL_BEGIN name, mode, attr
     .p2align 5
     .globl \name
+#ifndef _WIN32
     .type \name, @function
+#endif
 \name:
     push %rbx
     push %rbp
@@ -177,4 +179,6 @@
 
 #include "issue_asm.h"
 
+#ifndef _WIN32
 .section .note.GNU-stack,"",@progbits
+#endif

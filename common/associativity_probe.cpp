@@ -1,4 +1,5 @@
 #include "associativity_probe.hpp"
+#include "aligned_memory.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -191,7 +192,7 @@ int probe_l1_line_from_sets(int ways, size_t way_bytes)
     const int lines = std::min(2 * ways, kMaxLines);
     const size_t bytes = kSlotBytes * kSlotCount + kSlotBytes;
     void *allocation = nullptr;
-    if (posix_memalign(&allocation, kSlotBytes, bytes) != 0) return 0;
+    if (aligned_allocate(&allocation, kSlotBytes, bytes) != 0) return 0;
 #if defined(__linux__) && defined(MADV_NOHUGEPAGE)
     (void)madvise(allocation, bytes, MADV_NOHUGEPAGE);
 #endif
@@ -239,7 +240,7 @@ int probe_l1_line_from_sets(int ways, size_t way_bytes)
         const int line = line_for(shuffled, "random");
         if (line > 0 && (detected == 0 || line < detected)) detected = line;
     }
-    std::free(allocation);
+    aligned_deallocate(allocation);
     return detected;
 }
 
@@ -252,7 +253,7 @@ size_t probe_l1_way_bytes(int cacheline_bytes, int ways)
     const int lines = std::min(2 * ways, kMaxLines);
     const size_t bytes = kSlotBytes * kSlotCount + kSlotBytes;
     void *allocation = nullptr;
-    if (posix_memalign(&allocation, kSlotBytes, bytes) != 0) return 0;
+    if (aligned_allocate(&allocation, kSlotBytes, bytes) != 0) return 0;
 #if defined(__linux__) && defined(MADV_NOHUGEPAGE)
     (void)madvise(allocation, bytes, MADV_NOHUGEPAGE);
 #endif
@@ -278,7 +279,7 @@ size_t probe_l1_way_bytes(int cacheline_bytes, int ways)
             way_bytes_for_placement(
                 base, shuffled, line, lines, "random", debug));
     }
-    std::free(allocation);
+    aligned_deallocate(allocation);
     return detected;
 }
 
@@ -350,10 +351,10 @@ int probe_l2_associativity(int cacheline_bytes, int l1_ways)
     const size_t huge_bytes = 2ULL * 1024 * 1024;
     const size_t bytes = huge_bytes * (kMaxLines + 1);
     void *allocation = nullptr;
-    if (posix_memalign(&allocation, huge_bytes, bytes) != 0)
+    if (aligned_allocate(&allocation, huge_bytes, bytes) != 0)
         return kL2NoHugePages;
     if (madvise(allocation, bytes, MADV_HUGEPAGE) != 0) {
-        std::free(allocation);
+        aligned_deallocate(allocation);
         return kL2NoHugePages;
     }
     // Touch one line per page so each is faulted in as a huge page now,
@@ -367,7 +368,7 @@ int probe_l2_associativity(int cacheline_bytes, int l1_ways)
     // (a huge-page TLB edge, a co-tenant), not the associativity.
     const int first = l2_ways_once(base, line, l1_ways, 1, debug);
     const int second = l2_ways_once(base, line, l1_ways, 2, debug);
-    std::free(allocation);
+    aligned_deallocate(allocation);
     return first == second ? first : kL2Unrepeatable;
 #else
     (void)cacheline_bytes;
@@ -384,7 +385,7 @@ int probe_l2_line_from_sets(int l2_ways)
     const size_t huge_bytes = 2ULL * 1024 * 1024;
     const size_t bytes = huge_bytes * (lines + 1);
     void *allocation = nullptr;
-    if (posix_memalign(&allocation, huge_bytes, bytes) != 0)
+    if (aligned_allocate(&allocation, huge_bytes, bytes) != 0)
         return kL2NoHugePages;
     (void)madvise(allocation, bytes, MADV_HUGEPAGE);
     for (int page = 0; page <= lines; ++page)
@@ -421,7 +422,7 @@ int probe_l2_line_from_sets(int l2_ways)
             break;
         }
     }
-    std::free(allocation);
+    aligned_deallocate(allocation);
     return result;
 #else
     (void)l2_ways;
@@ -436,7 +437,7 @@ int probe_l1_associativity(int cacheline_bytes)
 
     // Only the touched pages of this 64 MiB range are ever committed.
     void *allocation = nullptr;
-    if (posix_memalign(&allocation, kSlotBytes, bytes) != 0) return 0;
+    if (aligned_allocate(&allocation, kSlotBytes, bytes) != 0) return 0;
 #if defined(__linux__) && defined(MADV_NOHUGEPAGE)
     // Huge pages would commit 2 MiB for every touched line.
     (void)madvise(allocation, bytes, MADV_NOHUGEPAGE);
@@ -469,7 +470,7 @@ int probe_l1_associativity(int cacheline_bytes)
             probe_with_placement(base, shuffled, skew_words, "random", debug));
     }
 
-    std::free(allocation);
+    aligned_deallocate(allocation);
     return detected;
 }
 

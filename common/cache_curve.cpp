@@ -11,9 +11,16 @@
 #include <numeric>
 #include <random>
 
+#include "aligned_memory.hpp"
+
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 #ifdef __linux__
 #include <sys/mman.h>
+#endif
+#ifdef _WIN32
+#include "windows_platform.hpp"
 #endif
 
 namespace cpufb {
@@ -320,8 +327,9 @@ uint64_t available_memory_bytes()
         if (key == "MemAvailable:" && meminfo >> value) return value * 1024;
         std::getline(meminfo, key);
     }
-#endif
-#if defined(_SC_AVPHYS_PAGES) && defined(_SC_PAGESIZE)
+#elif defined(_WIN32)
+    return windows::available_memory_bytes();
+#elif defined(_SC_AVPHYS_PAGES) && defined(_SC_PAGESIZE)
     const long pages = sysconf(_SC_AVPHYS_PAGES);
     const long page = sysconf(_SC_PAGESIZE);
     if (pages > 0 && page > 0)
@@ -606,7 +614,11 @@ CacheCurveResult measure_cache_curve(
     const size_t line = line_size > 0 ? static_cast<size_t>(line_size) : 64;
 
     const bool huge_pages = transparent_huge_pages_available();
+#ifdef _WIN32
+    const long page_size = static_cast<long>(windows::page_size());
+#else
     const long page_size = sysconf(_SC_PAGESIZE);
+#endif
     const size_t page_bytes =
         page_size > 0 ? static_cast<size_t>(page_size) : 4096;
     // Page-grouped order keeps translation misses amortized when only 4 KiB
@@ -650,7 +662,7 @@ CacheCurveResult measure_cache_curve(
         (void)madvise(
             allocation, static_cast<size_t>(region_bytes), MADV_HUGEPAGE);
 #else
-    if (posix_memalign(&allocation, std::max(page_bytes, line),
+    if (aligned_allocate(&allocation, std::max(page_bytes, line),
             static_cast<size_t>(region_bytes)) != 0)
         return result;
 #endif
@@ -751,7 +763,7 @@ CacheCurveResult measure_cache_curve(
 #ifdef __linux__
     munmap(mapping, mapping_bytes);
 #else
-    std::free(allocation);
+    aligned_deallocate(allocation);
 #endif
     result.levels = estimate_cache_levels(
         result.points, result.memory_latency_ns, &result.reached_memory);

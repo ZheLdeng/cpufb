@@ -4,8 +4,10 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#ifndef _WIN32
 #include <sched.h>
 #include <unistd.h>
+#endif
 #include "thread_pool.hpp"
 #include <algorithm>
 #include <cctype>
@@ -14,6 +16,9 @@
 #include <limits>
 #ifdef __linux__
 #include <sys/syscall.h>
+#endif
+#ifdef _WIN32
+#include "windows_platform.hpp"
 #endif
 using namespace std;
 
@@ -65,8 +70,10 @@ struct cpu_observation
 
 static int current_cpu()
 {
-#ifdef __linux__
+#if defined(__linux__)
     return sched_getcpu();
+#elif defined(_WIN32)
+    return cpufb::windows::current_processor();
 #else
     return -1;
 #endif
@@ -75,7 +82,7 @@ static int current_cpu()
 static void record_cpu_observation(tpool_t *tm, size_t requested_cpu,
     const cpu_observation &observation)
 {
-#ifdef __linux__
+#if defined(__linux__) || defined(_WIN32)
     if (observation.before < 0 || observation.after < 0) return;
     tm->cpu_observation_cnt++;
     if (observation.before != observation.after) tm->cpu_migration_cnt++;
@@ -107,7 +114,7 @@ static void *tpool_worker(void *arg)
 #endif
     free(targs);
     bool affinity_failed = false;
-#ifdef __linux__
+#if defined(__linux__)
     pid_t pid = syscall(SYS_gettid);
     cpu_set_t mask;
     CPU_ZERO(&mask);
@@ -119,6 +126,11 @@ static void *tpool_worker(void *arg)
             "Error: cannot bind a worker to cpu %zu "
             "(offline, outside the cpuset, or nonexistent).\n",
             cpu_id);
+        affinity_failed = true;
+    }
+#elif defined(_WIN32)
+    if (!cpufb::windows::pin_current_thread(static_cast<int>(cpu_id))) {
+        fprintf(stderr, "Error: cannot bind a worker to cpu %zu.\n", cpu_id);
         affinity_failed = true;
     }
 #endif
@@ -269,7 +281,7 @@ tpool_t *tpool_create(vector<int> set_of_threads)
 tpool_migration_info tpool_get_migration_info(tpool_t *tm)
 {
     tpool_migration_info info = {};
-#ifdef __linux__
+#if defined(__linux__) || defined(_WIN32)
     info.available = true;
     if (tm == nullptr) return info;
     pthread_mutex_lock(&(tm->work_mutex));

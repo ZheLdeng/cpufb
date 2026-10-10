@@ -30,3 +30,6 @@ __pycache__/
 
 # local-only paper backup, never push
 bdma.tex
+
+# Local SSH private keys
+/aws_pem/

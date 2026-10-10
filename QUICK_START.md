@@ -16,6 +16,46 @@ chmod +x build.sh
 
 Output binary: `build/<preset>/cpufb`.
 
+On Windows x64, install MinGW-w64 GCC, CMake, and make with the POSIX thread
+model from an MSYS2 MINGW64 terminal:
+
+```sh
+pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make
+```
+
+Then run from PowerShell with MSYS2 MINGW64 on `PATH`:
+
+```powershell
+$env:Path = "C:\msys64\mingw64\bin;$env:Path"
+cmake --preset windows-mingw
+cmake --build --preset windows-mingw
+build\windows-mingw\cpufb.exe '--thread_pool=[0]' --mode=compute
+```
+
+For complete Windows output, run all categories without a benchmark limit:
+
+```powershell
+build\windows-mingw\cpufb.exe '--thread_pool=[0]' --mode=all
+```
+
+For a shorter functional check with the same rows, add `--loop_scale=100`
+(an integer loop-count divisor, not a fractional multiplier). Do not add
+`--bench_limit=1` or ISA filters when comparing output coverage. Results
+from shortened runs are not suitable for performance comparisons.
+The memory-bandwidth stream test is a separate invocation:
+
+```powershell
+build\windows-mingw\cpufb.exe '--thread_pool=[0]' --memory-bandwidth --memory-size-mib=4 --memory-repetitions=1
+```
+
+Windows reports base/max frequency from CPUID and current frequency from
+the power-information API when available. The current value is an OS
+report, not a measured benchmark clock; unavailable values have an explicit
+reason in the source column. Current-frequency reporting is unavailable
+on systems with multiple processor groups. Timestamps use a numeric UTC
+offset rather than a localized timezone name. Hardware cycle counters
+remain unavailable on this Windows backend; cycle metrics are estimates.
+
 Benchmark modes:
 
 ```bash

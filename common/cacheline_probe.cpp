@@ -1,4 +1,5 @@
 #include "cacheline_probe.hpp"
+#include "aligned_memory.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -173,7 +174,7 @@ static int probe_cacheline_once(int theory_cacheline,
     const size_t max_pitch = kStrides[stride_count - 1] * 4;
     const size_t bytes = kNodes * max_pitch + 4096;
     void *allocation = nullptr;
-    if (posix_memalign(&allocation, 4096, bytes) != 0) return 0;
+    if (aligned_allocate(&allocation, 4096, bytes) != 0) return 0;
     unsigned char *buffer = static_cast<unsigned char *>(allocation);
     std::memset(buffer, 0, bytes);
     size_t eviction_bytes = kDefaultEvictionBytes;
@@ -196,7 +197,7 @@ static int probe_cacheline_once(int theory_cacheline,
         above_ratios.push_back(above);
         ratios.push_back(std::max(below, above));
     }
-    std::free(allocation);
+    aligned_deallocate(allocation);
 
     // The line size is the last stride before the first pronounced rise.
     int measured = 0;

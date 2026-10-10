@@ -12,6 +12,9 @@
 #ifdef __APPLE__
 #include <sys/sysctl.h>
 #endif
+#ifdef _WIN32
+#include "windows_platform.hpp"
+#endif
 
 namespace cpufb {
 namespace {
@@ -296,6 +299,31 @@ CacheLevelInfo detect_macos_data_cache_level(int level)
 }
 #endif
 
+#ifdef _WIN32
+CacheLevelInfo detect_windows_data_cache_level(int cpu, int level)
+{
+    CacheLevelInfo best;
+    for (const windows::CacheInfo &entry : windows::data_caches(cpu)) {
+        if (entry.level != level || entry.bytes <= best.bytes) continue;
+        consider_cache_level(
+            best, entry.bytes, entry.level, "Windows processor topology");
+        best.line_bytes = entry.line_bytes;
+        best.ways = entry.ways;
+        best.shared_cpus = entry.shared_cpus;
+    }
+    return best;
+}
+
+LastLevelCacheInfo detect_windows_last_level_cache(int cpu)
+{
+    LastLevelCacheInfo best;
+    for (const windows::CacheInfo &entry : windows::data_caches(cpu))
+        consider_cache(best, entry.bytes, entry.level, true,
+            "Windows processor topology");
+    return best;
+}
+#endif
+
 } // namespace
 
 CacheLevelInfo detect_data_cache_level(int cpu, int level)
@@ -305,6 +333,8 @@ CacheLevelInfo detect_data_cache_level(int cpu, int level)
 #elif defined(__APPLE__)
     (void)cpu;
     return detect_macos_data_cache_level(level);
+#elif defined(_WIN32)
+    return detect_windows_data_cache_level(cpu, level);
 #else
     (void)cpu;
     (void)level;
@@ -319,6 +349,8 @@ LastLevelCacheInfo detect_last_level_cache(int cpu)
 #elif defined(__APPLE__)
     (void)cpu;
     return detect_macos_last_level_cache();
+#elif defined(_WIN32)
+    return detect_windows_last_level_cache(cpu);
 #else
     (void)cpu;
     return LastLevelCacheInfo();

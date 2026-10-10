@@ -14,8 +14,12 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 #endif
+#ifdef _WIN32
+#include "windows_platform.hpp"
+#endif
 
 #include "common.hpp"
+#include "aligned_memory.hpp"
 #include "issue_layout.h"
 
 namespace cpufb {
@@ -80,6 +84,10 @@ public:
             std::fprintf(
                 stderr, "Warning: issue probe could not bind to CPU %d\n", cpu);
         counter_ = new PerfEventCycle(0, false);
+#elif defined(_WIN32)
+        if (!windows::pin_current_thread(cpu))
+            std::fprintf(
+                stderr, "Warning: issue probe could not bind to CPU %d\n", cpu);
 #else
         (void)cpu;
 #endif
@@ -396,7 +404,7 @@ bool run_issue_probe(const IssueProbeInput &input, int cpu,
         return true;
     }
     void *allocation = nullptr;
-    if (posix_memalign(&allocation, 4096, kBufferBytes) != 0) return false;
+    if (aligned_allocate(&allocation, 4096, kBufferBytes) != 0) return false;
     std::memset(allocation, 0, kBufferBytes);
     const void *buffer = allocation;
 
@@ -637,7 +645,7 @@ bool run_issue_probe(const IssueProbeInput &input, int cpu,
                 row.verdict);
 
     add_row(table, "Cycle source", "-", "-", "-", timer.source());
-    std::free(allocation);
+    aligned_deallocate(allocation);
     return true;
 }
 

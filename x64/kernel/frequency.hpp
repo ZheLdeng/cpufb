@@ -5,14 +5,17 @@
 #include <string>
 #include <vector>
 
+#include "calling_convention.hpp"
 #include "table.hpp"
 
 extern "C"
 {
-    void cpufb_x64_frequency_fsu32(int64_t loop_time);
-    void cpufb_x64_frequency_fsu64(int64_t loop_time);
-    void cpufb_x64_frequency_load(const void *data, int64_t loop_time);
-    uint64_t cpufb_x64_frequency_add_chain(int64_t loop_time, uint64_t addend);
+    void CPUFB_SYSV_ABI cpufb_x64_frequency_fsu32(int64_t loop_time);
+    void CPUFB_SYSV_ABI cpufb_x64_frequency_fsu64(int64_t loop_time);
+    void CPUFB_SYSV_ABI cpufb_x64_frequency_load(
+        const void *data, int64_t loop_time);
+    uint64_t CPUFB_SYSV_ABI cpufb_x64_frequency_add_chain(
+        int64_t loop_time, uint64_t addend);
 }
 
 struct FrequencyData

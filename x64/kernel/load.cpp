@@ -86,7 +86,7 @@ static void chase_ring(int iterations, const int32_t *buffer)
     __asm__ volatile("" : "+r"(next) : : "memory");
 }
 
-void get_cachesize(struct CacheData *cache_size, int cpu_id)
+cpufb::CacheCurveResult get_cachesize(struct CacheData *cache_size, int cpu_id)
 {
 #ifdef __linux__
     pid_t pid = syscall(SYS_gettid);
@@ -151,6 +151,7 @@ void get_cachesize(struct CacheData *cache_size, int cpu_id)
     cache_size->memory_latency_ns = curve.memory_latency_ns;
     cache_size->hierarchy_complete = curve.reached_memory;
     cpufb::debug_print_cache_curve(curve);
+    return curve;
 }
 
 void get_multiway(struct CacheData *cache_size, int cpu_id)

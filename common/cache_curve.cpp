@@ -16,6 +16,10 @@
 #include <sys/mman.h>
 #endif
 
+#include "cache_topology.hpp"
+#include "common.hpp"
+#include "table.hpp"
+
 namespace cpufb {
 
 namespace {
@@ -82,6 +86,69 @@ struct Plateau
     size_t first;
     size_t last;
     double latency_ns;
+    double latency_cycles; // 0 unless every point of the plateau has cycles
+};
+
+// Median of a field over points first..last; 0 when any point lacks it.
+template <typename Field>
+double plateau_median(const std::vector<CacheLatencyPoint> &points,
+    size_t first, size_t last, Field field)
+{
+    std::vector<double> values;
+    for (size_t i = first; i <= last; ++i) {
+        if (!(field(points[i]) > 0.0)) return 0.0;
+        values.push_back(field(points[i]));
+    }
+    return median_of(values);
+}
+
+// Core cycles around one chase sample, when the PMU is accessible.  A
+// dependent-load latency in cycles is what a kernel's software-pipelining
+// depth is sized from; nanoseconds depend on the clock the sweep happened to
+// run at.
+class ChaseCycles
+{
+public:
+    ChaseCycles()
+#ifdef __linux__
+        : counter_(0, false)
+#endif
+    {
+    }
+    bool available() const
+    {
+#ifdef __linux__
+        return counter_.available();
+#else
+        return false;
+#endif
+    }
+    void start()
+    {
+#ifdef __linux__
+        counter_.start();
+#endif
+    }
+    double stop()
+    {
+#ifdef __linux__
+        counter_.stop();
+        return static_cast<double>(counter_.get_cycle());
+#else
+        return 0.0;
+#endif
+    }
+
+private:
+#ifdef __linux__
+    PerfEventCycle counter_;
+#endif
+};
+
+struct ChaseSample
+{
+    double ns;
+    double cycles; // 0 without a counter
 };
 
 std::vector<Plateau> find_plateaus(const std::vector<CacheLatencyPoint> &points)
@@ -109,10 +176,12 @@ std::vector<Plateau> find_plateaus(const std::vector<CacheLatencyPoint> &points)
             ++end;
         }
         if (low > 0.0 && end - start + 1 >= kMinimumPlateauPoints) {
-            std::vector<double> values;
-            for (size_t i = start; i <= end; ++i)
-                values.push_back(points[i].latency_ns);
-            plateaus.push_back({start, end, median_of(values)});
+            Plateau plateau = {start, end,
+                plateau_median(points, start, end,
+                    [](const CacheLatencyPoint &p) { return p.latency_ns; }),
+                plateau_median(points, start, end,
+                    [](const CacheLatencyPoint &p) { return p.latency_cycles; })};
+            plateaus.push_back(plateau);
             start = end + 1;
         } else {
             ++start;
@@ -202,10 +271,11 @@ size_t slots_for(size_t stride_words)
     return std::max<size_t>(1, std::min(stride_words, kMaximumSlots));
 }
 
-double measure_pointer_chase(CacheChaseKernel chase, int32_t *buffer,
+ChaseSample measure_pointer_chase(CacheChaseKernel chase, int32_t *buffer,
     uint64_t working_set_bytes, size_t line_size, size_t group_lines,
-    uint64_t seed)
+    uint64_t seed, ChaseCycles &cycles)
 {
+    const ChaseSample none = {0.0, 0.0};
     const size_t stride = std::max(sizeof(int32_t), line_size);
     const size_t line_count = std::max<size_t>(2, working_set_bytes / stride);
     const size_t stride_words = stride / sizeof(int32_t);
@@ -250,7 +320,7 @@ double measure_pointer_chase(CacheChaseKernel chase, int32_t *buffer,
     chase(probe_iterations, buffer);
     clock_gettime(CLOCK_MONOTONIC_RAW, &end);
     const double probe_ns = elapsed_ns(start, end) / probe_iterations;
-    if (!(probe_ns > 0.0)) return 0.0;
+    if (!(probe_ns > 0.0)) return none;
 
     // About 5 ms per sample, but never less than one full lap.
     size_t iterations = static_cast<size_t>(5e6 / probe_ns);
@@ -262,13 +332,18 @@ double measure_pointer_chase(CacheChaseKernel chase, int32_t *buffer,
     // nothing removes it, so the minimum is the estimate.  The median let
     // single points dip or bump by several ns on an Apple M4, which moved the
     // L2 estimate between 12 and 16 MiB from run to run.
-    double best = 0.0;
+    ChaseSample best = none;
     for (int sample = 0; sample < 7; ++sample) {
+        if (cycles.available()) cycles.start();
         clock_gettime(CLOCK_MONOTONIC_RAW, &start);
         chase(static_cast<int>(iterations), buffer);
         clock_gettime(CLOCK_MONOTONIC_RAW, &end);
+        const double counted = cycles.available() ? cycles.stop() : 0.0;
         const double latency = elapsed_ns(start, end) / iterations;
-        if (latency > 0.0 && (best == 0.0 || latency < best)) best = latency;
+        if (latency > 0.0 && (best.ns == 0.0 || latency < best.ns)) {
+            best.ns = latency;
+            best.cycles = counted > 0.0 ? counted / iterations : 0.0;
+        }
     }
     return best;
 }
@@ -453,9 +528,9 @@ void debug_print_cache_curve(const CacheCurveResult &result)
     std::fprintf(stderr, "cache curve (%s), memory reference %.1f ns:\n",
         result.translation_mode.c_str(), result.memory_latency_ns);
     for (const CacheLatencyPoint &point : result.points)
-        std::fprintf(stderr, "  %8llu KB %8.3f ns/load\n",
+        std::fprintf(stderr, "  %8llu KB %8.3f ns/load %7.1f cycles\n",
             static_cast<unsigned long long>(point.working_set_bytes / 1024),
-            point.latency_ns);
+            point.latency_ns, point.latency_cycles);
     // Which samples decided the answer, and whether the three rings agreed:
     // an outlier that survives the median shows up here as two of three.
     for (const RemeasuredPoint &point : result.remeasured)
@@ -590,6 +665,7 @@ std::vector<CacheLevelEstimate> estimate_cache_levels(
             : 1.0;
         level.capacity_bytes = points[capacity_index].working_set_bytes;
         level.latency_ns = below.latency_ns;
+        level.latency_cycles = below.latency_cycles;
         level.jump_ratio = above.latency_ns / below.latency_ns;
         level.transition_width = transition_width(
             points, below, above, level.rise_begin_bytes, level.rise_end_bytes);
@@ -663,6 +739,7 @@ CacheCurveResult measure_cache_curve(
             chase, buffer, region_bytes, 0x4d454d4f52595245ULL);
 
     const std::vector<uint64_t> sizes = build_cache_curve_sizes(max_bytes);
+    ChaseCycles cycles;
     auto seed_for = [](size_t i, int ring) {
         return 0x4350554642ULL + i * 0x9e3779b97f4a7c15ULL +
             static_cast<uint64_t>(ring) * 0xd1b54a32d192ed03ULL;
@@ -672,8 +749,10 @@ CacheCurveResult measure_cache_curve(
         for (size_t i = 0; i < sizes.size(); ++i) {
             CacheLatencyPoint point;
             point.working_set_bytes = sizes[i];
-            point.latency_ns = measure_pointer_chase(
-                chase, buffer, sizes[i], line, lines_per_group, seed_for(i, 0));
+            const ChaseSample sample = measure_pointer_chase(chase, buffer,
+                sizes[i], line, lines_per_group, seed_for(i, 0), cycles);
+            point.latency_ns = sample.ns;
+            point.latency_cycles = sample.cycles;
             points.push_back(point);
         }
         return points;
@@ -738,13 +817,20 @@ CacheCurveResult measure_cache_curve(
             RemeasuredPoint record;
             record.working_set_bytes = sizes[i];
             record.samples_ns[0] = result.points[i].latency_ns;
-            for (int ring = 1; ring <= 2; ++ring)
-                record.samples_ns[ring] = measure_pointer_chase(chase, buffer,
-                    sizes[i], line, sweep_groups, seed_for(i, ring));
-            double sorted[3] = {record.samples_ns[0], record.samples_ns[1],
-                record.samples_ns[2]};
-            std::sort(sorted, sorted + 3);
-            result.points[i].latency_ns = sorted[1];
+            record.samples_cycles[0] = result.points[i].latency_cycles;
+            for (int ring = 1; ring <= 2; ++ring) {
+                const ChaseSample sample = measure_pointer_chase(chase, buffer,
+                    sizes[i], line, sweep_groups, seed_for(i, ring), cycles);
+                record.samples_ns[ring] = sample.ns;
+                record.samples_cycles[ring] = sample.cycles;
+            }
+            // The median sample by time, with its own cycle count.
+            int order[3] = {0, 1, 2};
+            std::sort(order, order + 3, [&](int l, int r) {
+                return record.samples_ns[l] < record.samples_ns[r];
+            });
+            result.points[i].latency_ns = record.samples_ns[order[1]];
+            result.points[i].latency_cycles = record.samples_cycles[order[1]];
             result.remeasured.push_back(record);
         }
     }
@@ -756,6 +842,86 @@ CacheCurveResult measure_cache_curve(
     result.levels = estimate_cache_levels(
         result.points, result.memory_latency_ns, &result.reached_memory);
     return result;
+}
+
+namespace {
+
+std::string format_cycles(double latency_ns, double counted_cycles,
+    double fallback_clock_ghz)
+{
+    char text[32];
+    if (counted_cycles > 0.0)
+        std::snprintf(text, sizeof(text), "%.1f", counted_cycles);
+    else if (fallback_clock_ghz > 0.0 && latency_ns > 0.0)
+        std::snprintf(text, sizeof(text), "%.1f", latency_ns * fallback_clock_ghz);
+    else
+        return "-";
+    return text;
+}
+
+std::string format_ns(double latency_ns)
+{
+    char text[32];
+    std::snprintf(text, sizeof(text), "%.3f ns", latency_ns);
+    return text;
+}
+
+} // namespace
+
+void print_cache_curve_tables(
+    const CacheCurveResult &result, double fallback_clock_ghz)
+{
+    bool counted = !result.points.empty();
+    for (const CacheLatencyPoint &point : result.points)
+        counted = counted && point.latency_cycles > 0.0;
+    char cycle_source[64];
+    if (counted)
+        std::snprintf(cycle_source, sizeof(cycle_source), "perf_event cycles");
+    else if (fallback_clock_ghz > 0.0)
+        std::snprintf(cycle_source, sizeof(cycle_source),
+            "latency x %.3f GHz (frequency table clock)", fallback_clock_ghz);
+    else
+        std::snprintf(cycle_source, sizeof(cycle_source),
+            "not available (no cycle counter, frequency table not run)");
+    std::printf("Cache curve translation mode: %s; cycles: %s\n",
+        result.translation_mode.c_str(), cycle_source);
+
+    Table curve_table;
+    curve_table.setColumnNum(3);
+    std::vector<std::string> head = {
+        "Working Set", "Dependent-load Latency", "Latency (cycles)"};
+    curve_table.addOneItem(head);
+    for (const CacheLatencyPoint &point : result.points) {
+        std::vector<std::string> row(3);
+        row[0] = format_cache_capacity(point.working_set_bytes);
+        row[1] = format_ns(point.latency_ns) + "/load";
+        row[2] = format_cycles(
+            point.latency_ns, point.latency_cycles, fallback_clock_ghz);
+        curve_table.addOneItem(row);
+    }
+    curve_table.print();
+
+    Table estimate_table;
+    estimate_table.setColumnNum(5);
+    // Every level the curve resolved: a Kunpeng 920 resolves four.
+    std::vector<std::string> estimate_head = {
+        "Level", "Measured Capacity", "Latency", "Latency (cycles)", "Jump"};
+    estimate_table.addOneItem(estimate_head);
+    for (const CacheLevelEstimate &level : result.levels) {
+        std::vector<std::string> row(5);
+        row[0] = level.level;
+        row[1] = format_cache_capacity(level.capacity_bytes);
+        row[2] = format_ns(level.latency_ns) + "/load";
+        row[3] = format_cycles(
+            level.latency_ns, level.latency_cycles, fallback_clock_ghz);
+        char jump[64];
+        std::snprintf(jump, sizeof(jump), "%.2fx", level.jump_ratio);
+        row[4] = jump;
+        const std::string note = describe_transition(level);
+        if (!note.empty()) row[4] += " (" + note + ")";
+        estimate_table.addOneItem(row);
+    }
+    estimate_table.print();
 }
 
 } // namespace cpufb

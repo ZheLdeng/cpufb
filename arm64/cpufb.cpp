@@ -663,53 +663,9 @@ static bool cpubm_arm_cache(
     }
     table.addOneItem(cont);
 
-    // Cache-hierarchy latency curve: emit the dependent-load working-set
-    // sweep and the inferred per-level capacity/latency/jump estimates.
-    cout << "Cache curve translation mode: " << curve.translation_mode << endl;
-
-    Table curve_table;
-    curve_table.setColumnNum(2);
-    vector<string> curve_head = {"Working Set", "Dependent-load Latency"};
-    curve_table.addOneItem(curve_head);
-    for (const auto &point : curve.points) {
-        vector<string> row(2);
-        if (point.working_set_bytes >= 1024 * 1024) {
-            ostringstream size;
-            size << fixed << setprecision(2)
-                 << point.working_set_bytes / (1024.0 * 1024.0) << " MB";
-            row[0] = size.str();
-        } else {
-            row[0] = to_string(point.working_set_bytes / 1024) + " KB";
-        }
-        ostringstream latency;
-        latency << fixed << setprecision(3) << point.latency_ns << " ns/load";
-        row[1] = latency.str();
-        curve_table.addOneItem(row);
-    }
-    curve_table.print();
-
-    Table estimate_table;
-    estimate_table.setColumnNum(4);
-    // Every level, not just L1 and L2: a Kunpeng 920 resolves four, and
-    // with the deeper ones hidden the only sign of that was a debug dump.
-    vector<string> estimate_head = {
-        "Level", "Measured Capacity", "Latency", "Jump"};
-    estimate_table.addOneItem(estimate_head);
-    for (const auto &level : curve.levels) {
-        vector<string> row(4);
-        row[0] = level.level;
-        // Not every capacity is a whole number of MiB (1280 KiB is not 1 MB).
-        row[1] = cpufb::format_cache_capacity(level.capacity_bytes);
-        ostringstream latency, jump;
-        latency << fixed << setprecision(3) << level.latency_ns << " ns/load";
-        jump << fixed << setprecision(2) << level.jump_ratio << "x";
-        row[2] = latency.str();
-        row[3] = jump.str();
-        const string note = cpufb::describe_transition(level);
-        if (!note.empty()) row[3] += " (" + note + ")";
-        estimate_table.addOneItem(row);
-    }
-    estimate_table.print();
+    // The dependent-load sweep and the per-level estimates, in ns and in
+    // cycles (PMU, else the frequency table's clock when that table ran).
+    cpufb::print_cache_curve_tables(curve, freq.empty() ? 0.0 : freq[0]);
 
     // The L3 stream is kept inside the last level this core measured, unless
     // the curve itself is in doubt.

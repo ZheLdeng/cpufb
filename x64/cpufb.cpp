@@ -343,7 +343,8 @@ static bool cpubm_x64_cache(
     cont.resize(table.getCol());
     // The capacity curve runs first: the line probe sizes its eviction buffer
     // from the last level the curve found.
-    get_cachesize(&cache_size, set_of_threads[0]);
+    const cpufb::CacheCurveResult curve =
+        get_cachesize(&cache_size, set_of_threads[0]);
     get_cacheline(&cache_size, set_of_threads[0]);
     get_multiway(&cache_size, set_of_threads[0]);
     // The probe column always shows what was measured.  A result that
@@ -448,6 +449,10 @@ static bool cpubm_x64_cache(
         cont[5] = l3.source;
     }
     table.addOneItem(cont);
+    // The dependent-load sweep and the per-level estimates, in ns and in
+    // cycles (PMU, else the frequency table's clock when that table ran).
+    cpufb::print_cache_curve_tables(curve, freq.empty() ? 0.0 : freq[0]);
+
     const uint64_t measured_last_level =
         cache_size.curve_trusted && cache_size.test_L3 > 0
         ? static_cast<uint64_t>(cache_size.test_L3) * 1024

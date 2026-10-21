@@ -52,6 +52,16 @@ std::vector<CacheLatencyPoint> measured_curve(
     return curve;
 }
 
+// Synthetic points carry a 3 GHz cycle count, so a level's cycles must come
+// out as 3 x its ns.
+constexpr double kSyntheticGhz = 3.0;
+
+void set_latency(CacheLatencyPoint &point, double latency_ns)
+{
+    point.latency_ns = latency_ns;
+    point.latency_cycles = latency_ns * kSyntheticGhz;
+}
+
 std::vector<CacheLatencyPoint> make_curve(double base_latency_ns,
     const std::vector<Step> &steps, double drift_per_point = 0.0,
     uint64_t drift_from_kib = 0)
@@ -66,7 +76,7 @@ std::vector<CacheLatencyPoint> make_curve(double base_latency_ns,
             drift += drift_per_point;
         CacheLatencyPoint point;
         point.working_set_bytes = size;
-        point.latency_ns = latency + drift;
+        set_latency(point, latency + drift);
         points.push_back(point);
     }
     return points;
@@ -78,10 +88,18 @@ bool expect_levels(const char *name,
 {
     const std::vector<CacheLevelEstimate> levels =
         estimate_cache_levels(points);
+    // Synthetic curves carry cycles on every point and the level must
+    // inherit them; measured curves carry none and the level reports 0.
+    bool counted = !points.empty();
+    for (const CacheLatencyPoint &point : points)
+        counted = counted && point.latency_cycles > 0.0;
     bool ok = levels.size() == expected.size();
     for (size_t i = 0; ok && i < expected.size(); ++i)
         ok = levels[i].level == expected[i].level &&
-            levels[i].capacity_bytes == expected[i].capacity_kib * kKiB;
+            levels[i].capacity_bytes == expected[i].capacity_kib * kKiB &&
+            std::fabs(levels[i].latency_cycles -
+                (counted ? kSyntheticGhz * levels[i].latency_ns : 0.0)) <
+                1e-9;
     if (ok) return true;
 
     std::cerr << name << ": got";
@@ -115,8 +133,8 @@ int main()
     std::vector<CacheLatencyPoint> soft =
         make_curve(1.5, {{64, 4.6}, {1024, 22.0}});
     for (CacheLatencyPoint &point : soft) {
-        if (point.working_set_bytes == 56 * kKiB) point.latency_ns = 1.7;
-        if (point.working_set_bytes == 64 * kKiB) point.latency_ns = 2.0;
+        if (point.working_set_bytes == 56 * kKiB) set_latency(point, 1.7);
+        if (point.working_set_bytes == 64 * kKiB) set_latency(point, 2.0);
     }
     ok &= expect_levels("soft knee", soft, {{"L1", 64}, {"L2", 1024}});
 
@@ -237,9 +255,9 @@ int main()
             return lines <= capacity ? 1.0 : std::pow(capacity / lines, 2.5);
         };
         if (n <= 1024)
-            point.latency_ns = 1.6 + (4.5 - 1.6) * (1.0 - hits(n, 32));
+            set_latency(point, 1.6 + (4.5 - 1.6) * (1.0 - hits(n, 32)));
         else
-            point.latency_ns = 4.5 + (95.0 - 4.5) * (1.0 - hits(n, 1024));
+            set_latency(point, 4.5 + (95.0 - 4.5) * (1.0 - hits(n, 1024)));
         tailed.push_back(point);
     }
     ok &= expect_levels("ring tail", tailed, {{"L1", 32}, {"L2", 1024}});

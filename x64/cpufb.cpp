@@ -9,6 +9,8 @@
 #include <issue_kernels.hpp>
 #include <cache_bandwidth.hpp>
 #include <cache_topology.hpp>
+#include <prefetch_probe.hpp>
+#include <cacheline_probe.hpp>
 #include "runtime_features.h"
 
 #ifndef _WIN32
@@ -475,6 +477,12 @@ static bool cpubm_x64_cache(
     // The dependent-load sweep and the per-level estimates, in ns and in
     // cycles (PMU, else the frequency table's clock when that table ran).
     cpufb::print_cache_curve_tables(curve, freq.empty() ? 0.0 : freq[0]);
+    // Prefetcher reach, stream restart cost and software prefetch distance on
+    // the same core, sized from the curve's levels (common/prefetch_probe.hpp).
+    cpufb::append_prefetch_probe_rows(table, set_of_threads[0],
+        cpufb::effective_cacheline_size(
+            cache_size.theory_cacheline, cache_size.test_cacheline, 64),
+        curve, freq.empty() ? 0.0 : freq[0]);
 
     const uint64_t measured_last_level =
         cache_size.curve_trusted && cache_size.test_L3 > 0
@@ -509,8 +517,8 @@ static void init_table(vector<Table *> &tables)
     ti[4] = "Test Size";
     ti[5] = "Bandwidth (GB/s)";
     ti[6] = "Workset";
-    ti[7] = "Load IPC";
-    ti[8] = "Bytes/Load";
+    ti[7] = "Access IPC";
+    ti[8] = "Bytes/Access";
     tables[1]->setColumnNum(ti.size());
     tables[1]->addOneItem(ti);
 
@@ -889,6 +897,17 @@ static void cpufb_register_isa()
         if (runtime_features.avx512f)
             reg_load_kernel("--------", "vmovups.zmm(f32)", level,
                 load_vmovups_zmm_kernel, 64);
+#endif
+        // Store streams of the same widths.
+        reg_load_kernel("--------", "movups.xmm(f32) store", level,
+            store_movups_xmm_kernel, 16);
+        if (runtime_features.avx)
+            reg_load_kernel("--------", "vmovups.ymm(f32) store", level,
+                store_vmovups_kernel, 32);
+#ifdef _AVX512F_
+        if (runtime_features.avx512f)
+            reg_load_kernel("--------", "vmovups.zmm(f32) store", level,
+                store_vmovups_zmm_kernel, 64);
 #endif
     }
 

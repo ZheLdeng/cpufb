@@ -405,6 +405,29 @@ std::string describe_shared_level(const CacheLevelInfo &os, int probe_kib)
         " CPUs; the probe measures what one core reaches";
 }
 
+std::string describe_write_allocate(
+    double full_line_gbps, double partial_line_gbps, double nontemporal_gbps)
+{
+    if (!(full_line_gbps > 0.0) || !(partial_line_gbps > 0.0))
+        return "not measured: a store stream failed";
+    const double ratio = full_line_gbps / partial_line_gbps;
+    std::ostringstream text;
+    text.setf(std::ios::fixed);
+    text.precision(2);
+    if (ratio >= 1.6)
+        text << "full-line stores skip the line fill";
+    else if (ratio <= 1.25)
+        text << "full-line stores fetch the line before writing it";
+    else
+        text << "inconclusive";
+    text << " (full-line stream " << ratio
+         << "x the partial-line stream, which must fetch every line)";
+    if (nontemporal_gbps > 0.0)
+        text << "; non-temporal stores " << nontemporal_gbps / full_line_gbps
+             << "x the full-line stream";
+    return text.str();
+}
+
 std::string describe_l2_unmeasured(int status)
 {
     if (status == -2)

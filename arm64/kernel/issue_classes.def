@@ -24,26 +24,34 @@
 ISSUE_CLASS(alu, "add x", "ALU", GPR, NORMAL, 0, "")
 ISSUE_CLASS(neon_fmla, "fmla v.4s", "FSU", VEC, NORMAL, 0, "")
 ISSUE_CLASS(neon_ldr, "ldr q", "LSU", VEC, NORMAL, 0, "")
+ISSUE_CLASS(neon_str, "str q", "LSU", VEC, NORMAL, 0, "")
 #ifdef _SVE_
 ISSUE_CLASS(sve_fmla, "fmla z.s", "FSU", VEC, NORMAL, 1, "_SVE_")
 ISSUE_CLASS(sve_ld1w, "ld1w z.s", "LSU", VEC, NORMAL, 1, "_SVE_")
+ISSUE_CLASS(sve_st1w, "st1w z.s", "LSU", VEC, NORMAL, 1, "_SVE_")
 #endif
 #ifdef _SME_
 ISSUE_CLASS(sme_fmopa, "fmopa za.s", "SME", ZA, STREAMING, 1, "_SME_")
 ISSUE_CLASS(ssve_fmla, "fmla z.s (streaming)", "FSU", VEC, STREAMING, 1, "_SME_")
 ISSUE_CLASS(ssve_ld1w, "ld1w z.s (streaming)", "LSU", VEC, STREAMING, 1, "_SME_")
+ISSUE_CLASS(ssve_st1w, "st1w z.s (streaming)", "LSU", VEC, STREAMING, 1, "_SME_")
 #endif
 
 ISSUE_PAIR(neon_fmla, neon_ldr, "NEON compute:load")
+ISSUE_PAIR(neon_fmla, neon_str, "NEON compute:store")
+ISSUE_PAIR(neon_ldr, neon_str, "NEON load:store")
 ISSUE_PAIR(neon_fmla, alu, "FSU + ALU")
 ISSUE_PAIR(neon_ldr, alu, "LSU + ALU")
 #ifdef _SVE_
 ISSUE_PAIR(sve_fmla, neon_fmla, "SVE + NEON")
 ISSUE_PAIR(sve_fmla, sve_ld1w, "SVE compute:load")
+ISSUE_PAIR(sve_fmla, sve_st1w, "SVE compute:store")
+ISSUE_PAIR(sve_ld1w, sve_st1w, "SVE load:store")
 #endif
 #ifdef _SME_
 ISSUE_PAIR(sme_fmopa, ssve_fmla, "SME + streaming SVE compute")
 ISSUE_PAIR(sme_fmopa, ssve_ld1w, "SME + streaming SVE load")
+ISSUE_PAIR(sme_fmopa, ssve_st1w, "SME + streaming SVE store")
 #endif
 
 ISSUE_TRIPLE(alu, neon_fmla, neon_ldr, "Issue width")

@@ -3,93 +3,103 @@
 Rewritten in full at the end of every round. It describes what the branch
 needs verified *now*; it is not a log, and nothing is appended to it.
 
-- **Under test:** `fix/review-high-medium` @ the commit after `dd445c7`
-  (this checklist's own commit)
-- **This round:** the cache latency curve is reported in core cycles as
-  well as nanoseconds. Issue kernels, cache probes and verdict texts are
-  unchanged from `dd445c7`; everything listed there as still to run (M4 Pro
-  build, Android fallback, X60 `L2 ways`, MT6993) is still to run and the
-  instructions below still apply.
-- **Verified this round:** Neoverse V3 and the Xeon VM (fallback clock path,
-  `ctest` 16/16 on both). **Not verified:** the `perf_event` path, because
-  the PAC login timed out; the Kunpeng 920F run below is the one that
-  matters.
+- **Under test:** `fix/review-high-medium` @ the commit after `370b534`
+  (this checklist's own commit); the branch now contains main's Windows and
+  RISC-V commits.
+- **This round adds two things a GEMM kernel is designed around and cpufb
+  did not measure:** the store path (store issue classes, L1/L2 store rows,
+  memory write streams with a write-allocate verdict) and a prefetch probe
+  (hardware prefetcher stride reach, stream restart cost, software prefetch
+  distance and misses in flight). The latency curve in cycles from the last
+  round is unchanged and still needs its `perf_event` check on the 920F.
+- **Verified this round:** Neoverse V3 and the Xeon VM build, `ctest`
+  passes, and `--include-test=cache` prints the new tables and rows (numbers
+  below). **Not verified:** PAC (login timed out again), Apple, Android,
+  RISC-V (the prefetch probe is common code and runs there too; the store
+  rows do not exist on riscv64).
 
 ## What changed this round
 
-**Every curve point and every level has a `Latency (cycles)` column.** The
-seven chase samples of each point are each wrapped in a `perf_event` cycle
-count; the fastest sample by time keeps its own count, so time and cycles
-come from the same run. Without a counter the column is the latency times
-the frequency table's clock, and the header line says which:
+**Issue probe: store classes.** `str q`, `st1w z.s`, streaming `st1w` on
+ARM64 and `vmovups [m], ymm/zmm` on x86-64, with the pairs `compute:store`,
+`load:store` and `SME + streaming SVE store`. The kernel count grew from 330
+to 546 on a full SVE+SME build, so `multi_issue` takes about 1.7x as long.
+Expected: on a core with separate store pipes `load:store` reads
+`independent`; `compute:store` tells whether stores take FSU slots.
 
-```
-Cache curve translation mode: huge pages; cycles: perf_event cycles
-Cache curve translation mode: huge pages; cycles: latency x 2.473 GHz (frequency table clock)
-```
+**Load table: store rows** (`neon-st1h-4x1(f16) store`, `sve-st1h(f16)
+store`, `movups/vmovups ... store`) at L1 and L2, same harness as the loads;
+the columns `Load IPC` / `Bytes/Load` are now `Access IPC` / `Bytes/Access`.
 
-**`--mode=cache` now runs the frequency table first** so that the clock
-exists on hosts without a PMU. The frequency table appears before the cache
-tables; nothing else about the cache output changes.
+**Cache table: memory write streams and `Write allocate`.** Full-line,
+partial-line (16 B per 64 B line, counted as whole lines) and non-temporal
+store streams over the memory workset; the verdict compares the first two
+(a partial write must fetch the line; a full-line stream near 2x as fast did
+not). V3 read 2.72x, `skip the line fill`; the Xeon VM 1.00x, `fetch the
+line before writing it`, with `vmovntps` at 1.85x of the ordinary stores.
 
-**One printer for all three architectures.** The curve and level tables
-come from `print_cache_curve_tables()` in `common/cache_curve.cpp`; the
-ARM64, x86-64 and RISC-V front ends no longer carry their own copies, and
-x86-64 prints them for the first time.
+**Prefetch probe** (after the curve tables, four rows in the cache table):
 
-## Kunpeng 920F (PAC) — the `perf_event` path
+| | V3 | Xeon VM |
+|---|---|---|
+| L2 workset: stride 1 hides | 61% of the L2 latency (1.68 ns vs 4.26) | 0% (no L2->L1 stride prefetch seen) |
+| memory workset: stride 1 hides | 97% (2.46 ns vs 93 ns); strides up to 64 lines followed | 70% (32 ns vs 108 ns); reach 2 lines |
+| stream restart cost | 131 ns = 53 line-times; even 1024-line segments +16% | 208 ns = 6.5 line-times |
+| `prfm pldl1keep` / `prefetcht0`, memory | best 4.7 ns/line at distance 2 to 8, then worse | no effect beyond the hardware prefetcher |
+| `prfm pldl2keep`, memory | 4.67 ns/line from distance 32 (20 lines in flight, 13.7 GB/s random) | no effect |
+
+The V3 result that the L2-target prefetch sustains four times the random
+stream the L1-target one does, and that `pldl1keep` gets worse with distance,
+is a finding about the L1 miss queue; please check it repeats.
+
+## Kunpeng 920F (PAC)
 
 Inside `/home/share/zhounan`, in a fresh directory that is removed after the
-run:
+run (BiSheng clang, `TMPDIR` inside the tree, `dsub` to `q_pacopt`):
 
 ```bash
-source /work_ssd/software/HPCKit/26.1.RC1/setvars.sh
-export TMPDIR=$PWD/tmpdir && mkdir -p tmpdir
 cmake --preset native-release && cmake --build build/native-release -j16
 cd build/native-release && ctest
 ./cpufb '--thread_pool=[0]' --mode=cache | tee cache.txt
+./cpufb '--thread_pool=[0]' --include-test=multi_issue --save=issue.csv
 ```
 
-1. The header reads `cycles: perf_event cycles` and the column is filled.
-2. **L1 reads 4 cycles** (`4.0` within 0.1; the 920F's load-to-use latency)
-   and the ns column divided by the cycles column is the core clock in GHz
-   on every row of the L1 plateau. The L2 plateau is expected near 12 and
-   the LLC plateau around the value the `memory` row implies.
-3. Compare the cycles with the clock-estimate numbers from a run with the
-   PMU hidden (`perf_event_paranoid=3` or an unprivileged account): a
-   difference above 5% on the L1 plateau is a finding about the estimate.
+1. Curve header `cycles: perf_event cycles`, L1 at 4.0 cycles (last round's
+   item, still open).
+2. `Prefetch probe` header also says `perf_event cycles`; the memory
+   `prfm pldl2keep` row gives the misses in flight, which is the number the
+   mqa and tc3 documents wished they had.
+3. `Write allocate` verdict and the three write streams; tc3 measured
+   `str za` write-back at 85 GB/s on this machine, so the full-line stream
+   should be in that range.
+4. `multi_issue`: the new `SME + streaming SVE store` row (expect FMOPA to
+   block streaming `st1w` as it blocks streaming `fmla`), `NEON load:store`.
 
-## Everything else — the ns column is untouched
+## Apple M4 Pro, Android, Milk-V X60
 
-A `ctest` run and one `--mode=cache` per machine is enough; the ns numbers
-must match the last round within noise. Reference values from this round:
-
-| | L1 | L2 | cycle source |
-|---|---|---|---|
-| Neoverse V3 (192 cores) | 64 KiB, 1.54 ns, 3.8 to 4.0 cycles | 1 MiB, 4.19 ns, 10.4 to 10.9 | 2.47 to 2.59 GHz estimate (run to run) |
-| Xeon Platinum VM | 32 KiB, 1.61 ns, 4.5 | 1 MiB, 4.51 ns, 12.4 | 2.76 GHz estimate |
-
-The V3's L1 reads 3.8 to 4.0 because the estimated clock moved between
-runs; with a counter the column would not move. That is the point of the
-Kunpeng check above.
+As in the last two rounds (M4 must build as committed; Android cache
+fallback; X60 `L2 ways` repeatability), plus: the prefetch probe must print
+its tables and the four rows must carry a verdict, never an empty cell
+(`cpufb_cli_cache_probes` checks this). On the M4 the L2 workset is large
+(16 MiB L2) and the probe takes longer; report the time.
 
 ## Known gaps — please do not re-report these
 
 | Gap | Status |
 |---|---|
+| `pldl1keep` at memory worse with distance (V3) | Reported as measured; see the finding above. |
+| Restart cost fit `C` while the points do not follow `T + C/S` exactly | The fit is a summary; the 10% line is read off the measured segments. |
 | Cycle column moves with the clock estimate on hosts without a PMU | Expected; the header names the clock used. |
 | Estimated clock under downclocking kernels (AVX-512 licences) | Charged as lost IPC; the Cycle source row says so. |
 | One-point 97% band when two independent classes have equal peaks | Correct: T(x) = min(P/x, P/(1-x)) is a sharp peak. |
-| Kunpeng 920 `NEON compute:load` 2.92 at 2:1 | A property of that core (loads cost more than one slot), not of the probe. |
-| Three-class stream below a pair (V3: 8.0 against 9.8) | Loads take two dispatch slots; the width is taken from the pair and the row says so. |
-| SME rows absent on GCC 12/13 builds | The toolchain rejects `+sme`. |
-| Graviton3 L3 capacity reads 8 to 16 MiB or `none` across runs | Sliced last level seen from one core; the `re-measured` lines show it. |
+| Graviton3 L3 capacity reads 8 to 16 MiB or `none` across runs | Sliced last level seen from one core. |
 | X60 `L2 ways` read 12 / 9 / `hashed` across runs | Two passes must agree; a disagreement prints as not measured. |
-| riscv64 has no issue probe | Deliberate subset. |
+| riscv64 has no issue probe and no store rows | Deliberate subset. |
 | L3 ways and line; L2 ways on hashed L2 or without huge pages; M4 L1 line bound | Not measured or a bound, never guessed. |
 
 ## Reporting
 
-State the commit tested. Send the `Cache curve` header line and both curve
-tables (`--mode=cache` output), and for the 920F the same from a PMU-hidden
-run next to it.
+State the commit tested. Send the `Prefetch probe` header and its three
+tables, the cache table rows from `Memory sequential write bandwidth` to
+`Software prefetch distance (L2 target)`, and the `multi_issue` rows that
+contain `store`.

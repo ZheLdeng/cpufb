@@ -25,6 +25,16 @@ struct StreamKernelSpec
 // <arch>/kernel/stream_kernel.cpp.
 StreamKernelSpec select_stream_kernel();
 
+// Store streams for the write rows of the cache table, same signature and
+// block convention as the read kernel.  The partial-line kernel writes 16 B
+// of every 64 B line and counts the whole lines it touches as its bytes, so
+// its GB/s compares directly with the full-line stream (see
+// describe_write_allocate).  `function` is nullptr where an architecture has
+// no such kernel.
+StreamKernelSpec select_store_kernel();
+StreamKernelSpec select_partial_store_kernel();
+StreamKernelSpec select_nontemporal_store_kernel();
+
 // Running clock of the calling thread's core from the architecture's ADD
 // dependency chain (one dependent register-register ADD per cycle), or 0 when
 // the architecture has none.  Also implemented in stream_kernel.cpp.
@@ -35,7 +45,9 @@ double estimate_core_clock_hz();
 // --memory-bandwidth: one sequential-read stream per selected CPU.
 bool run_memory_bandwidth(const cpufb::cli::CliOptions &options);
 
-// L3 and DRAM stream rows of the cache table.
+// L3 and DRAM read stream rows of the cache table, then the DRAM write
+// streams (full-line, partial-line, non-temporal) and the write-allocate
+// verdict.  Store rows are skipped when the architecture has no store kernel.
 // measured_last_level_bytes: the deepest level the latency curve resolved on
 // the first core, or 0; the L3 stream is kept inside it (see
 // cap_to_measured_level).

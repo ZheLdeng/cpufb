@@ -28,9 +28,15 @@
     fmla v\r\().4s, v0.4s, v1.4s
 .endm
 
-// Sixteen consecutive lines of the buffer; the offset follows the register.
+// Four consecutive lines of the buffer; the offset follows the register.
 .macro ISSUE_INS_neon_ldr r
     ldr q\r, [x0, #((\r - 8) & 15) * 16]
+.endm
+
+// The store class writes the same four lines back; its registers are chains
+// nobody writes, so a store never waits for a result.
+.macro ISSUE_INS_neon_str r
+    str q\r, [x0, #((\r - 8) & 15) * 16]
 .endm
 
 #ifdef _SVE_
@@ -40,6 +46,10 @@
 
 .macro ISSUE_INS_sve_ld1w r
     ld1w z\r\().s, p0/z, [x0, #((\r - 8) & 7), mul vl]
+.endm
+
+.macro ISSUE_INS_sve_st1w r
+    st1w z\r\().s, p0, [x0, #((\r - 8) & 7), mul vl]
 .endm
 #endif
 
@@ -55,6 +65,10 @@
 
 .macro ISSUE_INS_ssve_ld1w r
     ld1w z\r\().s, p0/z, [x0, #((\r - 8) & 7), mul vl]
+.endm
+
+.macro ISSUE_INS_ssve_st1w r
+    st1w z\r\().s, p0, [x0, #((\r - 8) & 7), mul vl]
 .endm
 #endif
 

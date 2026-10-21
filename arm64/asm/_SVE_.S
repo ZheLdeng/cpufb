@@ -313,6 +313,39 @@
     subs x4, x4, #1
     bne 2b
     ret
+
+############
+# Store counterparts of load_sve_ld1h_kernel for the write-bandwidth rows:
+# sixteen whole-vector stores per block, ordinary and non-temporal.
+.macro SVE_STORE_STREAM name, insn
+    PROLOGUE \name
+    mov x4, x2
+    ptrue p0.h
+    mov z0.b, #0x5a
+    2:
+    mov x3, x1
+    mov x5, x0
+    1:
+    mov x6, x5
+    addvl x6, x6, #8
+    .irp k, 0,1,2,3,4,5,6,7
+    \insn z0.h, p0, [x5, #\k, MUL VL]
+    .endr
+    .irp k, 0,1,2,3,4,5,6,7
+    \insn z0.h, p0, [x6, #\k, MUL VL]
+    .endr
+    addvl x5, x5, #16
+    subs x3, x3, #1
+    bne 1b
+    subs x4, x4, #1
+    bne 2b
+    ret
+.endm
+
+#void store_sve_st1h_kernel(float*, int, int64_t);
+    SVE_STORE_STREAM store_sve_st1h_kernel, st1h
+#void store_sve_stnt1h_kernel(float*, int, int64_t);
+    SVE_STORE_STREAM store_sve_stnt1h_kernel, stnt1h
 ############
     PROLOGUE sve_fmla2_vv_f32f32f32
     preserve_caller_vec

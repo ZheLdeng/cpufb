@@ -43,12 +43,22 @@
     vmovups (\r * 32)(%rdi), %ymm\r
 .endm
 
+/* Store classes write the kernel's own lines back from registers nobody
+ * writes, so a store never waits for a result. */
+.macro ISSUE_INS_avx_store r
+    vmovups %ymm\r, (\r * 32)(%rdi)
+.endm
+
 .macro ISSUE_INS_avx512_fma r
     vfmadd231ps %zmm\r, %zmm\r, %zmm\r
 .endm
 
 .macro ISSUE_INS_avx512_load r
     vmovups (\r * 64)(%rdi), %zmm\r
+.endm
+
+.macro ISSUE_INS_avx512_store r
+    vmovups %zmm\r, (\r * 64)(%rdi)
 .endm
 
 /* -------------------------------------------------------------------------

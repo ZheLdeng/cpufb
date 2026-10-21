@@ -324,6 +324,44 @@ last column only labels the agreement (`probe (agrees with OS)`,
   never reaches memory latency (or, without a reference, stays under 40 ns at
   its deepest point, which no DRAM does) the L3 row says `not determined`
   instead of guessing, and a page-grouped sweep is repeated in global order.
+- Store path (arm64, x86-64): after the memory read row, three store streams
+  over the same workset. `Memory sequential write bandwidth` writes whole
+  lines with ordinary stores, `Memory partial-line write bandwidth` writes
+  16 B of every 64 B line (counted as the lines it touches, so the two GB/s
+  compare directly), `Memory non-temporal write bandwidth` uses the streaming
+  store form (`stnp`/`stnt1h`, `movntps`). The `Write allocate` row reads the
+  ratio: a partial-line write cannot avoid fetching the line, so a full-line
+  stream at about the same lines per second paid the same fetch (`fetch the
+  line before writing it`), and one near twice as fast did not (`skip the
+  line fill`); in between is `inconclusive`. The L1/L2 table (`load`
+  category) has store rows for the same vector widths, marked `store`.
+- Prefetch probe (`common/prefetch_probe`): what a kernel needs to know about
+  prefetching, measured with dependent loads so that only a prefetch can hide
+  a miss, on an L2-resident working set (geometric middle of L1 and L2) and a
+  memory one (`max(64 MiB, 4 x deepest level)`), printed as three tables and
+  four verdict rows:
+  1. `Hardware prefetch stride reach`: the lines chased sequentially with a
+     stride of 1 to 64 lines, against the same lines in random order; the
+     share of the random latency that disappears is what the prefetcher hid,
+     and the reach is the last stride before the first one that hides less
+     than half of what stride 1 hides (`no sequential prefetch observed` when
+     stride 1 hides under 20%).
+  2. `Stream restart cost`: sequential segments of 4 to 1024 lines placed at
+     random; the time per load is `T + C/S` with `T` the endless stream
+     (stride 1) and `C` fitted by least squares, reported in ns, cycles and
+     line-times, with the shortest measured segment that runs within 10% of
+     `T`, or how far over `T` the longest one still ran. This is the cost a
+     kernel pays at every panel boundary.
+  3. `Software prefetch distance`, one row per target (`prfm pldl1keep` /
+     `prefetcht0`, and `prfm pldl2keep` / `prefetcht1` at the memory working
+     set): the chain is prefetched D lines ahead from a side array that holds
+     the order, as a kernel prefetches addresses it knows; distance 0 is the
+     plain chase. The best time per load gives the misses the core keeps in
+     flight (`alone / best`), the first distance within 3% of the best is the
+     distance to run ahead, and the memory column's best rate is printed as a
+     single random stream's GB/s. `no measurable effect` when the best is
+     within 10% of the plain chase. On riscv64 the compiler emits a prefetch
+     only with Zicbop, so that row normally reads `no measurable effect`.
 
 The `load` category is the L1/L2 read-bandwidth table (`common/cache_bandwidth`):
 
@@ -337,7 +375,8 @@ The `load` category is the L1/L2 read-bandwidth table (`common/cache_bandwidth`)
 4. `Bandwidth (GB/s)` is the aggregate and needs only the wall clock;
    `Byte/Cycle` is per core and uses PMU cycles counted around the kernel, or
    elapsed time x the measured clock;
-5. `Load IPC` = Byte/Cycle / `Bytes/Load` says what the number means. A rate
+5. `Access IPC` = Byte/Cycle / `Bytes/Access` says what the number means (store rows,
+   marked `store`, report store instructions the same way). A rate
    that stays at the core's load-issue limit from L1 to L2 is bounded by the
    core (an SME unit accepting ~1 load per cycle moves 64 B per cycle with
    single-vector loads and 256 B with four-vector loads, from either level);
@@ -445,13 +484,17 @@ instruction class and per pair of classes, how the core issues them:
 ./cpufb --thread_pool='[0]' --include-test=multi_issue
 ```
 
-1. **Peaks.** Every class (`add x`, NEON `fmla`, NEON `ldr q`, SVE `fmla` and
-   `ld1w`, SME `fmopa` and the streaming-mode SVE forms on ARM64; scalar
-   `add`, SSE/AVX/AVX-512 FMA and loads on x86-64) runs as a stream of
+1. **Peaks.** Every class (`add x`, NEON `fmla`, `ldr q` and `str q`, SVE
+   `fmla`, `ld1w` and `st1w`, SME `fmopa` and the streaming-mode SVE forms on
+   ARM64; scalar `add`, SSE/AVX/AVX-512 FMA, loads and AVX/AVX-512 stores on
+   x86-64) runs as a stream of
    independent instructions rotating over its own registers. The peak is the
    IPC over all chains; a half-chain run must agree within 2%, otherwise the
    row says the accumulator latency, not the issue width, bounded it.
-2. **Mixes.** For a pair (A, B) the probe measures the total IPC of a stream
+2. **Mixes.** The pairs are the compute:load, compute:store and load:store
+   mixes of each vector form, the FSU and LSU classes against the ALU, SVE
+   against NEON, and SME `fmopa` against the streaming-mode SVE compute, load
+   and store. For a pair (A, B) the probe measures the total IPC of a stream
    with a fraction x of class-A instructions on the Farey grid of small-integer
    ratios (a + b <= 8, 21 ratios) plus the two pure endpoints. Total IPC is
    unimodal in x, so the maximum is found by golden-section search in about

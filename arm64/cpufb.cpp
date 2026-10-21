@@ -31,6 +31,8 @@
 #include <common.hpp>
 #include <cache_bandwidth.hpp>
 #include <cache_topology.hpp>
+#include <prefetch_probe.hpp>
+#include <cacheline_probe.hpp>
 #include <cmath>
 
 #if defined(__linux__) && !defined(__APPLE__)
@@ -666,6 +668,12 @@ static bool cpubm_arm_cache(
     // The dependent-load sweep and the per-level estimates, in ns and in
     // cycles (PMU, else the frequency table's clock when that table ran).
     cpufb::print_cache_curve_tables(curve, freq.empty() ? 0.0 : freq[0]);
+    // Prefetcher reach, stream restart cost and software prefetch distance on
+    // the same core, sized from the curve's levels (common/prefetch_probe.hpp).
+    cpufb::append_prefetch_probe_rows(table, cpu_id,
+        cpufb::effective_cacheline_size(
+            cache_size.theory_cacheline, cache_size.test_cacheline, 64),
+        curve, freq.empty() ? 0.0 : freq[0]);
 
     // The L3 stream is kept inside the last level this core measured, unless
     // the curve itself is in doubt.
@@ -705,8 +713,8 @@ static void init_table(vector<Table *> &tables)
     ti[5] = "Capacity Source";
     ti[6] = "Bandwidth (GB/s)";
     ti[7] = "Cycle Source";
-    ti[8] = "Load IPC";
-    ti[9] = "Bytes/Load";
+    ti[8] = "Access IPC";
+    ti[9] = "Bytes/Access";
     tables[1]->setColumnNum(ti.size());
     tables[1]->addOneItem(ti);
 
@@ -1558,6 +1566,9 @@ static void cpufb_register_isa()
             (void *)load_neon_ld1w_kernel, LOAD_NEON_4_REGISTERS);
         reg_load_kernel("--------", "neon-ld1d(f64)", level, kLoadLoopTime,
             (void *)load_neon_ld1d_kernel, LOAD_NEON_4_REGISTERS);
+        reg_load_kernel("--------", "neon-st1h-4x1(f16) store", level,
+            kLoadLoopTime, (void *)store_neon_st1h_4x1_kernel,
+            LOAD_NEON_16_BYTES);
 #ifdef _SVE_
         require_feature("_SVE_");
         reg_load_kernel("--------", "sve-ld1b(u8)", level, kLoadLoopTime,
@@ -1568,6 +1579,8 @@ static void cpufb_register_isa()
             (void *)load_ld1w_kernel, LOAD_SVE);
         reg_load_kernel("--------", "sve-ld1d(f64)", level, kLoadLoopTime,
             (void *)load_sve_ld1d_kernel, LOAD_SVE);
+        reg_load_kernel("--------", "sve-st1h(f16) store", level,
+            kLoadLoopTime, (void *)store_sve_st1h_kernel, LOAD_SVE);
 #endif
 #ifdef _SME_
         require_feature("_SME_");

@@ -109,49 +109,6 @@ double plateau_median(const std::vector<CacheLatencyPoint> &points,
     return median_of(values);
 }
 
-// Core cycles around one chase sample, when the PMU is accessible.  A
-// dependent-load latency in cycles is what a kernel's software-pipelining
-// depth is sized from; nanoseconds depend on the clock the sweep happened to
-// run at.
-class ChaseCycles
-{
-public:
-    ChaseCycles()
-#ifdef __linux__
-        : counter_(0, false)
-#endif
-    {
-    }
-    bool available() const
-    {
-#ifdef __linux__
-        return counter_.available();
-#else
-        return false;
-#endif
-    }
-    void start()
-    {
-#ifdef __linux__
-        counter_.start();
-#endif
-    }
-    double stop()
-    {
-#ifdef __linux__
-        counter_.stop();
-        return static_cast<double>(counter_.get_cycle());
-#else
-        return 0.0;
-#endif
-    }
-
-private:
-#ifdef __linux__
-    PerfEventCycle counter_;
-#endif
-};
-
 struct ChaseSample
 {
     double ns;
@@ -195,45 +152,6 @@ std::vector<Plateau> find_plateaus(const std::vector<CacheLatencyPoint> &points)
         }
     }
     return plateaus;
-}
-
-bool transparent_huge_pages_available()
-{
-#ifdef __linux__
-    std::ifstream file("/sys/kernel/mm/transparent_hugepage/enabled");
-    std::string policy;
-    if (!file || !std::getline(file, policy)) return false;
-    return policy.find("[never]") == std::string::npos;
-#else
-    return false;
-#endif
-}
-
-// Ring order over `line_count` lines.  group_lines == 0 shuffles globally;
-// otherwise groups are visited in random order and shuffled internally.  The
-// ring always starts at line 0 because the chase kernels start at word 0.
-std::vector<size_t> build_ring_order(
-    size_t line_count, size_t group_lines, uint64_t seed)
-{
-    std::mt19937_64 random(seed);
-    if (group_lines == 0 || group_lines >= line_count) group_lines = line_count;
-    const size_t group_count = (line_count + group_lines - 1) / group_lines;
-    std::vector<size_t> groups(group_count);
-    std::iota(groups.begin(), groups.end(), 0);
-    std::shuffle(groups.begin(), groups.end(), random);
-
-    std::vector<size_t> order;
-    order.reserve(line_count);
-    for (size_t group : groups) {
-        const size_t begin = group * group_lines;
-        const size_t end = std::min(line_count, begin + group_lines);
-        const size_t offset = order.size();
-        for (size_t line = begin; line < end; ++line) order.push_back(line);
-        std::shuffle(order.begin() + offset, order.end(), random);
-    }
-    std::rotate(
-        order.begin(), std::find(order.begin(), order.end(), 0), order.end());
-    return order;
 }
 
 // A ring is a fixed sequence of line addresses, and a core with a temporal
@@ -280,7 +198,7 @@ size_t slots_for(size_t stride_words)
 
 ChaseSample measure_pointer_chase(CacheChaseKernel chase, int32_t *buffer,
     uint64_t working_set_bytes, size_t line_size, size_t group_lines,
-    uint64_t seed, ChaseCycles &cycles)
+    uint64_t seed, SampleCycles &cycles)
 {
     const ChaseSample none = {0.0, 0.0};
     const size_t stride = std::max(sizeof(int32_t), line_size);
@@ -392,27 +310,6 @@ double measure_memory_latency(
 // available reported 0.90 GB, so the memory reference below was skipped and
 // every capacity it measured carried a warning that the chase had been
 // prefetched, next to rows that agreed with the OS exactly.
-uint64_t available_memory_bytes()
-{
-#ifdef __linux__
-    std::ifstream meminfo("/proc/meminfo");
-    std::string key;
-    while (meminfo >> key) {
-        unsigned long long value = 0;
-        if (key == "MemAvailable:" && meminfo >> value) return value * 1024;
-        std::getline(meminfo, key);
-    }
-#elif defined(_WIN32)
-    return windows::available_memory_bytes();
-#elif defined(_SC_AVPHYS_PAGES) && defined(_SC_PAGESIZE)
-    const long pages = sysconf(_SC_AVPHYS_PAGES);
-    const long page = sysconf(_SC_PAGESIZE);
-    if (pages > 0 && page > 0)
-        return static_cast<uint64_t>(pages) * static_cast<uint64_t>(page);
-#endif
-    return 0;
-}
-
 uint64_t choose_region_bytes(uint64_t max_bytes)
 {
     const uint64_t available = available_memory_bytes();
@@ -439,6 +336,196 @@ bool never_reached_memory(
 }
 
 } // namespace
+
+// ---------------------------------------------------------------------------
+// Pieces shared with the prefetch probe.
+// ---------------------------------------------------------------------------
+
+SampleCycles::SampleCycles() : counter_(nullptr)
+{
+#ifdef __linux__
+    PerfEventCycle *counter = new PerfEventCycle(0, false);
+    if (counter->available())
+        counter_ = counter;
+    else
+        delete counter;
+#endif
+}
+
+SampleCycles::~SampleCycles()
+{
+#ifdef __linux__
+    delete static_cast<PerfEventCycle *>(counter_);
+#endif
+}
+
+bool SampleCycles::available() const
+{
+    return counter_ != nullptr;
+}
+
+void SampleCycles::start()
+{
+#ifdef __linux__
+    if (counter_ != nullptr) static_cast<PerfEventCycle *>(counter_)->start();
+#endif
+}
+
+double SampleCycles::stop()
+{
+#ifdef __linux__
+    if (counter_ == nullptr) return 0.0;
+    PerfEventCycle *counter = static_cast<PerfEventCycle *>(counter_);
+    counter->stop();
+    return static_cast<double>(counter->get_cycle());
+#else
+    return 0.0;
+#endif
+}
+
+MappedRegion::~MappedRegion()
+{
+#ifdef __linux__
+    if (mapping_ != nullptr) munmap(mapping_, mapping_bytes_);
+#else
+    if (mapping_ != nullptr) aligned_deallocate(mapping_);
+#endif
+}
+
+bool MappedRegion::map(uint64_t bytes, bool huge_pages)
+{
+    const size_t huge_page_size = 2ULL * 1024 * 1024;
+#ifdef __linux__
+    mapping_bytes_ = static_cast<size_t>(bytes) + huge_page_size;
+    void *mapping = mmap(nullptr, mapping_bytes_, PROT_READ | PROT_WRITE,
+        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (mapping == MAP_FAILED) return false;
+    mapping_ = mapping;
+    const uintptr_t aligned =
+        (reinterpret_cast<uintptr_t>(mapping) + huge_page_size - 1) &
+        ~(huge_page_size - 1);
+    base_ = reinterpret_cast<void *>(aligned);
+    if (huge_pages)
+        (void)madvise(base_, static_cast<size_t>(bytes), MADV_HUGEPAGE);
+#else
+    (void)huge_pages;
+    if (aligned_allocate(
+            &mapping_, huge_page_size, static_cast<size_t>(bytes)) != 0)
+        return false;
+    base_ = mapping_;
+#endif
+    bytes_ = bytes;
+    std::memset(base_, 0, static_cast<size_t>(bytes));
+    return true;
+}
+
+bool transparent_huge_pages_available()
+{
+#ifdef __linux__
+    std::ifstream file("/sys/kernel/mm/transparent_hugepage/enabled");
+    std::string policy;
+    if (!file || !std::getline(file, policy)) return false;
+    return policy.find("[never]") == std::string::npos;
+#else
+    return false;
+#endif
+}
+
+uint64_t available_memory_bytes()
+{
+#ifdef __linux__
+    std::ifstream meminfo("/proc/meminfo");
+    std::string key;
+    while (meminfo >> key) {
+        unsigned long long value = 0;
+        if (key == "MemAvailable:" && meminfo >> value) return value * 1024;
+        std::getline(meminfo, key);
+    }
+#elif defined(_WIN32)
+    return windows::available_memory_bytes();
+#elif defined(_SC_AVPHYS_PAGES) && defined(_SC_PAGESIZE)
+    const long pages = sysconf(_SC_AVPHYS_PAGES);
+    const long page = sysconf(_SC_PAGESIZE);
+    if (pages > 0 && page > 0)
+        return static_cast<uint64_t>(pages) * static_cast<uint64_t>(page);
+#endif
+    return 0;
+}
+
+size_t ring_group_lines(size_t line, bool huge_pages, std::string &mode)
+{
+#ifdef _WIN32
+    const long page_size = static_cast<long>(windows::page_size());
+#else
+    const long page_size = sysconf(_SC_PAGESIZE);
+#endif
+    const size_t page_bytes =
+        page_size > 0 ? static_cast<size_t>(page_size) : 4096;
+    // Page-grouped order keeps translation misses amortized when only 4 KiB
+    // pages are available.  It is not used with 16 KiB or larger pages: the
+    // TLB reach is then several MiB, and visiting a whole page at once lets a
+    // region prefetcher serve most accesses (an Apple M4 read 14 ns at 48 MiB
+    // instead of ~110 ns, non-monotonically, and L2 could not be placed).
+    const size_t kLargePageBytes = 16 * 1024;
+    // CPUFB_CHASE_NO_PAGE_GROUPS=1 shuffles globally instead, which costs a
+    // translation miss per access and is the control for the other half of
+    // that trade: visiting a whole page at once is exactly what lets a region
+    // prefetcher serve it.  A MediaTek MT6993 answers a 128 MiB chase in
+    // 26 ns under page-grouped order, which is not memory, and its curve
+    // falls by 0.9 ns at 12 MiB; the same sweep on huge pages rises there.
+    const char *no_groups = std::getenv("CPUFB_CHASE_NO_PAGE_GROUPS");
+    const bool group_by_page = !huge_pages && page_bytes < kLargePageBytes &&
+        (no_groups == nullptr || no_groups[0] != '1');
+    if (huge_pages)
+        mode = "huge pages";
+    else if (group_by_page)
+        mode = "page-grouped order";
+    else
+        mode = "large base pages";
+    return group_by_page ? std::max<size_t>(1, page_bytes / line) : 0;
+}
+
+// Ring order over `line_count` lines.  group_lines == 0 shuffles globally;
+// otherwise groups are visited in random order and shuffled internally.  The
+// ring always starts at line 0 because the chase kernels start at word 0.
+std::vector<size_t> build_ring_order(
+    size_t line_count, size_t group_lines, uint64_t seed)
+{
+    std::mt19937_64 random(seed);
+    if (group_lines == 0 || group_lines >= line_count) group_lines = line_count;
+    const size_t group_count = (line_count + group_lines - 1) / group_lines;
+    std::vector<size_t> groups(group_count);
+    std::iota(groups.begin(), groups.end(), 0);
+    std::shuffle(groups.begin(), groups.end(), random);
+
+    std::vector<size_t> order;
+    order.reserve(line_count);
+    for (size_t group : groups) {
+        const size_t begin = group * group_lines;
+        const size_t end = std::min(line_count, begin + group_lines);
+        const size_t offset = order.size();
+        for (size_t line = begin; line < end; ++line) order.push_back(line);
+        std::shuffle(order.begin() + offset, order.end(), random);
+    }
+    std::rotate(
+        order.begin(), std::find(order.begin(), order.end(), 0), order.end());
+    return order;
+}
+
+std::string format_latency_cycles(
+    double latency_ns, double counted_cycles, double fallback_clock_ghz)
+{
+    char text[32];
+    if (counted_cycles > 0.0)
+        std::snprintf(text, sizeof(text), "%.1f", counted_cycles);
+    else if (fallback_clock_ghz > 0.0 && latency_ns > 0.0)
+        std::snprintf(text, sizeof(text), "%.1f", latency_ns * fallback_clock_ghz);
+    else
+        return "-";
+    return text;
+}
+
+
 
 // Rise bounds are interpolated, so they are rounded for the note.
 std::string format_approximate_capacity(uint64_t bytes)
@@ -690,60 +777,14 @@ CacheCurveResult measure_cache_curve(
     const size_t line = line_size > 0 ? static_cast<size_t>(line_size) : 64;
 
     const bool huge_pages = transparent_huge_pages_available();
-#ifdef _WIN32
-    const long page_size = static_cast<long>(windows::page_size());
-#else
-    const long page_size = sysconf(_SC_PAGESIZE);
-#endif
-    const size_t page_bytes =
-        page_size > 0 ? static_cast<size_t>(page_size) : 4096;
-    // Page-grouped order keeps translation misses amortized when only 4 KiB
-    // pages are available.  It is not used with 16 KiB or larger pages: the
-    // TLB reach is then several MiB, and visiting a whole page at once lets a
-    // region prefetcher serve most accesses (an Apple M4 read 14 ns at 48 MiB
-    // instead of ~110 ns, non-monotonically, and L2 could not be placed).
-    const size_t kLargePageBytes = 16 * 1024;
-    // CPUFB_CHASE_NO_PAGE_GROUPS=1 shuffles globally instead, which costs a
-    // translation miss per access and is the control for the other half of
-    // that trade: visiting a whole page at once is exactly what lets a region
-    // prefetcher serve it.  A MediaTek MT6993 answers a 128 MiB chase in
-    // 26 ns under page-grouped order, which is not memory, and its curve
-    // falls by 0.9 ns at 12 MiB; the same sweep on huge pages rises there.
-    const char *no_groups = std::getenv("CPUFB_CHASE_NO_PAGE_GROUPS");
-    const bool group_by_page = !huge_pages && page_bytes < kLargePageBytes &&
-        (no_groups == nullptr || no_groups[0] != '1');
     const size_t group_lines =
-        group_by_page ? std::max<size_t>(1, page_bytes / line) : 0;
-    if (huge_pages)
-        result.translation_mode = "huge pages";
-    else if (group_by_page)
-        result.translation_mode = "page-grouped order";
-    else
-        result.translation_mode = "large base pages";
+        ring_group_lines(line, huge_pages, result.translation_mode);
+    const bool group_by_page = group_lines > 0;
 
     const uint64_t region_bytes = choose_region_bytes(max_bytes);
-    void *allocation = nullptr;
-#ifdef __linux__
-    const size_t huge_page_size = 2ULL * 1024 * 1024;
-    const size_t mapping_bytes =
-        static_cast<size_t>(region_bytes) + huge_page_size;
-    void *mapping = mmap(nullptr, mapping_bytes, PROT_READ | PROT_WRITE,
-        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (mapping == MAP_FAILED) return result;
-    const uintptr_t aligned =
-        (reinterpret_cast<uintptr_t>(mapping) + huge_page_size - 1) &
-        ~(huge_page_size - 1);
-    allocation = reinterpret_cast<void *>(aligned);
-    if (huge_pages)
-        (void)madvise(
-            allocation, static_cast<size_t>(region_bytes), MADV_HUGEPAGE);
-#else
-    if (aligned_allocate(&allocation, std::max(page_bytes, line),
-            static_cast<size_t>(region_bytes)) != 0)
-        return result;
-#endif
-    std::memset(allocation, 0, static_cast<size_t>(region_bytes));
-    int32_t *buffer = static_cast<int32_t *>(allocation);
+    MappedRegion region;
+    if (!region.map(region_bytes, huge_pages)) return result;
+    int32_t *buffer = static_cast<int32_t *>(region.base());
 
     // Measured first, while nothing of the region is cache resident.
     if (region_bytes >= max_bytes * 2)
@@ -751,7 +792,7 @@ CacheCurveResult measure_cache_curve(
             chase, buffer, region_bytes, 0x4d454d4f52595245ULL);
 
     const std::vector<uint64_t> sizes = build_cache_curve_sizes(max_bytes);
-    ChaseCycles cycles;
+    SampleCycles cycles;
     auto seed_for = [](size_t i, int ring) {
         return 0x4350554642ULL + i * 0x9e3779b97f4a7c15ULL +
             static_cast<uint64_t>(ring) * 0xd1b54a32d192ed03ULL;
@@ -846,30 +887,12 @@ CacheCurveResult measure_cache_curve(
             result.remeasured.push_back(record);
         }
     }
-#ifdef __linux__
-    munmap(mapping, mapping_bytes);
-#else
-    aligned_deallocate(allocation);
-#endif
     result.levels = estimate_cache_levels(
         result.points, result.memory_latency_ns, &result.reached_memory);
     return result;
 }
 
 namespace {
-
-std::string format_cycles(double latency_ns, double counted_cycles,
-    double fallback_clock_ghz)
-{
-    char text[32];
-    if (counted_cycles > 0.0)
-        std::snprintf(text, sizeof(text), "%.1f", counted_cycles);
-    else if (fallback_clock_ghz > 0.0 && latency_ns > 0.0)
-        std::snprintf(text, sizeof(text), "%.1f", latency_ns * fallback_clock_ghz);
-    else
-        return "-";
-    return text;
-}
 
 std::string format_ns(double latency_ns)
 {
@@ -907,7 +930,7 @@ void print_cache_curve_tables(
         std::vector<std::string> row(3);
         row[0] = format_cache_capacity(point.working_set_bytes);
         row[1] = format_ns(point.latency_ns) + "/load";
-        row[2] = format_cycles(
+        row[2] = format_latency_cycles(
             point.latency_ns, point.latency_cycles, fallback_clock_ghz);
         curve_table.addOneItem(row);
     }
@@ -924,7 +947,7 @@ void print_cache_curve_tables(
         row[0] = level.level;
         row[1] = format_cache_capacity(level.capacity_bytes);
         row[2] = format_ns(level.latency_ns) + "/load";
-        row[3] = format_cycles(
+        row[3] = format_latency_cycles(
             level.latency_ns, level.latency_cycles, fallback_clock_ghz);
         char jump[64];
         std::snprintf(jump, sizeof(jump), "%.2fx", level.jump_ratio);

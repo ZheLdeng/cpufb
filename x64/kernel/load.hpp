@@ -17,6 +17,14 @@ extern "C"
     void CPUFB_SYSV_ABI load_movss_stream_kernel(float *, int, int64_t);
     void CPUFB_SYSV_ABI load_movups_xmm_kernel(float *, int, int64_t);
     void CPUFB_SYSV_ABI load_vmovups_zmm_kernel(float *, int, int64_t);
+    // Store streams for the write-bandwidth rows (asm/_LDP_.S).
+    void CPUFB_SYSV_ABI store_movups_xmm_kernel(float *, int, int64_t);
+    void CPUFB_SYSV_ABI store_vmovups_kernel(float *, int, int64_t);
+    void CPUFB_SYSV_ABI store_vmovups_zmm_kernel(float *, int, int64_t);
+    void CPUFB_SYSV_ABI store_movntps_xmm_kernel(float *, int, int64_t);
+    void CPUFB_SYSV_ABI store_vmovntps_kernel(float *, int, int64_t);
+    void CPUFB_SYSV_ABI store_vmovntps_zmm_kernel(float *, int, int64_t);
+    void CPUFB_SYSV_ABI store_partial_line_kernel(float *, int, int64_t);
 }
 struct CacheData
 {

@@ -27,6 +27,44 @@ StreamKernelSpec select_stream_kernel()
     return spec;
 }
 
+StreamKernelSpec select_store_kernel()
+{
+#if defined(_SVE_) && defined(__linux__) && !defined(__APPLE__)
+    if (arm64_runtime_features().sve) {
+        const std::uint64_t vector_bytes = load_sve_vector_bytes();
+        StreamKernelSpec spec = {store_sve_st1h_kernel,
+            "sve-st1h(f16) " + std::to_string(vector_bytes * 8) + "-bit",
+            16 * vector_bytes, 16};
+        return spec;
+    }
+#endif
+    StreamKernelSpec spec = {
+        store_neon_st1h_4x1_kernel, "neon-st1h-4x1(f16)", 256, 16};
+    return spec;
+}
+
+StreamKernelSpec select_nontemporal_store_kernel()
+{
+#if defined(_SVE_) && defined(__linux__) && !defined(__APPLE__)
+    if (arm64_runtime_features().sve) {
+        const std::uint64_t vector_bytes = load_sve_vector_bytes();
+        StreamKernelSpec spec = {store_sve_stnt1h_kernel,
+            "sve-stnt1h(f16) " + std::to_string(vector_bytes * 8) + "-bit",
+            16 * vector_bytes, 16};
+        return spec;
+    }
+#endif
+    StreamKernelSpec spec = {store_neon_stnp_kernel, "neon-stnp(q)", 256, 8};
+    return spec;
+}
+
+StreamKernelSpec select_partial_store_kernel()
+{
+    StreamKernelSpec spec = {
+        store_neon_partial_line_kernel, "str q, 16 B per 64 B line", 256, 4};
+    return spec;
+}
+
 // Best of three: interrupts and migrations can only lengthen a run.
 double estimate_core_clock_hz()
 {

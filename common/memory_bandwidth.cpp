@@ -884,6 +884,59 @@ void append_cache_bandwidth_failure_row(Table &table, const string &item)
     table.addOneItem(row);
 }
 
+// "Memory sequential read bandwidth", or "Memory aggregate ..." for several
+// synchronized streams.
+string memory_item(const string &what, std::size_t streams)
+{
+    return "Memory " + string(streams > 1 ? "aggregate " : "") + what;
+}
+
+// The three store streams over the read stream's workset, each rounded down
+// to whole blocks of its own kernel, and the verdict their ratio supports.
+void append_memory_store_rows(const CliOptions &options, Table &table,
+    std::uint64_t read_workset_bytes, const string &workset_source)
+{
+    const vector<int> &cpus = options.thread_pool;
+    struct Stream
+    {
+        KernelSpec kernel;
+        const char *item;
+        double gb_per_second;
+    };
+    Stream streams[3] = {
+        {cpufb::select_store_kernel(), "sequential write bandwidth", 0.0},
+        {cpufb::select_partial_store_kernel(), "partial-line write bandwidth", 0.0},
+        {cpufb::select_nontemporal_store_kernel(), "non-temporal write bandwidth",
+            0.0}};
+    if (streams[0].kernel.function == nullptr) return;
+    for (Stream &stream : streams) {
+        if (stream.kernel.function == nullptr) continue;
+        const string item = memory_item(stream.item, cpus.size());
+        const std::uint64_t bytes = read_workset_bytes /
+            stream.kernel.bytes_per_block * stream.kernel.bytes_per_block;
+        BandwidthReport report;
+        if (bytes == 0 ||
+            !measure_parallel_stream_bandwidth(cpus, stream.kernel, bytes,
+                workset_source, options.memory_repetitions, options.idle_time,
+                1, report)) {
+            append_cache_bandwidth_failure_row(table, item);
+            continue;
+        }
+        stream.gb_per_second = report.median.gb_per_second;
+        append_cache_bandwidth_row(table, item, cpus, report);
+    }
+    vector<string> row(table.getCol());
+    row[0] = "Write allocate";
+    row[1] = cpus.size() == 1 ? "core " + std::to_string(cpus.front())
+                              : std::to_string(cpus.size()) + " cores";
+    row[2] = "full-line vs partial-line store streams";
+    row[3] = "-";
+    row[4] = cpufb::format_cache_capacity(read_workset_bytes);
+    row[5] = cpufb::describe_write_allocate(streams[0].gb_per_second,
+        streams[1].gb_per_second, streams[2].gb_per_second);
+    table.addOneItem(row);
+}
+
 } // namespace
 
 bool append_cache_memory_bandwidth(const CliOptions &options, Table &table,
@@ -923,10 +976,10 @@ bool append_cache_memory_bandwidth(const CliOptions &options, Table &table,
             table, "Memory sequential read bandwidth");
         return true;
     }
-    append_cache_bandwidth_row(table,
-        cpus.size() == 1 ? "Memory sequential read bandwidth"
-                         : "Memory aggregate sequential read bandwidth",
-        cpus, report);
+    append_cache_bandwidth_row(
+        table, memory_item("sequential read bandwidth", cpus.size()), cpus,
+        report);
+    append_memory_store_rows(options, table, requested_bytes, workset_source);
     return true;
 }
 

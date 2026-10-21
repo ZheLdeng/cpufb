@@ -45,8 +45,8 @@ const double kSharedSlack = 1.05;
 const double kIndependentSlack = 0.95;
 // The peak-proportional mix and how many grid neighbours of it are run.
 const size_t kTripleCandidates = 3;
-// L1-resident buffer handed to every kernel: the widest load form reads
-// eight vectors of up to 256 bytes from it.
+// L1-resident buffer handed to every kernel: the widest load or store form
+// touches eight vectors of up to 256 bytes of it.
 const size_t kBufferBytes = 8192;
 
 double elapsed_seconds(const timespec &start, const timespec &end)
@@ -112,7 +112,7 @@ public:
     }
 
     // Returns 0 when nothing could be measured.
-    double cycles_per_loop(IssueKernelFn kernel, const void *buffer)
+    double cycles_per_loop(IssueKernelFn kernel, void *buffer)
     {
         if (kernel == nullptr) return 0.0;
         // Calibrate the loop count to the sample length, then warm up.
@@ -406,7 +406,7 @@ bool run_issue_probe(const IssueProbeInput &input, int cpu,
     void *allocation = nullptr;
     if (aligned_allocate(&allocation, 4096, kBufferBytes) != 0) return false;
     std::memset(allocation, 0, kBufferBytes);
-    const void *buffer = allocation;
+    void *buffer = allocation;
 
     // Pure peaks.
     std::map<std::string, ClassState> classes;

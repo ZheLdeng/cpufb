@@ -17,16 +17,14 @@
 extern "C"
 {
 #define ISSUE_CLASS(name, instruction, unit, bank, mode, attr, feature)        \
-    void CPUFB_SYSV_ABI issue_##name##_pure_h(const void *, int64_t);          \
-    void CPUFB_SYSV_ABI issue_##name##_pure_f(const void *, int64_t);
+    void CPUFB_SYSV_ABI issue_##name##_pure_h(void *, int64_t);                \
+    void CPUFB_SYSV_ABI issue_##name##_pure_f(void *, int64_t);
 #define ISSUE_PAIR_DECL(A, B, a, b)                                            \
-    void CPUFB_SYSV_ABI issue_##A##_##B##_##a##x##b##_il(                      \
-        const void *, int64_t);                                                \
-    void CPUFB_SYSV_ABI issue_##A##_##B##_##a##x##b##_bl(                      \
-        const void *, int64_t)
+    void CPUFB_SYSV_ABI issue_##A##_##B##_##a##x##b##_il(void *, int64_t);     \
+    void CPUFB_SYSV_ABI issue_##A##_##B##_##a##x##b##_bl(void *, int64_t)
 #define ISSUE_TRIPLE_DECL(A, B, C, a, b, c)                                    \
     void CPUFB_SYSV_ABI issue_##A##_##B##_##C##_##a##x##b##x##c##_il(         \
-        const void *, int64_t)
+        void *, int64_t)
 #define ISSUE_PAIR(A, B, label) ISSUE_RATIO_GRID(ISSUE_PAIR_DECL, A, B, ;);
 #define ISSUE_TRIPLE(A, B, C, label)                                           \
     ISSUE_TRIPLE_GRID(ISSUE_TRIPLE_DECL, A, B, C, ;);

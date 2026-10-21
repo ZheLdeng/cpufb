@@ -71,6 +71,68 @@ struct CacheCurveResult
     std::string translation_mode;
 };
 
+// Core cycles around one timed sample when the PMU is accessible (a
+// dependent-load latency in cycles is what a kernel's pipelining depth is
+// sized from; nanoseconds depend on the clock the sweep ran at).  Shared by
+// the latency curve and the prefetch probe.
+class SampleCycles
+{
+public:
+    SampleCycles();
+    ~SampleCycles();
+    SampleCycles(const SampleCycles &) = delete;
+    SampleCycles &operator=(const SampleCycles &) = delete;
+    bool available() const;
+    void start();
+    double stop(); // cycles counted since start(), 0 without a counter
+
+private:
+    void *counter_; // PerfEventCycle on Linux, null elsewhere
+};
+
+// An anonymous region aligned to 2 MiB, zero-filled, MADV_HUGEPAGE when
+// transparent huge pages are enabled.
+class MappedRegion
+{
+public:
+    MappedRegion() : base_(nullptr), bytes_(0), mapping_(nullptr), mapping_bytes_(0) {}
+    ~MappedRegion();
+    MappedRegion(const MappedRegion &) = delete;
+    MappedRegion &operator=(const MappedRegion &) = delete;
+    bool map(uint64_t bytes, bool huge_pages);
+    void *base() const { return base_; }
+    uint64_t bytes() const { return bytes_; }
+
+private:
+    void *base_;
+    uint64_t bytes_;
+    void *mapping_;
+    size_t mapping_bytes_;
+};
+
+bool transparent_huge_pages_available();
+
+// MemAvailable (or the platform's equivalent), 0 when unknown.
+uint64_t available_memory_bytes();
+
+// Lines per group of the ring order for `line`-byte lines, and the name of
+// the resulting translation mode: 0 (one global shuffle) with huge pages or
+// base pages of 16 KiB and more, otherwise the lines of one page, so that
+// translation misses stay amortized and cannot appear as a spurious level.
+// CPUFB_CHASE_NO_PAGE_GROUPS=1 forces the global shuffle.
+size_t ring_group_lines(size_t line, bool huge_pages, std::string &mode);
+
+// Ring order over `line_count` lines.  group_lines == 0 shuffles globally;
+// otherwise groups are visited in random order and shuffled internally.  The
+// ring always starts at line 0 because the chase kernels start at word 0.
+std::vector<size_t> build_ring_order(
+    size_t line_count, size_t group_lines, uint64_t seed);
+
+// "%.1f" of the counted cycles, else of latency_ns x fallback_clock_ghz,
+// else "-".
+std::string format_latency_cycles(
+    double latency_ns, double counted_cycles, double fallback_clock_ghz);
+
 // Follows `iterations` links of the ring stored in buffer, starting at index
 // 0.  Links are 32-bit indices into the buffer (a 1 GiB region still fits), so
 // a 64-byte line holds 16 of them.

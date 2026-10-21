@@ -100,6 +100,7 @@ add_library(cpufb_common OBJECT
     "${CPUFB_COMMON_DIR}/cacheline_probe.cpp"
     "${CPUFB_COMMON_DIR}/cli.cpp"
     "${CPUFB_COMMON_DIR}/issue_probe.cpp"
+    "${CPUFB_COMMON_DIR}/prefetch_probe.cpp"
     "${CPUFB_COMMON_DIR}/system_info.cpp"
     "${CPUFB_COMMON_DIR}/table.cpp"
     "${CPUFB_COMMON_DIR}/thread_pool.cpp"
@@ -336,6 +337,19 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
         COMMAND cpufb_cache_curve_test
     )
     set_tests_properties(cpufb_cache_curve PROPERTIES
+        LABELS "unit"
+        TIMEOUT 30
+    )
+
+    add_executable(cpufb_prefetch_probe_test
+        "${CMAKE_SOURCE_DIR}/tests/test_prefetch_probe.cpp"
+    )
+    target_link_libraries(cpufb_prefetch_probe_test PRIVATE cpufb_common)
+    add_test(
+        NAME cpufb_prefetch_probe
+        COMMAND cpufb_prefetch_probe_test
+    )
+    set_tests_properties(cpufb_prefetch_probe PROPERTIES
         LABELS "unit"
         TIMEOUT 30
     )

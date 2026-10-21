@@ -34,8 +34,7 @@
 
 namespace cpufb {
 
-typedef void (CPUFB_SYSV_ABI *IssueKernelFn)(
-    const void *l1_buffer, int64_t loops);
+typedef void (CPUFB_SYSV_ABI *IssueKernelFn)(void *l1_buffer, int64_t loops);
 
 struct IssueClass
 {

@@ -421,6 +421,10 @@ case "${test_case}" in
             --include-test=cache --memory-size-mib=4 --memory-repetitions=1 \
             --save="${cache_output}")"
         require_contains "${command_output}" "Memory sequential read bandwidth"
+        # The store streams and the verdict their ratio supports.
+        require_contains "${command_output}" "Memory sequential write bandwidth"
+        require_contains "${command_output}" "Memory partial-line write bandwidth"
+        require_contains "${command_output}" "Write allocate"
         require_contains "${command_output}" "Saved csv output:"
         if [[ ! -s "${cache_output}" ]]; then
             fail "cache CSV output was not created"
@@ -464,6 +468,17 @@ case "${test_case}" in
         {
             run_success "${binary}" "${thread_arg}" "${cache_args[@]}" \
                 --save="${cache_output}" >/dev/null
+            # The prefetch probe rows must be there with a verdict, never an
+            # empty cell: a curve that resolved levels gives them working sets.
+            awk -F',' '
+                $1 == "cache" && ($2 == "Hardware prefetch stride reach" ||
+                        $2 == "Stream restart cost" ||
+                        $2 ~ /^Software prefetch distance/) {
+                    rows++
+                    if ($NF == "" || $NF == "-") exit 5
+                }
+                END { if (rows != 4) exit 6 }
+            ' "${cache_output}" || fail "prefetch probe rows are missing or empty: $(grep -E 'prefetch|restart' "${cache_output}" | cut -c1-200 | tr '\n' '|')"
         }
         # The L1 capacity from set conflicts is the independent check on the
         # latency curve's L1, so it has to report too.  L2 ways need huge

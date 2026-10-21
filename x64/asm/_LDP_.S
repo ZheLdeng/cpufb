@@ -118,3 +118,40 @@ load_vmovups_zmm_kernel:
     jne .Lload_zmm_outer
     vzeroupper
     ret
+
+# Store counterparts of the load kernels above, for the write-bandwidth rows:
+# (data, blocks of 512 B per pass, passes).  The register contents are
+# whatever the caller left; only the addresses matter.
+.macro STORE_STREAM name, insn, reg, width, step
+.globl \name
+\name:
+    mov %rdx, %r10
+1:
+    mov %rdi, %r8
+    mov %rsi, %r9
+2:
+    .set off, 0
+    .rept 512 / \step
+        \insn %\reg, off(%r8)
+        .set off, off + \step
+    .endr
+    add $512, %r8
+    dec %r9
+    jne 2b
+    dec %r10
+    jne 1b
+    .if \width >= 32
+    vzeroupper
+    .endif
+    sfence
+    ret
+.endm
+
+STORE_STREAM store_movups_xmm_kernel, movups, xmm0, 16, 16
+STORE_STREAM store_vmovups_kernel, vmovups, ymm0, 32, 32
+STORE_STREAM store_vmovups_zmm_kernel, vmovups, zmm0, 64, 64
+STORE_STREAM store_movntps_xmm_kernel, movntps, xmm0, 16, 16
+STORE_STREAM store_vmovntps_kernel, vmovntps, ymm0, 32, 32
+STORE_STREAM store_vmovntps_zmm_kernel, vmovntps, zmm0, 64, 64
+# One 16 B store per 64 B line (see the write-allocate verdict).
+STORE_STREAM store_partial_line_kernel, movups, xmm0, 16, 64

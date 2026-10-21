@@ -20,12 +20,18 @@ extern "C"
     void load_ldrq_4x1_offset_kernel(float *, int, int64_t);
     void load_neon_ld1w_kernel(float *, int, int64_t);
     void load_neon_ld1d_kernel(float *, int, int64_t);
+    // Store streams for the write-bandwidth rows (asm/_LDP_.S).
+    void store_neon_st1h_4x1_kernel(float *, int, int64_t);
+    void store_neon_stnp_kernel(float *, int, int64_t);
+    void store_neon_partial_line_kernel(float *, int, int64_t);
 #ifdef _SVE_
     uint64_t load_sve_vector_bytes(void);
     void load_sve_ld1b_kernel(float *, int, int64_t);
     void load_sve_ld1h_kernel(float *, int, int64_t);
     void load_ld1w_kernel(float *, int, int64_t);
     void load_sve_ld1d_kernel(float *, int, int64_t);
+    void store_sve_st1h_kernel(float *, int, int64_t);
+    void store_sve_stnt1h_kernel(float *, int, int64_t);
 #endif
 #ifdef _SME_
     uint64_t load_sme_vector_bytes(void);

@@ -235,3 +235,81 @@
     subs x3, x3, #1
     bne 1b
     ret
+
+###############################
+# Store counterparts of the load walks above, for the write-bandwidth rows.
+# Same signature (data, blocks per pass, passes), 256-byte blocks; the data
+# written is a constant byte pattern.
+
+#void store_neon_st1h_4x1_kernel(float*, int, int64_t);
+# Four interleaved post-index streams, 16 B per store, like load_neon_ld1h_4x1.
+    PROLOGUE store_neon_st1h_4x1_kernel
+    movi v0.16b, #0x5a
+    movi v1.16b, #0x5a
+    movi v2.16b, #0x5a
+    movi v3.16b, #0x5a
+    mov x4, x2
+    mov x9, #64
+    2:
+    mov x3, x1
+    mov x5, x0
+    add x6, x0, #16
+    add x7, x0, #32
+    add x8, x0, #48
+    1:
+    .rept 4
+    st1 {v0.8h}, [x5], x9
+    st1 {v1.8h}, [x6], x9
+    st1 {v2.8h}, [x7], x9
+    st1 {v3.8h}, [x8], x9
+    .endr
+    subs x3, x3, #1
+    bne 1b
+    subs x4, x4, #1
+    bne 2b
+    ret
+
+###############################
+#void store_neon_stnp_kernel(float*, int, int64_t);
+# Non-temporal pair stores, 32 B each, whole lines.
+    PROLOGUE store_neon_stnp_kernel
+    movi v0.16b, #0x5a
+    movi v1.16b, #0x5a
+    mov x4, x2
+    2:
+    mov x3, x1
+    mov x5, x0
+    1:
+    .set off, 0
+    .rept 8
+    stnp q0, q1, [x5, #off]
+    .set off, off + 32
+    .endr
+    add x5, x5, #256
+    subs x3, x3, #1
+    bne 1b
+    subs x4, x4, #1
+    bne 2b
+    ret
+
+###############################
+#void store_neon_partial_line_kernel(float*, int, int64_t);
+# One 16 B store per 64 B line: a write the core cannot complete without the
+# rest of the line, the reference for the write-allocate verdict.
+    PROLOGUE store_neon_partial_line_kernel
+    movi v0.16b, #0x5a
+    mov x4, x2
+    2:
+    mov x3, x1
+    mov x5, x0
+    1:
+    str q0, [x5]
+    str q0, [x5, #64]
+    str q0, [x5, #128]
+    str q0, [x5, #192]
+    add x5, x5, #256
+    subs x3, x3, #1
+    bne 1b
+    subs x4, x4, #1
+    bne 2b
+    ret

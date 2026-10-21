@@ -92,6 +92,15 @@ std::string describe_line_cross_check(int reuse_line_bytes, int set_line_bytes);
 // never conflicted).
 std::string describe_l2_unmeasured(int status);
 
+// Whether a full-line store stream fetches the line before writing it.  A
+// partial-line stream (16 B per 64 B line) cannot avoid the fetch, so its
+// DRAM traffic is a fill plus a write-back per line; a full-line stream that
+// runs at about the same lines per second pays the same fill, one that runs
+// near twice as fast does not.  The non-temporal figure is only reported.
+// All three in GB/s of lines touched; 0 for a stream that was not measured.
+std::string describe_write_allocate(
+    double full_line_gbps, double partial_line_gbps, double nontemporal_gbps);
+
 } // namespace cpufb
 
 #endif

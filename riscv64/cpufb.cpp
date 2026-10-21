@@ -1,6 +1,7 @@
 #include "cli.hpp"
 #include "cache_topology.hpp"
 #include "cache_curve.hpp"
+#include "prefetch_probe.hpp"
 #include "cacheline_probe.hpp"
 #include "table.hpp"
 #include "thread_pool.hpp"
@@ -382,6 +383,12 @@ static void cpubm_riscv64_cache(std::vector<int> &set_of_threads, Table &table)
     table.addOneItem(cont);
 
     cpufb::print_cache_curve_tables(curve, freq.empty() ? 0.0 : freq[0]);
+    // Prefetcher reach, stream restart cost and software prefetch distance on
+    // the same core, sized from the curve's levels (common/prefetch_probe.hpp).
+    cpufb::append_prefetch_probe_rows(table, cpu,
+        cpufb::effective_cacheline_size(
+            reported_line, geometry.cacheline_bytes, 64),
+        curve, freq.empty() ? 0.0 : freq[0]);
 }
 
 #ifdef _VECTOR_

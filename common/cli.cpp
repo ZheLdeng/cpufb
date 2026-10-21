@@ -523,8 +523,11 @@ bool should_run_benchmark(
 
 bool benchmark_needs_freq(const BenchmarkFilter &filter)
 {
+    // The cache curve reports its latency in cycles too, and without a PMU
+    // that needs the clock the frequency table estimates.
     return should_run_test(filter, "compute") ||
         should_run_test(filter, "load") ||
+        should_run_test(filter, "cache") ||
         should_run_test(filter, "multi_issue") ||
         should_run_test(filter, "freq");
 }

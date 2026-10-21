@@ -284,7 +284,13 @@ last column only labels the agreement (`probe (agrees with OS)`,
   transparent huge pages and with 4 KiB pages the ring is shuffled page by
   page so translation misses cannot form a spurious level. The result is the
   effective capacity seen by the pinned core, so a busy SMT sibling or a
-  co-tenant lowers it.
+  co-tenant lowers it. Every point and every level is printed in nanoseconds
+  and in core cycles: cycles are counted by the PMU around the same sample
+  the time came from, and when no counter is available they are the time
+  multiplied by the frequency table's clock (the header line says which).
+  The L1 figure is the load-to-use latency a dependent address chain pays,
+  and the L2 and L3 figures the extra cycles a miss to that level costs; a
+  kernel's software-pipelining depth is sized from these.
 - L3 versus memory: the same run measures the latency of a ring scattered over
   1 GiB, which no cache can hold, or over 512 or 256 MiB when a quarter of the
   available memory is less than that. A plateau at least half that slow is
@@ -327,7 +333,8 @@ runs; the default is 1.
 default is 0 for all.
 
   --mode: `cache` measures the dependent-load latency curve and infers L1/L2
-  capacity and latency; `compute` runs compute/IPC benchmarks; `all` runs both
+  capacity and latency (in ns and cycles, so the frequency table runs with
+  it); `compute` runs compute/IPC benchmarks; `all` runs both
   groups and the existing cache-bandwidth kernels. The default is `all`. An
   explicit `--mode=all` clears any `--include-test` restriction so all five
   output tables are restored; `--exclude-test` is still applied, and the

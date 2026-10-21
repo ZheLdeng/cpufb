@@ -16,6 +16,9 @@ struct CacheLatencyPoint
 {
     uint64_t working_set_bytes = 0;
     double latency_ns = 0;
+    // The same latency in core cycles counted by the PMU around the sample;
+    // 0 when no counter was available (the caller may then use a clock).
+    double latency_cycles = 0;
 };
 
 struct CacheLevelEstimate
@@ -23,6 +26,7 @@ struct CacheLevelEstimate
     std::string level;
     uint64_t capacity_bytes = 0;
     double latency_ns = 0;
+    double latency_cycles = 0; // 0 when the sweep had no cycle counter
     double jump_ratio = 0;
     // Working sets at which the latency has covered 10% and 90% of the step,
     // log-interpolated between grid points, and their ratio.  How wide the
@@ -48,6 +52,7 @@ struct RemeasuredPoint
 {
     uint64_t working_set_bytes = 0;
     double samples_ns[3] = {0.0, 0.0, 0.0};
+    double samples_cycles[3] = {0.0, 0.0, 0.0};
 };
 
 struct CacheCurveResult
@@ -89,6 +94,13 @@ std::string describe_prefetch_doubt(const CacheCurveResult &result);
 // estimates to stderr; does nothing otherwise.  This is what a bug report
 // about a wrong capacity needs to be diagnosed.
 void debug_print_cache_curve(const CacheCurveResult &result);
+
+// Prints the curve (working set, ns and cycles per load) and the level
+// estimates as tables, after the translation mode and where the cycles come
+// from: the PMU when it counted, else the latency times fallback_clock_ghz
+// (the frequency table's clock), else nothing.
+void print_cache_curve_tables(
+    const CacheCurveResult &result, double fallback_clock_ghz);
 
 // Quarter-octave working-set grid from 4 KiB to max_bytes.
 std::vector<uint64_t> build_cache_curve_sizes(uint64_t max_bytes);

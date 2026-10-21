@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+
+#include "cache_curve.hpp"
 extern std::vector<double> freq;
 extern "C"
 {
@@ -46,7 +48,8 @@ struct CacheData
     // test_* hold raw probe results only; 0 means "not observed".
 };
 
-void get_cachesize(struct CacheData *cache_size, int cpu_id);
+// Fills the capacity fields and returns the latency curve they came from.
+cpufb::CacheCurveResult get_cachesize(struct CacheData *cache_size, int cpu_id);
 void get_multiway(struct CacheData *cache_size, int cpu_id);
 void get_cacheline(struct CacheData *cache_size, int cpu_id);
 void get_theory_cache(struct CacheData *cache_size, int cpu_id);

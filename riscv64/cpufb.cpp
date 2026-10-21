@@ -312,39 +312,7 @@ static void cpubm_riscv64_cache(std::vector<int> &set_of_threads, Table &table)
     }
     table.addOneItem(cont);
 
-    cout << "Cache curve translation mode: " << curve.translation_mode << endl;
-    Table curve_table;
-    curve_table.setColumnNum(2);
-    vector<string> curve_head = {"Working Set", "Dependent-load Latency"};
-    curve_table.addOneItem(curve_head);
-    for (const cpufb::CacheLatencyPoint &point : curve.points) {
-        vector<string> row(2);
-        row[0] = cpufb::format_cache_capacity(point.working_set_bytes);
-        ostringstream latency;
-        latency << fixed << setprecision(3) << point.latency_ns << " ns/load";
-        row[1] = latency.str();
-        curve_table.addOneItem(row);
-    }
-    curve_table.print();
-
-    Table estimate_table;
-    estimate_table.setColumnNum(4);
-    vector<string> estimate_head = {
-        "Level", "Measured Capacity", "Latency", "Jump"};
-    estimate_table.addOneItem(estimate_head);
-    for (const cpufb::CacheLevelEstimate &estimate : curve.levels) {
-        vector<string> row(4);
-        row[0] = estimate.level;
-        row[1] = cpufb::format_cache_capacity(estimate.capacity_bytes);
-        ostringstream latency, jump;
-        latency << fixed << setprecision(3) << estimate.latency_ns
-                << " ns/load";
-        jump << fixed << setprecision(2) << estimate.jump_ratio << "x";
-        row[2] = latency.str();
-        row[3] = jump.str();
-        estimate_table.addOneItem(row);
-    }
-    estimate_table.print();
+    cpufb::print_cache_curve_tables(curve, freq.empty() ? 0.0 : freq[0]);
 }
 
 #ifdef _VECTOR_

@@ -4,12 +4,13 @@
 #include <cstdint>
 #include <string>
 
+#include "calling_convention.hpp"
 #include "cli.hpp"
 
 namespace cpufb {
 
 // Sequential-read kernel: (data, blocks per pass, passes).
-typedef void (*StreamKernel)(float *, int, int64_t);
+typedef void (CPUFB_SYSV_ABI *StreamKernel)(float *, int, int64_t);
 
 struct StreamKernelSpec
 {

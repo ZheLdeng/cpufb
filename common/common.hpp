@@ -8,8 +8,12 @@
 #include <ctime>
 #include <cstdlib>
 #include <cstdint>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
+#ifdef __linux__
 #include <sys/ioctl.h>
+#endif
 
 static double get_time(struct timespec *start, struct timespec *end)
 {

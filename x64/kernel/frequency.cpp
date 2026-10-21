@@ -1,6 +1,8 @@
 #include <pthread.h>
+#ifndef _WIN32
 #include <sched.h>
 #include <unistd.h>
+#endif
 
 #include <cmath>
 #include <cstdint>
@@ -21,6 +23,9 @@
 #ifdef __APPLE__
 #include <sys/sysctl.h>
 #endif
+#ifdef _WIN32
+#include "windows_platform.hpp"
+#endif
 
 using namespace std;
 
@@ -32,7 +37,7 @@ namespace {
 const int64_t kFrequencyLoopTime = 100000000;
 const double kInstructionsPerLoop = 16.0;
 
-typedef void (*FrequencyKernel)(int64_t);
+typedef void (CPUFB_SYSV_ABI *FrequencyKernel)(int64_t);
 
 struct RatedFrequency
 {
@@ -163,6 +168,12 @@ static void *thread_function_freq(void *arg)
     int max_frequency_khz = 0;
     read_data(cpu_id, &max_frequency_khz, "/cpufreq/scaling_max_freq");
     data->theory_freq = static_cast<double>(max_frequency_khz) * 1e-6;
+#elif defined(_WIN32)
+    const int cpu_id = *static_cast<int *>(arg);
+    if (!cpufb::windows::pin_current_thread(cpu_id))
+        std::fprintf(stderr,
+            "Warning: frequency probe could not bind to CPU %d\n", cpu_id);
+    data->theory_freq = cpufb::windows::reported_max_frequency_ghz();
 #endif
 
     // Count real core cycles around the always-built SSE2 kernel when the PMU

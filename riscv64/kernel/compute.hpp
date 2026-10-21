@@ -23,6 +23,7 @@ extern "C"
     void vector_vfmacc_vf_f16f16f16(int64_t);
     void vector_vfmacc_vv_f16f16f16(int64_t);
     void vector_vfmacc_vf_f32f32f32(int64_t);
+    void vector_vfmacc_vv_f32f32f32_latency(int64_t);
     void vector_vfmacc_vv_f32f32f32(int64_t);
     void vector_vfmacc_vf_f64f64f64(int64_t);
     void vector_vfmacc_vv_f64f64f64(int64_t);

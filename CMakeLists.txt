@@ -40,6 +40,33 @@ else()
 endif()
 message(STATUS "cpufb: arch=${CPUFB_ARCH} system=${CMAKE_SYSTEM_NAME}")
 
+if(WIN32)
+    if(NOT CPUFB_ARCH STREQUAL "x64")
+        message(FATAL_ERROR "cpufb: Windows support currently requires x64")
+    endif()
+    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        message(FATAL_ERROR
+            "cpufb: Windows currently requires the MinGW-w64 GNU toolchain; "
+            "MSVC does not support the x64 GNU assembly sources")
+    endif()
+    include(CheckIncludeFileCXX)
+    check_include_file_cxx("pthread.h" CPUFB_HAS_PTHREAD_H)
+    if(NOT CPUFB_HAS_PTHREAD_H)
+        message(FATAL_ERROR
+            "cpufb: Windows builds require the MinGW-w64 POSIX thread model")
+    endif()
+    include(CheckCXXSourceCompiles)
+    check_cxx_source_compiles(
+        "__attribute__((sysv_abi)) void kernel() {} int main() { kernel(); }"
+        CPUFB_HAS_SYSV_ABI_ATTRIBUTE)
+    if(NOT CPUFB_HAS_SYSV_ABI_ATTRIBUTE)
+        message(FATAL_ERROR
+            "cpufb: this MinGW compiler must support GCC's sysv_abi attribute")
+    endif()
+    add_compile_definitions(_WIN32_WINNT=0x0601 WINVER=0x0601 NOMINMAX
+        CLOCK_MONOTONIC_RAW=CLOCK_MONOTONIC)
+endif()
+
 set(CPUFB_ARCH_DIR "${CMAKE_SOURCE_DIR}/${CPUFB_ARCH}")
 set(CPUFB_ASM_DIR  "${CPUFB_ARCH_DIR}/asm")
 set(CPUFB_KERNEL_DIR "${CPUFB_ARCH_DIR}/kernel")
@@ -77,6 +104,10 @@ add_library(cpufb_common OBJECT
     "${CPUFB_COMMON_DIR}/table.cpp"
     "${CPUFB_COMMON_DIR}/thread_pool.cpp"
 )
+if(WIN32)
+    target_sources(cpufb_common PRIVATE
+        "${CPUFB_COMMON_DIR}/windows_platform.cpp")
+endif()
 target_include_directories(cpufb_common PUBLIC "${CPUFB_COMMON_DIR}")
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     # system_info.cpp reads the nominal CPU frequency from the IORegistry.
@@ -90,6 +121,9 @@ if(NOT CPUFB_ARCH STREQUAL "x64")
     target_compile_options(cpufb_common PRIVATE -g -w)
 endif()
 target_link_libraries(cpufb_common PUBLIC Threads::Threads)
+if(WIN32)
+    target_link_libraries(cpufb_common PUBLIC powrprof)
+endif()
 
 # ---------------------------------------------------------------------------
 # Per-feature SIMD assembly objects (arm64 / riscv64). x64 .S files are still
@@ -223,7 +257,9 @@ target_compile_definitions(cpufb PRIVATE ${CPUFB_SIMD_FEATURES})
 if(CPUFB_ARCH STREQUAL "x64")
     target_compile_features(cpufb PRIVATE cxx_std_11)
     target_compile_options(cpufb PRIVATE -g -O2)
-    target_link_options(cpufb PRIVATE -z noexecstack)
+    if(NOT WIN32)
+        target_link_options(cpufb PRIVATE -z noexecstack)
+    endif()
 elseif(CPUFB_ARCH STREQUAL "riscv64")
     target_compile_options(cpufb PRIVATE -O3 -march=rv64gcv_zfh_zicbom)
     target_link_options(cpufb PRIVATE -z noexecstack)
@@ -334,7 +370,9 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     endif()
 endif()
 
-if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND
+# The shell CLI harness relies on Linux /proc and POSIX paths; Windows has
+# native CTest smoke cases below instead.
+if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND NOT WIN32 AND
         (CPUFB_ARCH STREQUAL "x64" OR CPUFB_ARCH STREQUAL "arm64"
             OR CPUFB_ARCH STREQUAL "riscv64"))
     find_program(CPUFB_BASH_EXECUTABLE bash)
@@ -381,4 +419,35 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND
     else()
         message(WARNING "cpufb: bash not found; CLI regression tests disabled")
     endif()
+endif()
+
+if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND WIN32)
+    add_executable(cpufb_windows_platform_test
+        "${CMAKE_SOURCE_DIR}/tests/test_windows_platform.cpp")
+    target_link_libraries(cpufb_windows_platform_test PRIVATE cpufb_common)
+    add_test(NAME cpufb_windows_platform COMMAND cpufb_windows_platform_test)
+    set_tests_properties(cpufb_windows_platform PROPERTIES
+        LABELS "unit" TIMEOUT 30)
+    add_test(
+        NAME cpufb_cli_list_categories
+        COMMAND cpufb --list-categories
+    )
+    add_test(
+        NAME cpufb_cli_list_instructions
+        COMMAND cpufb --list-instructions
+    )
+    add_test(
+        NAME cpufb_cli_invalid_thread_pool
+        COMMAND cpufb "--thread_pool=[1,]" --include-test=freq
+    )
+    set_tests_properties(cpufb_cli_invalid_thread_pool PROPERTIES
+        WILL_FAIL TRUE
+        LABELS "cli"
+        TIMEOUT 10
+    )
+    set_tests_properties(cpufb_cli_list_categories
+            cpufb_cli_list_instructions PROPERTIES
+        LABELS "cli"
+        TIMEOUT 10
+    )
 endif()

@@ -11,11 +11,16 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#ifndef _WIN32
 #include <sys/utsname.h>
+#endif
 #include <vector>
 
 #ifdef __ANDROID__
 #include <sys/system_properties.h>
+#endif
+#ifdef _WIN32
+#include "windows_platform.hpp"
 #endif
 #ifdef __APPLE__
 #include <cstdio>
@@ -88,12 +93,16 @@ std::string format_ghz(double hz)
 
 std::string current_timestamp()
 {
+#ifdef _WIN32
+    return windows::timestamp();
+#else
     const std::time_t now = std::time(nullptr);
     std::tm local = {};
     localtime_r(&now, &local);
     char value[32] = {0};
     std::strftime(value, sizeof(value), "%Y-%m-%dT%H:%M:%S%z", &local);
     return value;
+#endif
 }
 
 std::string read_temperature(std::string &source)
@@ -350,8 +359,10 @@ std::string format_frequency(const FrequencyInfo &frequency)
 SystemInfo collect_system_info(const std::vector<int> &selected_cores)
 {
     SystemInfo info;
+#ifndef _WIN32
     struct utsname system_name = {};
     const bool have_uname = uname(&system_name) == 0;
+#endif
 
     add_entry(info, "Sample Timestamp", current_timestamp(), "system clock");
 
@@ -364,10 +375,13 @@ SystemInfo collect_system_info(const std::vector<int> &selected_cores)
     add_entry(info, "OS",
         product_version.empty() ? "macOS" : "macOS " + product_version,
         "sysctl kern.osproductversion");
+#elif defined(_WIN32)
+    add_entry(info, "OS", windows::os_version(), "Windows version API");
 #else
     add_entry(
         info, "OS", have_uname ? system_name.sysname : "unknown", "uname");
 #endif
+#ifndef _WIN32
     add_entry(info, "Kernel",
         have_uname
             ? std::string(system_name.sysname) + " " + system_name.release
@@ -375,6 +389,10 @@ SystemInfo collect_system_info(const std::vector<int> &selected_cores)
         "uname");
     add_entry(info, "Architecture",
         have_uname ? system_name.machine : "unknown", "uname");
+#else
+    add_entry(info, "Kernel", windows::os_version(), "Windows version API");
+    add_entry(info, "Architecture", "x86_64", "native x64 build");
+#endif
     add_entry(info, "Compiler", compiler_name(), "compile-time macros");
 
 #ifdef __linux__
@@ -390,6 +408,8 @@ SystemInfo collect_system_info(const std::vector<int> &selected_cores)
     std::string cpu_model;
     read_sysctl_string("machdep.cpu.brand_string", cpu_model);
     add_entry(info, "CPU Model", cpu_model, "sysctl machdep.cpu.brand_string");
+#elif defined(_WIN32)
+    add_entry(info, "CPU Model", windows::cpu_model(), "CPUID brand string");
 #else
     add_entry(info, "CPU Model", "unavailable", "unsupported platform");
 #endif
@@ -410,6 +430,18 @@ SystemInfo collect_system_info(const std::vector<int> &selected_cores)
     const FrequencyInfo frequency = read_linux_frequency(cpu);
 #elif defined(__APPLE__)
     const FrequencyInfo frequency = read_macos_frequency();
+#elif defined(_WIN32)
+    FrequencyInfo frequency;
+    frequency.base_hz = windows::reported_base_frequency_ghz() * 1e9;
+    frequency.maximum_hz =
+        windows::reported_max_frequency_ghz() * 1e9;
+    frequency.source = frequency.base_hz > 0.0 || frequency.maximum_hz > 0.0
+        ? "CPUID leaf 0x16"
+        : "CPUID frequency leaf unavailable";
+    std::string current_source;
+    frequency.current_hz =
+        windows::reported_current_frequency_ghz(cpu, current_source) * 1e9;
+    frequency.source += "; " + current_source;
 #else
     const FrequencyInfo frequency;
 #endif

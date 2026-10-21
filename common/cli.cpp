@@ -461,7 +461,12 @@ void record_migration_information(const tpool_migration_info &info)
     const bool migrated =
         info.migrations != 0 || info.requested_cpu_mismatches != 0;
     stringstream source;
-    source << "sched_getcpu before/after " << info.observations
+#ifdef _WIN32
+    source << "GetCurrentProcessorNumberEx before/after ";
+#else
+    source << "sched_getcpu before/after ";
+#endif
+    source << info.observations
            << " worker invocations; migrations=" << info.migrations
            << ", requested-core mismatches=" << info.requested_cpu_mismatches;
     entry->value = migrated ? "yes" : "no";

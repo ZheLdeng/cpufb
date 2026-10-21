@@ -6,7 +6,9 @@
 
 .p2align 4
 .globl cpufb_x64_frequency_fsu32
+#ifndef _WIN32
 .type cpufb_x64_frequency_fsu32, @function
+#endif
 cpufb_x64_frequency_fsu32:
     .irp r,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
         xorps %xmm\r, %xmm\r
@@ -21,11 +23,15 @@ cpufb_x64_frequency_fsu32:
     .endr
     jne .Lcpufb_frequency_fsu32
     ret
+#ifndef _WIN32
 .size cpufb_x64_frequency_fsu32, .-cpufb_x64_frequency_fsu32
+#endif
 
 .p2align 4
 .globl cpufb_x64_frequency_fsu64
+#ifndef _WIN32
 .type cpufb_x64_frequency_fsu64, @function
+#endif
 cpufb_x64_frequency_fsu64:
     .irp r,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
         xorpd %xmm\r, %xmm\r
@@ -40,11 +46,15 @@ cpufb_x64_frequency_fsu64:
     .endr
     jne .Lcpufb_frequency_fsu64
     ret
+#ifndef _WIN32
 .size cpufb_x64_frequency_fsu64, .-cpufb_x64_frequency_fsu64
+#endif
 
 .p2align 4
 .globl cpufb_x64_frequency_load
+#ifndef _WIN32
 .type cpufb_x64_frequency_load, @function
+#endif
 cpufb_x64_frequency_load:
 .Lcpufb_frequency_load:
     .irp r,0,1,2,3,4,5,6,7
@@ -56,7 +66,9 @@ cpufb_x64_frequency_load:
     .endr
     jne .Lcpufb_frequency_load
     ret
+#ifndef _WIN32
 .size cpufb_x64_frequency_load, .-cpufb_x64_frequency_load
+#endif
 
 
 # Core-clock calibration for hosts without PMU access: a register-register
@@ -66,7 +78,9 @@ cpufb_x64_frequency_load:
 # immediate adds at rename.  Loop control is off the chain.
 .p2align 4
 .globl cpufb_x64_frequency_add_chain
+#ifndef _WIN32
 .type cpufb_x64_frequency_add_chain, @function
+#endif
 cpufb_x64_frequency_add_chain:
     xor %eax, %eax
 .Lcpufb_frequency_add_chain:
@@ -76,6 +90,10 @@ cpufb_x64_frequency_add_chain:
     dec %rdi
     jne .Lcpufb_frequency_add_chain
     ret
+#ifndef _WIN32
 .size cpufb_x64_frequency_add_chain, .-cpufb_x64_frequency_add_chain
+#endif
 
+#ifndef _WIN32
 .section .note.GNU-stack,"",@progbits
+#endif

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <string>
 
+#include "calling_convention.hpp"
 #include "thread_pool.hpp"
 
 // Sequential-read bandwidth of one cache level.
@@ -32,7 +33,7 @@ namespace cpufb {
 struct LoadKernel
 {
     std::string name; // only used in diagnostics
-    void (*function)(float *, int, int64_t) = nullptr;
+    void (CPUFB_SYSV_ABI *function)(float *, int, int64_t) = nullptr;
     size_t bytes_per_count = 0; // bytes read per unit of `count`
     size_t block_bytes = 0;    // one unrolled loop body; worksets are multiples
     size_t bytes_per_load = 0; // bytes moved by one load instruction

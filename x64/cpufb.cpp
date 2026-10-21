@@ -11,7 +11,18 @@
 #include <cache_topology.hpp>
 #include "runtime_features.h"
 
+#ifndef _WIN32
 #include <unistd.h>
+#else
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include "windows_platform.hpp"
+#endif
 #include <cstdint>
 #include <ctime>
 #include <cstring>
@@ -43,6 +54,15 @@ static struct CacheData cache_size;
 
 // The warm-up pass runs 1/kWarmupLoopDivisor of the measured loop count.
 static constexpr int64_t kWarmupLoopDivisor = 32;
+
+static void sleep_seconds(unsigned seconds)
+{
+#ifdef _WIN32
+    Sleep(static_cast<DWORD>(seconds) * 1000);
+#else
+    sleep(seconds);
+#endif
+}
 
 #ifdef _AMX_TILE_
 struct
@@ -89,7 +109,7 @@ static bool request_tile_data_permission()
 }
 #endif
 
-typedef void (*CacheKernel)(float *, int, int64_t);
+typedef void (CPUFB_SYSV_ABI *CacheKernel)(float *, int, int64_t);
 
 struct cpubm_t
 {
@@ -100,7 +120,7 @@ struct cpubm_t
     int64_t comp_pl; // Mathematical/element operations per outer asm loop.
     int64_t inst_pl; // Benchmarked instructions per outer asm loop.
     void *params;
-    void (*bench)(int64_t, void *);
+    void (CPUFB_SYSV_ABI *bench)(int64_t, void *);
     BenchmarkKind kind;
     // Load and multi-issue rows: the kernel itself, and for load rows the
     // cache level (1 or 2) whose capacity sizes the workset.
@@ -133,7 +153,7 @@ struct ComputeResult
 
 static void reg_new_isa(std::string isa, std::string type, std::string dim,
     int64_t loop_time, int64_t comp_pl, void *params,
-    void (*bench)(int64_t, void *), int64_t inst_pl = 16)
+    void (CPUFB_SYSV_ABI *bench)(int64_t, void *), int64_t inst_pl = 16)
 {
     cpubm_t new_one;
     new_one.isa = isa;
@@ -172,11 +192,14 @@ static void warn_estimated_cycles_once()
     static bool warned = false;
     if (warned) return;
     warned = true;
-    cerr << "Warning: per-kernel perf_event cycle counts are unavailable; "
+    cerr << "Warning: per-kernel hardware cycle counts are unavailable; "
          << "IPC and latency are estimated from elapsed time x "
-         << cpu_freq_counter_source()
-         << " frequency. Lower /proc/sys/kernel/perf_event_paranoid or run "
-         << "with CAP_PERFMON for counted cycles." << endl;
+         << cpu_freq_counter_source() << " frequency.";
+#ifdef __linux__
+    cerr << " Lower /proc/sys/kernel/perf_event_paranoid or run with "
+            "CAP_PERFMON for counted cycles.";
+#endif
+    cerr << endl;
 }
 
 static void thread_func(void *params)
@@ -539,7 +562,7 @@ static bool measure_instruction_sweep(const vector<int> &active_threads,
 {
     tpool_t *tm = tpool_create(active_threads);
     if (tm == nullptr) return false;
-    sleep(idle_time);
+    sleep_seconds(static_cast<unsigned>(idle_time));
 
     if (latency_index >= 0) {
         cpubm_t latency_item = bm_list[latency_index];
@@ -610,15 +633,15 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
         case BENCHMARK_COMPUTE: {
             double latency = 0.0;
             if (catalog[i].pair_index >= 0) {
-                sleep(idle_time);
+                sleep_seconds(static_cast<unsigned>(idle_time));
                 latency = cpubm_x64_latency(tm, bm_list[catalog[i].pair_index]);
             }
-            sleep(idle_time);
+            sleep_seconds(static_cast<unsigned>(idle_time));
             cpubm_x64_one(tm, bm_list[i], latency, *tables[0]);
             break;
         }
         case BENCHMARK_LOAD:
-            sleep(idle_time);
+            sleep_seconds(static_cast<unsigned>(idle_time));
             cpubm_x64_load(tm, bm_list[i], *tables[1]);
             break;
         case BENCHMARK_MULTI_ISSUE:

@@ -30,6 +30,24 @@
       }
     },
     {
+      "name": "windows-mingw",
+      "displayName": "Windows x64 (MinGW-w64)",
+      "description": "Native Windows x64 build using the MinGW-w64 POSIX toolchain.",
+      "generator": "MinGW Makefiles",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_ASM_COMPILER": "gcc"
+      }
+    },
+    {
       "name": "macos-arm64",
       "displayName": "macOS Apple Silicon",
       "description": "Native build on macOS arm64.",
@@ -73,6 +91,11 @@
     {
       "name": "native-debug",
       "configurePreset": "native-debug",
+      "jobs": 0
+    },
+    {
+      "name": "windows-mingw",
+      "configurePreset": "windows-mingw",
       "jobs": 0
     },
     {

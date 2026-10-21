@@ -3,6 +3,7 @@
 #include "perf_pmu.hpp"
 
 #include "cache_topology.hpp"
+#include "aligned_memory.hpp"
 #include "table.hpp"
 #include "thread_pool.hpp"
 
@@ -23,11 +24,11 @@
 #include <utility>
 #include <vector>
 
-#include <sched.h>
 #include <time.h>
-#include <unistd.h>
 
 #ifdef __linux__
+#include <sched.h>
+#include <unistd.h>
 #include <asm/unistd.h>
 #include <linux/perf_event.h>
 #include <sys/ioctl.h>
@@ -36,6 +37,16 @@
 
 #ifdef __APPLE__
 #include <sys/sysctl.h>
+#endif
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include "windows_platform.hpp"
 #endif
 
 using cpufb::cli::CliOptions;
@@ -46,6 +57,15 @@ using std::vector;
 namespace {
 
 constexpr std::int64_t kL3StreamPasses = 8;
+
+void sleep_seconds(unsigned seconds)
+{
+#ifdef _WIN32
+    Sleep(static_cast<DWORD>(seconds) * 1000);
+#else
+    sleep(seconds);
+#endif
+}
 
 typedef cpufb::StreamKernelSpec KernelSpec;
 using cpufb::select_stream_kernel;
@@ -100,6 +120,12 @@ bool pin_current_thread(int cpu)
     if (sched_setaffinity(0, sizeof(mask), &mask) != 0) {
         std::cerr << "Error: sched_setaffinity(" << cpu
                   << ") failed: " << std::strerror(errno) << std::endl;
+        return false;
+    }
+#elif defined(_WIN32)
+    if (!cpufb::windows::pin_current_thread(cpu)) {
+        std::cerr << "Error: SetThreadGroupAffinity(" << cpu
+                  << ") failed." << std::endl;
         return false;
     }
 #else
@@ -181,7 +207,9 @@ public:
 
     ~CycleCounter()
     {
+#ifdef __linux__
         if (fd_ >= 0) close(fd_);
+#endif
     }
 
     bool available() const
@@ -345,7 +373,9 @@ BandwidthSample measure_once(const KernelSpec &kernel, float *data,
 // killer.  Returns 0 when the platform does not expose the figure.
 std::uint64_t auto_workset_budget_bytes()
 {
-#if defined(_SC_AVPHYS_PAGES) && defined(_SC_PAGESIZE)
+#ifdef _WIN32
+    return cpufb::windows::available_memory_bytes() / 2;
+#elif defined(_SC_AVPHYS_PAGES) && defined(_SC_PAGESIZE)
     const long pages = sysconf(_SC_AVPHYS_PAGES);
     const long page_bytes = sysconf(_SC_PAGESIZE);
     if (pages > 0 && page_bytes > 0)
@@ -540,7 +570,7 @@ bool measure_stream_bandwidth(int cpu, const KernelSpec &kernel,
     const int inner_loop = static_cast<int>(inner_loop_u64);
 
     void *allocation = nullptr;
-    const int allocation_status = posix_memalign(&allocation, 4096, bytes);
+    const int allocation_status = cpufb::aligned_allocate(&allocation, 4096, bytes);
     if (allocation_status != 0) {
         std::cerr << "Error: failed to allocate "
                   << cpufb::format_cache_capacity(requested_bytes) << ": "
@@ -553,7 +583,7 @@ bool measure_stream_bandwidth(int cpu, const KernelSpec &kernel,
     std::memset(allocation, 1, bytes);
     float *data = static_cast<float *>(allocation);
 
-    if (idle_time > 0) sleep(idle_time);
+    if (idle_time > 0) sleep_seconds(idle_time);
     kernel.function(data, inner_loop, 1);
 
     CycleCounter counter;
@@ -588,13 +618,13 @@ bool measure_stream_bandwidth(int cpu, const KernelSpec &kernel,
             fallback_frequency_hz);
         all_samples_have_cycles &= sample.counted_cycles;
         if (sample.seconds <= 0.0 || !std::isfinite(sample.gb_per_second)) {
-            std::free(allocation);
+            cpufb::aligned_deallocate(allocation);
             std::cerr << "Error: stream bandwidth timing failed." << std::endl;
             return false;
         }
         samples.push_back(sample);
     }
-    std::free(allocation);
+    cpufb::aligned_deallocate(allocation);
 
     std::sort(samples.begin(), samples.end(),
         [](const BandwidthSample &left, const BandwidthSample &right) {
@@ -670,7 +700,7 @@ bool measure_parallel_stream_bandwidth(const vector<int> &cpus,
 
     void *allocation = nullptr;
     const int allocation_status =
-        posix_memalign(&allocation, 4096, total_bytes);
+        cpufb::aligned_allocate(&allocation, 4096, total_bytes);
     if (allocation_status != 0) {
         std::cerr << "Error: failed to allocate "
                   << cpufb::format_cache_capacity(total_bytes_u64) << ": "
@@ -683,7 +713,7 @@ bool measure_parallel_stream_bandwidth(const vector<int> &cpus,
 
     tpool_t *thread_pool = tpool_create(cpus);
     if (thread_pool == nullptr) {
-        std::free(allocation);
+        cpufb::aligned_deallocate(allocation);
         std::cerr << "Error: failed to create stream benchmark workers."
                   << std::endl;
         return false;
@@ -698,17 +728,17 @@ bool measure_parallel_stream_bandwidth(const vector<int> &cpus,
     if (!tpool_run_all(
             thread_pool, parallel_stream_initialize, &task, &start, &end)) {
         tpool_destroy(thread_pool);
-        std::free(allocation);
+        cpufb::aligned_deallocate(allocation);
         std::cerr << "Error: failed to initialize stream workers." << std::endl;
         return false;
     }
 
-    if (idle_time > 0) sleep(idle_time);
+    if (idle_time > 0) sleep_seconds(idle_time);
     task.reset();
     if (!tpool_run_all(
             thread_pool, parallel_stream_warmup, &task, &start, &end)) {
         tpool_destroy(thread_pool);
-        std::free(allocation);
+        cpufb::aligned_deallocate(allocation);
         std::cerr << "Error: failed to warm stream workers." << std::endl;
         return false;
     }
@@ -736,7 +766,7 @@ bool measure_parallel_stream_bandwidth(const vector<int> &cpus,
         if (!tpool_run_all(
                 thread_pool, parallel_stream_measure, &task, &start, &end)) {
             tpool_destroy(thread_pool);
-            std::free(allocation);
+            cpufb::aligned_deallocate(allocation);
             std::cerr << "Error: synchronized stream timing failed."
                       << std::endl;
             return false;
@@ -770,14 +800,14 @@ bool measure_parallel_stream_bandwidth(const vector<int> &cpus,
             measured_cycles > 0.0 ? load_instructions / measured_cycles : 0.0;
         if (sample.seconds <= 0.0 || !std::isfinite(sample.gb_per_second)) {
             tpool_destroy(thread_pool);
-            std::free(allocation);
+            cpufb::aligned_deallocate(allocation);
             std::cerr << "Error: stream bandwidth timing failed." << std::endl;
             return false;
         }
         samples.push_back(sample);
     }
     tpool_destroy(thread_pool);
-    std::free(allocation);
+    cpufb::aligned_deallocate(allocation);
 
     std::sort(samples.begin(), samples.end(),
         [](const BandwidthSample &left, const BandwidthSample &right) {

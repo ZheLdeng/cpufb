@@ -12,11 +12,11 @@ needs verified *now*; it is not a log, and nothing is appended to it.
   (hardware prefetcher stride reach, stream restart cost, software prefetch
   distance and misses in flight). The latency curve in cycles from the last
   round is unchanged and still needs its `perf_event` check on the 920F.
-- **Verified this round:** Neoverse V3 and the Xeon VM build, `ctest`
-  passes, and `--include-test=cache` prints the new tables and rows (numbers
-  below). **Not verified:** PAC (login timed out again), Apple, Android,
-  RISC-V (the prefetch probe is common code and runs there too; the store
-  rows do not exist on riscv64).
+- **Verified this round:** Neoverse V3, the Xeon VM and the Kunpeng 920F
+  (job 1964626 on cn05122 from the `nsls_zhangxu` account, BiSheng clang,
+  `ctest` 17/17 on all three; 920F numbers below with `perf_event cycles`).
+  **Not verified:** Apple, Android, RISC-V (the prefetch probe is common
+  code and runs there too; the store rows do not exist on riscv64).
 
 ## What changed this round
 
@@ -50,30 +50,39 @@ line before writing it`, with `vmovntps` at 1.85x of the ordinary stores.
 
 The V3 result that the L2-target prefetch sustains four times the random
 stream the L1-target one does, and that `pldl1keep` gets worse with distance,
-is a finding about the L1 miss queue; please check it repeats.
+is a finding about the L1 miss queue; the 920F shows the opposite ranking
+(`pldl1keep` 50 lines in flight, `pldl2keep` 22), so both are core
+properties, not probe artefacts. Please check the V3 one repeats.
 
-## Kunpeng 920F (PAC)
+## Kunpeng 920F (PAC) — done this round, numbers for comparison
 
-Inside `/home/share/zhounan`, in a fresh directory that is removed after the
-run (BiSheng clang, `TMPDIR` inside the tree, `dsub` to `q_pacopt`):
+From the `nsls_zhangxu` account (`ssh sme`), inside
+`/home/share/nsls_zhangxu/zl`, in a fresh directory that is removed after the
+run (BiSheng clang from HPCKit 26.1.RC1, `TMPDIR` inside the tree, `dsub -s`
+to `q_hpcapp`; the `zhounan` account can no longer submit). Results in
+`benchmark_logs/Kunpeng920F/20261026_store_prefetch/`:
 
-```bash
-cmake --preset native-release && cmake --build build/native-release -j16
-cd build/native-release && ctest
-./cpufb '--thread_pool=[0]' --mode=cache | tee cache.txt
-./cpufb '--thread_pool=[0]' --include-test=multi_issue --save=issue.csv
-```
+| | value | note |
+|---|---|---|
+| curve, cycle source | `perf_event cycles` | L1 4.0 cycles (2.585 ns), L2 11.9 cycles; last round's open item closed |
+| L2 workset (156 KiB): stride 1 hides | 61% of 13.0 cycles; reach 8 lines | strides 16+ hide nothing |
+| memory (64 MiB): random / stride 1 | 275 cycles / 5.7 cycles (98% hidden); reach 64 lines | |
+| stream restart cost | 236 ns = 361 cycles = 63 line-times | even 1024-line segments +53% |
+| `prfm pldl1keep`, memory | 4.07 ns/line at distance 64, 50 lines in flight, 15.7 GB/s | still falling at 64: the grid should go further here |
+| `prfm pldl2keep`, memory | 9.21 ns/line from distance 16, 22 in flight | the opposite ranking to the V3 |
+| write streams | full-line 45.7 GB/s, partial-line 11.2, `stnt1h` 45.1 (0.99x) | `skip the line fill`, 4.07x |
+| issue: `str q` / `st1w` peak | 0.88 / 0.75 per cycle | tc3 measured `st1w` at 1.333 cycles each |
+| `NEON load:store` | 2.00, shared ports | loads and stores share the two LSU slots |
+| `SME + streaming SVE store` | 1.25 at 2:3, independent | FMOPA does not block streaming stores (it blocks streaming `fmla`) |
 
-1. Curve header `cycles: perf_event cycles`, L1 at 4.0 cycles (last round's
-   item, still open).
-2. `Prefetch probe` header also says `perf_event cycles`; the memory
-   `prfm pldl2keep` row gives the misses in flight, which is the number the
-   mqa and tc3 documents wished they had.
-3. `Write allocate` verdict and the three write streams; tc3 measured
-   `str za` write-back at 85 GB/s on this machine, so the full-line stream
-   should be in that range.
-4. `multi_issue`: the new `SME + streaming SVE store` row (expect FMOPA to
-   block streaming `st1w` as it blocks streaming `fmla`), `NEON load:store`.
+One oddity in the curve: 4 MiB read 309 ns against 88 ns at 8 MiB (a shared
+last level under another job's load; the capacities were unaffected). Worth a
+second run when the node is quiet.
+
+**Still to do on the 920F:** extend the distance grid past 64 for the
+`pldl1keep` column (it had not flattened), and a PMU-hidden run
+(`perf_event_paranoid=3` is not settable there, so an unprivileged account
+would be needed) to compare the clock-estimate cycles with the counted ones.
 
 ## Apple M4 Pro, Android, Milk-V X60
 

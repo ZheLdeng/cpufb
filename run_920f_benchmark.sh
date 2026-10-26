@@ -1,6 +1,6 @@
 #!/bin/bash
 #DSUB -n cpufb-920f
-#DSUB -q q_pacopt
+#DSUB -q q_hpcapp
 #DSUB -N 1
 #DSUB -rpn 1
 #DSUB -o cpufb-920f.%A.out

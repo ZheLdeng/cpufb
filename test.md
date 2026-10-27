@@ -3,6 +3,16 @@
 Rewritten in full at the end of every round. It describes what the branch
 needs verified *now*; it is not a log, and nothing is appended to it.
 
+- **Code structure round (2026-10-27, commits `9c3017c`..`e601013` and this
+  one):** no measurement changed, but the output did in three places that a
+  re-test should not report as regressions: x86-64 cache rows now carry the
+  ARM64 names and units (`L1 data cache capacity`, KiB, capacity source);
+  the load table has the same ten columns on every architecture (x86-64
+  gains `Capacity Source` and `Cycle Source`); the compute table's last
+  column is `Latency (cycles)` everywhere. riscv64's load rows now come from
+  the shared harness (same numbers expected within noise) and its
+  `RVV compute:load` row sits in the issue table. Files moved: docs/,
+  tools/, common/{cache,issue,sys}.
 - **Under test:** `fix/review-high-medium` @ the commit after `370b534`
   (this checklist's own commit); the branch now contains main's Windows and
   RISC-V commits.

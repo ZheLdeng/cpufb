@@ -33,16 +33,24 @@ void init_frequency_table(Table &table, bool sve_columns)
     set_header(table, head);
 }
 
-void init_benchmark_tables(std::vector<Table *> &tables, bool sve_columns)
+void init_benchmark_tables(
+    std::vector<Table *> &tables, bool sve_columns, LoadTableLayout load_layout)
 {
     tables.resize(5);
     for (Table *&table : tables) table = new Table();
     set_header(*tables[0], {"Instruction Set", "Core Computation",
                                "Peak Performance", "IPC", "Latency (cycles)"});
-    set_header(*tables[1],
-        {"Cache Level", "Core Instruction", "Bandwidth (per core)",
-            "Cache Capacity", "Workset", "Capacity Source", "Bandwidth (GB/s)",
-            "Cycle Source", "Access IPC", "Bytes/Access"});
+    if (load_layout == LOAD_TABLE_WITH_SOURCES)
+        set_header(*tables[1],
+            {"Cache Level", "Core Instruction", "Bandwidth (per core)",
+                "Cache Capacity", "Workset", "Capacity Source",
+                "Bandwidth (GB/s)", "Cycle Source", "Access IPC",
+                "Bytes/Access"});
+    else
+        set_header(*tables[1],
+            {"Cache Level", "Core Instruction", "Bandwidth (per core)",
+                "Reported Size", "Measured Size", "Bandwidth (GB/s)", "Workset",
+                "Access IPC", "Bytes/Access"});
     set_header(*tables[2], {"Item", "Topology / Core", "Probe / Kernel",
                                "Median Bandwidth", "Workset", "Measurement"});
     init_frequency_table(*tables[3], sve_columns);
@@ -80,9 +88,10 @@ void warn_estimated_cycles_once(const std::string &clock_source)
     std::cerr << std::endl;
 }
 
-void append_load_bandwidth_row(Table &table, const std::string &label,
-    const LoadKernel &kernel, int cache_level, const CacheData &capacities,
-    tpool_t *pool, const std::vector<double> &clock_ghz)
+void append_load_bandwidth_row(Table &table, LoadTableLayout layout,
+    const std::string &label, const LoadKernel &kernel, int cache_level,
+    const CacheData &capacities, tpool_t *pool,
+    const std::vector<double> &clock_ghz)
 {
     auto capacity_kib = [](int reported, int measured) {
         return static_cast<size_t>(reported > 0 ? reported : measured);
@@ -121,17 +130,25 @@ void append_load_bandwidth_row(Table &table, const std::string &label,
     if (bandwidth.worker_count > 1)
         gb_per_second += " (" + std::to_string(bandwidth.worker_count) + " cores)";
 
-    std::vector<std::string> row(table.getCol());
-    row[0] = label;
-    row[1] = kernel.name;
-    row[2] = format_or_dash(bandwidth.bytes_per_cycle, 5, " Byte/Cycle");
-    row[3] = std::to_string(is_l1 ? l1_kib : l2_kib) + " KiB";
-    row[4] = std::to_string(bandwidth.workset_bytes / 1024) + " KiB";
-    row[5] = capacity_source;
-    row[6] = gb_per_second;
-    row[7] = bandwidth.cycle_source.empty() ? "-" : bandwidth.cycle_source;
-    row[8] = format_or_dash(bandwidth.load_ipc, 3, "");
-    row[9] = std::to_string(kernel.bytes_per_load) + " B";
+    auto kib_or_dash = [](int kib) {
+        return kib > 0 ? std::to_string(kib) + " KiB" : std::string("-");
+    };
+    const std::string workset_text =
+        std::to_string(bandwidth.workset_bytes / 1024) + " KiB";
+    const std::string per_cycle =
+        format_or_dash(bandwidth.bytes_per_cycle, 5, " Byte/Cycle");
+    const std::string ipc = format_or_dash(bandwidth.load_ipc, 3, "");
+    const std::string per_load = std::to_string(kernel.bytes_per_load) + " B";
+    const std::string cycle_source =
+        bandwidth.cycle_source.empty() ? "-" : bandwidth.cycle_source;
+    std::vector<std::string> row = layout == LOAD_TABLE_WITH_SOURCES
+        ? std::vector<std::string>{label, kernel.name, per_cycle,
+              std::to_string(is_l1 ? l1_kib : l2_kib) + " KiB", workset_text,
+              capacity_source, gb_per_second, cycle_source, ipc, per_load}
+        : std::vector<std::string>{label, kernel.name, per_cycle,
+              kib_or_dash(is_l1 ? capacities.theory_L1 : capacities.theory_L2),
+              kib_or_dash(is_l1 ? capacities.test_L1 : capacities.test_L2),
+              gb_per_second, workset_text, ipc, per_load};
     table.addOneItem(row);
 }
 

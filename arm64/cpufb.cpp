@@ -435,8 +435,9 @@ static cpufb::LoadKernel resolve_load_kernel(const cpubm_t &item)
 // One row of the L1/L2 load table; the method is in cache_bandwidth.hpp.
 static void cpubm_arm_load(tpool_t *tm, cpubm_t &item, Table &table)
 {
-    cpufb::append_load_bandwidth_row(table, item.isa, resolve_load_kernel(item),
-        item.cache_level, cache_size, tm, freq);
+    cpufb::append_load_bandwidth_row(table, cpufb::LOAD_TABLE_WITH_SOURCES,
+        item.isa, resolve_load_kernel(item), item.cache_level, cache_size, tm,
+        freq);
 }
 
 static bool cpubm_arm_cache(
@@ -560,7 +561,8 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
 #endif
         // set table head
         vector<Table *> tables;
-        cpufb::init_benchmark_tables(tables, kFrequencyTableSve);
+        cpufb::init_benchmark_tables(
+            tables, kFrequencyTableSve, cpufb::LOAD_TABLE_WITH_SOURCES);
         if (should_run_standalone_warmup(filter) &&
             !cpubm_standalone_warmup(set_of_threads)) {
             for (size_t t = 0; t < tables.size(); ++t) delete tables[t];

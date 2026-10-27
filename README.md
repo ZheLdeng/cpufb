@@ -74,7 +74,9 @@ common/            architecture-independent code
   issue/           issue probe and the generator headers its kernels are built from
   sys/             platform: perf_event, thread pool and pinning, memory, Windows
   cli.*            options, filters, saving;  table.*  the result tables
-  benchmark_tables.*  the five result tables and the shared L1/L2 bandwidth row
+  benchmark_tables.*  the five result tables and the L1/L2 bandwidth row
+                   (common where the architectures agree; where they differ,
+                   such as the load table's columns, each keeps its own branch)
 arm64/ x64/ riscv64/
   cpufb.cpp        front end: kernel registration, compute timing, the bench loop
   kernel/          per-arch pieces the common code is parameterised with (the

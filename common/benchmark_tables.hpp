@@ -13,11 +13,21 @@ typedef struct tpool tpool_t;
 
 namespace cpufb {
 
+// Column set of the load table.  The architectures differ here on purpose:
+// ARM64 and riscv64 name the capacity's source and the cycle source (their
+// capacities may come from the probe and their cycles from a clock
+// estimate); x86-64 shows the reported and the measured size side by side.
+enum LoadTableLayout
+{
+    LOAD_TABLE_WITH_SOURCES, // 10 columns
+    LOAD_TABLE_REPORTED_AND_MEASURED // 8 columns
+};
+
 // The five result tables in the order print_and_save_benchmark_tables()
 // expects: compute, load (L1/L2 bandwidth), cache, frequency, multi_issue.
-// One layout for every architecture; sve_columns adds the two SVE IPC
-// columns to the frequency table.
-void init_benchmark_tables(std::vector<Table *> &tables, bool sve_columns);
+// sve_columns adds the two SVE IPC columns to the frequency table.
+void init_benchmark_tables(
+    std::vector<Table *> &tables, bool sve_columns, LoadTableLayout load_layout);
 void init_frequency_table(Table &table, bool sve_columns);
 
 // One row of the load table: the kernel's bandwidth on the pool workers at a
@@ -25,9 +35,10 @@ void init_frequency_table(Table &table, bool sve_columns);
 // capacities are the reported ones when exposed, the measured ones otherwise;
 // the clock is the mean of the frequency table's cores when the PMU cannot
 // count.  `label` is the first column ("L1 Cache", "--------").
-void append_load_bandwidth_row(Table &table, const std::string &label,
-    const LoadKernel &kernel, int cache_level, const CacheData &capacities,
-    tpool_t *pool, const std::vector<double> &clock_ghz);
+void append_load_bandwidth_row(Table &table, LoadTableLayout layout,
+    const std::string &label, const LoadKernel &kernel, int cache_level,
+    const CacheData &capacities, tpool_t *pool,
+    const std::vector<double> &clock_ghz);
 
 // `value` with `significant_digits` digits and a unit, or "-" when not
 // positive; and with a fixed number of decimals.

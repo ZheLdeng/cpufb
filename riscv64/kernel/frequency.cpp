@@ -145,23 +145,26 @@ void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
     for (int t = 0; t < num_thread; t++) {
         pthread_join(threads[t], &thread_result);
         result = (struct FrequencyData *)thread_result;
-        stringstream ss1, ss2, ss3, ss4, ss5;
-        ss1 << std::setprecision(2) << result->theory_freq << " GHZ";
-        ss2 << std::setprecision(2) << result->caculate_freq << " GHZ";
-        ss3 << std::setprecision(2) << result->IPC_fp32;
-        ss4 << std::setprecision(2) << result->IPC_fp64;
-        ss5 << std::setprecision(2) << result->IPC_load;
+        // Same formats as the ARM64 and x86-64 rows: "-" for a value that
+        // was not measured, two decimals for the reported clock and the
+        // IPCs, three for the measured clock.
+        auto value = [](double v, int precision, const char *unit) {
+            if (!(v > 0.0)) return string("-");
+            stringstream text;
+            text << std::setprecision(precision) << v << unit;
+            return text.str();
+        };
         freq[t] = result->caculate_freq;
-        vector<string> cont;
-        cont.resize(table.getCol());
+        const bool has_clock = result->caculate_freq > 0.0;
+        vector<string> cont(table.getCol());
         cont[0] = to_string(set_of_threads[t]);
-        cont[1] = ss1.str();
-        cont[2] = ss2.str();
-        cont[3] = ss3.str();
-        cont[4] = ss4.str();
-        cont[5] = ss5.str();
-        cont[6] = result->load_uses_perf_counter ? "perf_event cycles" :
-            "clock/frequency estimate";
+        cont[1] = value(result->theory_freq, 2, " GHZ");
+        cont[2] = value(result->caculate_freq, 3, " GHZ");
+        cont[3] = has_clock ? value(result->IPC_fp32, 2, "") : "-";
+        cont[4] = has_clock ? value(result->IPC_fp64, 2, "") : "-";
+        cont[5] = has_clock ? value(result->IPC_load, 2, "") : "-";
+        cont[6] = result->load_uses_perf_counter ? "perf_event cycles"
+                                                 : "OS-reported frequency (not measured)";
         table.addOneItem(cont);
     delete result;
     }

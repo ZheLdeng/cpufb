@@ -145,16 +145,12 @@ void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
     for (int t = 0; t < num_thread; t++) {
         pthread_join(threads[t], &thread_result);
         result = (struct FrequencyData *)thread_result;
-        stringstream ss1, ss2, ss3, ss4, ss5, ss6, ss7;
+        stringstream ss1, ss2, ss3, ss4, ss5;
         ss1 << std::setprecision(2) << result->theory_freq << " GHZ";
         ss2 << std::setprecision(2) << result->caculate_freq << " GHZ";
         ss3 << std::setprecision(2) << result->IPC_fp32;
         ss4 << std::setprecision(2) << result->IPC_fp64;
         ss5 << std::setprecision(2) << result->IPC_load;
-#ifdef _SVE_
-        ss6 << std::setprecision(2) << result->IPC_fp32_sve;
-        ss7 << std::setprecision(2) << result->IPC_fp64_sve;
-#endif
         freq[t] = result->caculate_freq;
         vector<string> cont;
         cont.resize(table.getCol());
@@ -166,10 +162,6 @@ void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
         cont[5] = ss5.str();
         cont[6] = result->load_uses_perf_counter ? "perf_event cycles" :
             "clock/frequency estimate";
-#ifdef _SVE_
-        cont[6] = ss6.str();
-        cont[7] = ss7.str();
-#endif
         table.addOneItem(cont);
     delete result;
     }
@@ -178,16 +170,12 @@ void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
         pthread_join(threads[t], &thread_result);
     }
     result = (struct FrequencyData *)thread_result;
-    stringstream ss1, ss2, ss3, ss4, ss5, ss6, ss7;
+    stringstream ss1, ss2, ss3, ss4, ss5;
     ss1 << std::setprecision(2) << result->theory_freq << " GHZ";
     ss2 << std::setprecision(2) << result->caculate_freq << " GHZ";
     ss3 << std::setprecision(2) << result->IPC_fp32;
     ss4 << std::setprecision(2) << result->IPC_fp64;
     ss5 << std::setprecision(2) << result->IPC_load;
-#ifdef _SVE_
-    ss6 << std::setprecision(2) << result->IPC_fp32_sve;
-    ss7 << std::setprecision(2) << result->IPC_fp64_sve;
-#endif
     freq[0] = result->caculate_freq;
     vector<string> cont;
     cont.resize(table.getCol());
@@ -197,10 +185,6 @@ void get_cpu_freq(std::vector<int> &set_of_threads, Table &table)
     cont[3] = ss3.str();
     cont[4] = ss4.str();
     cont[5] = ss5.str();
-#ifdef _SVE_
-    cont[6] = ss6.str();
-    cont[7] = ss7.str();
-#endif
     table.addOneItem(cont);
     delete result;
 #endif

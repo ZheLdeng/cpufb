@@ -19,6 +19,7 @@
 #include "frequency.hpp"
 #include "compute.hpp"
 #include "load.hpp"
+#include "benchmark_tables.hpp"
 #include <cmath>
 #include <algorithm>
 #include <atomic>
@@ -102,16 +103,6 @@ struct ComputeResult
     bool hardware_cycles;
 };
 
-static void warn_estimated_cycles_once()
-{
-    static bool warned = false;
-    if (warned) return;
-    warned = true;
-    cerr << "Warning: per-kernel perf_event cycle counts are unavailable; "
-         << "IPC and latency are estimated from elapsed time x frequency."
-         << endl;
-}
-
 static ComputeResult cpubm_run_compute(tpool_t *tm, cpubm_t &item)
 {
     struct timespec start, end;
@@ -161,7 +152,7 @@ static ComputeResult cpubm_run_compute(tpool_t *tm, cpubm_t &item)
         }
         if (aggregate_frequency_hz <= 0.0) return result;
         result.ipc = instructions / (best_time * aggregate_frequency_hz);
-        warn_estimated_cycles_once();
+        cpufb::warn_estimated_cycles_once("the frequency table's");
     }
     return result;
 }
@@ -181,81 +172,8 @@ static void cpubm_riscv64_one(
     cont[1] = item.type;
     cont[2] = format_perf_value(result.perf, item.dim);
     cont[3] = result.ipc > 0.0 ? to_string(result.ipc) : "-";
-    if (latency > 0.0) {
-        ostringstream value;
-        value << fixed << setprecision(2) << latency;
-        cont[4] = value.str();
-    } else {
-        cont[4] = "-";
-    }
+    cont[4] = latency > 0.0 ? cpufb::format_fixed(latency, 2, "") : "-";
     table.addOneItem(cont);
-}
-
-static void init_table(vector<Table *> &tables)
-{
-    tables.resize(5);
-    for (int i = 0; i < 5; i++) {
-        tables[i] = new Table();
-    }
-
-    vector<string> ti;
-
-    ti.resize(5);
-    ti[0] = "Instruction Set";
-    ti[1] = "Core Computation";
-    ti[2] = "Peak Performance";
-    ti[3] = "IPC";
-    ti[4] = "Latency";
-    tables[0]->setColumnNum(ti.size());
-    tables[0]->addOneItem(ti);
-
-    ti.resize(8);
-    ti[0] = "Cache Level";
-    ti[1] = "Core Instruction";
-    ti[2] = "Bandwidth (per core)";
-    ti[3] = "Cache Capacity";
-    ti[4] = "Workset";
-    ti[5] = "Capacity Source";
-    ti[6] = "Bandwidth (GB/s)";
-    ti[7] = "Cycle Source";
-    tables[1]->setColumnNum(ti.size());
-    tables[1]->addOneItem(ti);
-
-    ti.resize(6);
-    ti[0] = "Item";
-    ti[1] = "Topology / Core";
-    ti[2] = "Probe / Kernel";
-    ti[3] = "Median Bandwidth";
-    ti[4] = "Workset";
-    ti[5] = "Measurement";
-    tables[2]->setColumnNum(ti.size());
-    tables[2]->addOneItem(ti);
-
-#ifdef _SVE_
-    ti.resize(8);
-#else
-    ti.resize(7);
-#endif
-    ti[0] = "Core ID";
-    ti[1] = "Reported Max Freq";
-    ti[2] = "Test Freq";
-    ti[3] = "IPC(FSU32)";
-    ti[4] = "IPC(FSU64)";
-    ti[5] = "IPC(LSU ldr)";
-    ti[6] = "Counter Source";
-#ifdef _SVE_
-    ti[6] = "IPC(SVE32)";
-    ti[7] = "IPC(SVE64)";
-#endif
-    tables[3]->setColumnNum(ti.size());
-    tables[3]->addOneItem(ti);
-
-    ti.resize(3);
-    ti[0] = "Item";
-    ti[1] = "Core Instruction";
-    ti[2] = "IPC";
-    tables[4]->setColumnNum(ti.size());
-    tables[4]->addOneItem(ti);
 }
 
 // Reported values, the latency curve, the line and set-conflict probes and
@@ -273,129 +191,54 @@ static void cpubm_riscv64_cache(std::vector<int> &set_of_threads, Table &table)
 }
 
 #ifdef _VECTOR_
-struct StreamBenchmark
+// L1/L2 rows and the fixed 1:1 load+FMA stream through the shared harness
+// (cache_bandwidth.hpp).  The RVV kernels take (data, bytes, passes), so a
+// count unit of one byte makes them LoadKernels.
+static cpufb::LoadKernel rvv_stream_kernel(
+    const char *name, void (*function)(void *, size_t, int64_t))
 {
-    vector<void *> buffers;
-    size_t bytes = 0;
-    int64_t repetitions = 0;
-    bool mixed = false;
-};
-
-static void stream_thread_func(void *params)
-{
-    StreamBenchmark *benchmark = static_cast<StreamBenchmark *>(params);
-    const size_t index = tpool_worker_index();
-    if (index >= benchmark->buffers.size()) return;
-    if (benchmark->mixed)
-        vector_load_fma_stream(benchmark->buffers[index], benchmark->bytes,
-            benchmark->repetitions);
-    else
-        vector_load_stream(benchmark->buffers[index], benchmark->bytes,
-            benchmark->repetitions);
+    cpufb::LoadKernel kernel;
+    kernel.name = name;
+    kernel.function = reinterpret_cast<void (*)(float *, int, int64_t)>(function);
+    kernel.bytes_per_count = 1;
+    kernel.block_bytes = riscv_vector_length_bytes();
+    kernel.bytes_per_load = kernel.block_bytes;
+    return kernel;
 }
 
-static double median_stream_seconds(tpool_t *tm, StreamBenchmark &benchmark)
+static void add_riscv64_load_rows(tpool_t *tm, Table &table)
 {
-    vector<double> samples;
-    struct timespec start, end;
-    tpool_run_all(tm, stream_thread_func, &benchmark, &start, &end);
-    for (int sample = 0; sample < 5; ++sample) {
-        if (tpool_run_all(tm, stream_thread_func, &benchmark, &start, &end))
-            samples.push_back(get_time(&start, &end));
-    }
-    if (samples.empty()) return 0.0;
-    sort(samples.begin(), samples.end());
-    return samples[samples.size() / 2];
+    if (riscv_vector_length_bytes() == 0) return;
+    const cpufb::LoadKernel kernel =
+        rvv_stream_kernel("rvv-vle8.v", vector_load_stream);
+    for (int level = 1; level <= 2; ++level)
+        cpufb::append_load_bandwidth_row(table,
+            level == 1 ? "L1 Cache" : "L2 Cache", kernel, level, cache_size, tm,
+            freq);
 }
 
-static bool allocate_stream_buffers(
-    StreamBenchmark &benchmark, size_t thread_count)
+// A fixed 1:1 stream of vle32.v and vfmacc.vv over half of L1: two
+// instructions per vector loaded, so the IPC is twice the load rate.
+static void add_riscv64_multiple_issue(tpool_t *tm, Table &table)
 {
-    benchmark.buffers.resize(thread_count, nullptr);
-    for (void *&buffer : benchmark.buffers) {
-        if (posix_memalign(&buffer, 64, benchmark.bytes) != 0) return false;
-        memset(buffer, 1, benchmark.bytes);
-    }
-    return true;
-}
-
-static void free_stream_buffers(StreamBenchmark &benchmark)
-{
-    for (void *buffer : benchmark.buffers) free(buffer);
-}
-
-static void add_riscv64_load_rows(tpool_t *tm, int cpu, Table &table)
-{
-    const double frequency_hz = !freq.empty() ? freq[0] * 1e9 : 0.0;
-    const size_t vector_bytes = riscv_vector_length_bytes();
-    for (int level = 1; level <= 2; ++level) {
-        const cpufb::CacheLevelInfo cache =
-            cpufb::detect_data_cache_level(cpu, level);
-        if (cache.bytes == 0 || vector_bytes == 0) continue;
-        StreamBenchmark benchmark;
-        benchmark.bytes = max<size_t>(vector_bytes, cache.bytes / 2);
-        benchmark.bytes -= benchmark.bytes % vector_bytes;
-        const uint64_t target_bytes = 256ULL * 1024 * 1024;
-        benchmark.repetitions = max<int64_t>(
-            1, static_cast<int64_t>(target_bytes / benchmark.bytes));
-        if (!allocate_stream_buffers(benchmark, tm->thread_num)) {
-            free_stream_buffers(benchmark);
-            continue;
-        }
-        const double seconds = median_stream_seconds(tm, benchmark);
-        const double bytes =
-            static_cast<double>(benchmark.bytes) * benchmark.repetitions;
-        const double gbps = seconds > 0.0 ? bytes / seconds / 1e9 : 0.0;
-        const double bytes_per_cycle = frequency_hz > 0.0 && seconds > 0.0
-            ? bytes / (seconds * frequency_hz)
-            : 0.0;
-        ostringstream rate, per_second;
-        rate << fixed << setprecision(3) << bytes_per_cycle << " Byte/Cycle";
-        per_second << fixed << setprecision(3) << gbps << " GB/s";
-        vector<string> row(table.getCol());
-        row[0] = "L" + to_string(level) + " Cache";
-        row[1] = "rvv-vle8.v";
-        row[2] = rate.str();
-        row[3] = cpufb::format_cache_capacity(cache.bytes);
-        row[4] = cpufb::format_cache_capacity(benchmark.bytes);
-        row[5] = cache.source;
-        row[6] = per_second.str();
-        row[7] = "clock/frequency estimate";
-        table.addOneItem(row);
-        free_stream_buffers(benchmark);
-    }
-}
-
-static void add_riscv64_multiple_issue(tpool_t *tm, int cpu, Table &table)
-{
-    const size_t vector_bytes = riscv_vector_length_bytes();
-    const cpufb::CacheLevelInfo l1 = cpufb::detect_data_cache_level(cpu, 1);
-    if (vector_bytes == 0 || l1.bytes == 0 || freq.empty() || freq[0] <= 0.0)
-        return;
-    StreamBenchmark benchmark;
-    benchmark.bytes = max<size_t>(vector_bytes, l1.bytes / 2);
-    benchmark.bytes -= benchmark.bytes % vector_bytes;
-    benchmark.repetitions = max<int64_t>(
-        1, static_cast<int64_t>((128ULL * 1024 * 1024) / benchmark.bytes));
-    benchmark.mixed = true;
-    if (!allocate_stream_buffers(benchmark, tm->thread_num)) {
-        free_stream_buffers(benchmark);
-        return;
-    }
-    const double seconds = median_stream_seconds(tm, benchmark);
-    const double vector_iterations = static_cast<double>(benchmark.bytes) /
-        vector_bytes * benchmark.repetitions;
-    const double ipc = seconds > 0.0
-        ? 2.0 * vector_iterations / (seconds * freq[0] * 1e9)
-        : 0.0;
+    const size_t l1_kib = static_cast<size_t>(
+        cache_size.theory_L1 > 0 ? cache_size.theory_L1 : cache_size.test_L1);
+    if (riscv_vector_length_bytes() == 0 || l1_kib == 0) return;
+    const cpufb::LoadKernel kernel =
+        rvv_stream_kernel("vle32.v + vfmacc.vv", vector_load_fma_stream);
+    double clock_hz = 0.0;
+    for (const double ghz : freq) clock_hz = std::max(clock_hz, ghz * 1e9);
+    const cpufb::CacheBandwidth bandwidth = cpufb::measure_cache_bandwidth(
+        kernel, cpufb::cache_level_workset(0, l1_kib * 1024), tm, clock_hz);
     vector<string> row(table.getCol());
-    row[0] = "RVV_MULTI_ISSUE";
-    row[1] = "vle32.v/vfmacc.vv";
-    ostringstream value;
-    value << fixed << setprecision(4) << ipc << " IPC";
-    row[2] = value.str();
+    row[0] = "RVV compute:load";
+    row[1] = kernel.name;
+    row[2] = cpufb::format_or_dash(2.0 * bandwidth.load_ipc, 3, "");
+    row[3] = "fixed 1:1 stream";
+    row[4] = bandwidth.cycle_source.empty()
+        ? "not available"
+        : "no ratio search on riscv64; " + bandwidth.cycle_source;
     table.addOneItem(row);
-    free_stream_buffers(benchmark);
 }
 #endif
 
@@ -416,7 +259,7 @@ static bool cpubm_do_bench(std::vector<int> &set_of_threads, uint32_t idle_time,
 
         // set table head
         vector<Table *> tables;
-        init_table(tables);
+        cpufb::init_benchmark_tables(tables, false);
 
         // set thread pool
         tpool_t *tm;
@@ -435,9 +278,11 @@ static bool cpubm_do_bench(std::vector<int> &set_of_threads, uint32_t idle_time,
             cpubm_riscv64_cache(set_of_threads, *tables[2]);
 #ifdef _VECTOR_
         if (should_run_test(filter, "load"))
-            add_riscv64_load_rows(tm, set_of_threads[0], *tables[1]);
+            cpufb::prepare_load_capacities(cache_size, set_of_threads[0]);
+            add_riscv64_load_rows(tm, *tables[1]);
         if (should_run_test(filter, "multi_issue"))
-            add_riscv64_multiple_issue(tm, set_of_threads[0], *tables[4]);
+            cpufb::prepare_load_capacities(cache_size, set_of_threads[0]);
+            add_riscv64_multiple_issue(tm, *tables[4]);
 #endif
 
         // traverse task list
@@ -539,19 +384,7 @@ int main(int argc, char *argv[])
     }
 
     if (!options.thread_pool_set || options.thread_pool.empty()) {
-        fprintf(stderr, "Error: You must set --thread_pool parameter.\n");
-        fprintf(stderr, "You may also set --idle_time parameter.\n");
-        fprintf(
-            stderr, "Usage: %s --thread_pool=[xxx] --idle_time=yyy\n", argv[0]);
-        fprintf(stderr, "[xxx] indicates all cores to benchmark.\n");
-        fprintf(stderr, "Example: [0,3,5-8,13-15].\n");
-        fprintf(stderr,
-            "idle_time is the interval time(s) between every two benchmarks.\n");
-        fprintf(stderr,
-            "idle_time parameter can be ignored, the default value is 0s.\n");
-        fprintf(stderr, "       %s --list-categories | --list-instructions\n",
-            argv[0]);
-        fprintf(stderr, "Notice: there must NOT be any spaces.\n");
+        print_usage(argv[0]);
         return 1;
     }
     if (options.memory_bandwidth || options.memory_size_set ||

@@ -64,6 +64,26 @@ issue peaks per instruction class and how classes share the core when mixed.
 | ------------ | ------------ | ------------ | ------------ | ------------ |
 |Vector|vector|Vector|fp16/fp32/fp64|From RISC-V "V" vector extension. Version 1.0|
 |DSA|ime|Matrix|int8|From SpacemiT-X60|
+## Repository layout
+
+```
+common/            architecture-independent code
+  cache/           latency curve, topology, line/associativity probes, L1/L2 and
+                   memory bandwidth, prefetch probe, and cache_report (the whole
+                   cache category: one CacheData, one measurement, one row writer)
+  issue/           issue probe and the generator headers its kernels are built from
+  sys/             platform: perf_event, thread pool and pinning, memory, Windows
+  cli.*            options, filters, saving;  table.*  the result tables
+  benchmark_tables.*  the five result tables and the shared L1/L2 bandwidth row
+arm64/ x64/ riscv64/
+  cpufb.cpp        front end: kernel registration, compute timing, the bench loop
+  kernel/          per-arch pieces the common code is parameterised with (the
+                   chase and flush kernels, stream kernels, issue class list)
+  asm/             the timed kernels, GNU assembly
+tests/             unit tests (ctest label unit) and the CLI regression script
+tools/             analysis and run scripts;  docs/  reference documents
+```
+
 ## How to build
 ---
 ### Dependencies

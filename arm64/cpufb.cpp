@@ -24,6 +24,7 @@
 #include "sys/thread_pool.hpp"
 #include "cli.hpp"
 #include "load.hpp"
+#include "benchmark_tables.hpp"
 #include "cache/memory_bandwidth.hpp"
 #include "compute.hpp"
 #include "frequency.hpp"
@@ -362,13 +363,6 @@ static double cpubm_arm64_latency(tpool_t *tm, cpubm_t &item)
     return result.ipc > 0.0 ? 1.0 / result.ipc : 0.0;
 }
 
-static string format_latency_cycles(double latency)
-{
-    stringstream ss;
-    ss << fixed << setprecision(2) << latency;
-    return ss.str();
-}
-
 static void cpubm_arm64_one(
     tpool_t *tm, cpubm_t &item, double latency, Table &table)
 {
@@ -378,7 +372,7 @@ static void cpubm_arm64_one(
     cont[1] = item.type;
     cont[2] = format_perf_value(result.perf, item.dim);
     cont[3] = result.ipc > 0 ? to_string(result.ipc) : "-";
-    cont[4] = latency > 0 ? format_latency_cycles(latency) : "-";
+    cont[4] = latency > 0 ? cpufb::format_fixed(latency, 2, "") : "-";
     table.addOneItem(cont);
 }
 
@@ -437,67 +431,12 @@ static cpufb::LoadKernel resolve_load_kernel(const cpubm_t &item)
 }
 
 // Formats value with `digits` significant digits and a unit, or "-".
-static string format_or_dash(double value, int digits, const string &unit)
-{
-    if (value <= 0.0) return "-";
-    stringstream text;
-    text << setprecision(digits) << value << unit;
-    return text.str();
-}
-
+// One row of the L1/L2 load table; the method is in cache_bandwidth.hpp.
 // One row of the L1/L2 load table; the method is in cache_bandwidth.hpp.
 static void cpubm_arm_load(tpool_t *tm, cpubm_t &item, Table &table)
 {
-    // Level capacities: the OS topology when exposed, the probe otherwise.
-    auto capacity_kib = [](int reported, int measured) {
-        return static_cast<size_t>(reported > 0 ? reported : measured);
-    };
-    const size_t l1_kib =
-        capacity_kib(cache_size.theory_L1, cache_size.test_L1);
-    const size_t l2_kib =
-        capacity_kib(cache_size.theory_L2, cache_size.test_L2);
-    const bool is_l1 = item.cache_level == 1;
-    const size_t workset = is_l1
-        ? cpufb::cache_level_workset(0, l1_kib * 1024)
-        : cpufb::cache_level_workset(l1_kib * 1024, l2_kib * 1024);
-
-    const int reported = is_l1 ? cache_size.theory_L1 : cache_size.theory_L2;
-    const string &reported_source =
-        is_l1 ? cache_size.theory_L1_source : cache_size.theory_L2_source;
-    const string capacity_source = reported > 0
-        ? (reported_source.empty() ? "OS topology" : reported_source)
-        : "cache probe";
-
-    // Fallback clock: the mean over the measured cores (macOS fills one).
-    double clock_hz = 0.0;
-    int clocks = 0;
-    for (const double ghz : freq)
-        if (ghz > 0.0) {
-            clock_hz += ghz * 1e9;
-            ++clocks;
-        }
-    if (clocks > 0) clock_hz /= clocks;
-
-    const cpufb::LoadKernel kernel = resolve_load_kernel(item);
-    const cpufb::CacheBandwidth bandwidth =
-        cpufb::measure_cache_bandwidth(kernel, workset, tm, clock_hz);
-
-    string gb_per_second = format_or_dash(bandwidth.gb_per_second, 5, " GB/s");
-    if (bandwidth.worker_count > 1)
-        gb_per_second += " (" + to_string(bandwidth.worker_count) + " cores)";
-
-    vector<string> cont(table.getCol());
-    cont[0] = item.isa;
-    cont[1] = item.type;
-    cont[2] = format_or_dash(bandwidth.bytes_per_cycle, 5, " " + item.dim);
-    cont[3] = to_string(is_l1 ? l1_kib : l2_kib) + " KiB";
-    cont[4] = to_string(bandwidth.workset_bytes / 1024) + " KiB";
-    cont[5] = capacity_source;
-    cont[6] = gb_per_second;
-    cont[7] = bandwidth.cycle_source.empty() ? "-" : bandwidth.cycle_source;
-    cont[8] = format_or_dash(bandwidth.load_ipc, 3, "");
-    cont[9] = to_string(kernel.bytes_per_load) + " B";
-    table.addOneItem(cont);
+    cpufb::append_load_bandwidth_row(table, item.isa, resolve_load_kernel(item),
+        item.cache_level, cache_size, tm, freq);
 }
 
 static bool cpubm_arm_cache(
@@ -520,93 +459,11 @@ static bool cpubm_arm_cache(
 
 // compute: instruction throughput/IPC; load: cache-resident load bandwidth;
 // cache: capacity, associativity, and cache-line probes; freq: core frequency.
-static void init_table(vector<Table *> &tables)
-{
-    tables.resize(5);
-    for (int i = 0; i < 5; i++) {
-        tables[i] = new Table();
-    }
-
-    vector<string> ti;
-
-    ti.resize(5);
-    ti[0] = "Instruction Set";
-    ti[1] = "Core Computation";
-    ti[2] = "Peak Performance";
-    ti[3] = "IPC";
-    ti[4] = "Latency";
-    tables[0]->setColumnNum(ti.size());
-    tables[0]->addOneItem(ti);
-
-    ti.resize(10);
-    ti[0] = "Cache Level";
-    ti[1] = "Core Instruction";
-    ti[2] = "Bandwidth (per core)";
-    ti[3] = "Cache Capacity";
-    ti[4] = "Workset";
-    ti[5] = "Capacity Source";
-    ti[6] = "Bandwidth (GB/s)";
-    ti[7] = "Cycle Source";
-    ti[8] = "Access IPC";
-    ti[9] = "Bytes/Access";
-    tables[1]->setColumnNum(ti.size());
-    tables[1]->addOneItem(ti);
-
-    ti.resize(6);
-    ti[0] = "Item";
-    ti[1] = "Topology / Core";
-    ti[2] = "Probe / Kernel";
-    ti[3] = "Median Bandwidth";
-    ti[4] = "Workset";
-    ti[5] = "Measurement";
-    tables[2]->setColumnNum(ti.size());
-    tables[2]->addOneItem(ti);
-
 #ifdef _SVE_
-    ti.resize(9);
+static const bool kFrequencyTableSve = true;
 #else
-    ti.resize(7);
+static const bool kFrequencyTableSve = false;
 #endif
-    ti[0] = "Core ID";
-    ti[1] = "Reported Max Freq";
-    ti[2] = "Test Freq";
-    ti[3] = "IPC(FSU32)";
-    ti[4] = "IPC(FSU64)";
-    ti[5] = "IPC(LSU ldr)";
-    ti[6] = "Counter Source";
-#ifdef _SVE_
-    ti[7] = "IPC(SVE32)";
-    ti[8] = "IPC(SVE64)";
-#endif
-    tables[3]->setColumnNum(ti.size());
-    tables[3]->addOneItem(ti);
-
-    cpufb::issue_probe_table_header(*tables[4]);
-}
-
-static void init_frequency_table(Table &table)
-{
-    vector<string> ti;
-
-#ifdef _SVE_
-    ti.resize(9);
-#else
-    ti.resize(7);
-#endif
-    ti[0] = "Core ID";
-    ti[1] = "Reported Max Freq";
-    ti[2] = "Test Freq";
-    ti[3] = "IPC(FSU32)";
-    ti[4] = "IPC(FSU64)";
-    ti[5] = "IPC(LSU ldr)";
-    ti[6] = "Counter Source";
-#ifdef _SVE_
-    ti[7] = "IPC(SVE32)";
-    ti[8] = "IPC(SVE64)";
-#endif
-    table.setColumnNum(ti.size());
-    table.addOneItem(ti);
-}
 
 static bool prepare_instruction_sweep(const vector<int> &threads, int, void *)
 {
@@ -627,7 +484,7 @@ static bool prepare_instruction_sweep(const vector<int> &threads, int, void *)
 #endif
 
     Table freq_table;
-    init_frequency_table(freq_table);
+    cpufb::init_frequency_table(freq_table, kFrequencyTableSve);
     vector<int> mutable_threads = threads;
     get_cpu_freq(mutable_threads, freq_table);
     return true;
@@ -644,7 +501,7 @@ static bool measure_instruction_sweep(const vector<int> &active_threads,
     if (latency_index >= 0) {
         cpubm_t latency_item = bm_list[latency_index];
         double latency = cpubm_arm64_latency(tm, latency_item);
-        if (latency > 0) sample.latency = format_latency_cycles(latency);
+        if (latency > 0) sample.latency = cpufb::format_fixed(latency, 2, "");
     }
 
     cpubm_t selected_item = bm_list[benchmark_index];
@@ -703,7 +560,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
 #endif
         // set table head
         vector<Table *> tables;
-        init_table(tables);
+        cpufb::init_benchmark_tables(tables, kFrequencyTableSve);
         if (should_run_standalone_warmup(filter) &&
             !cpubm_standalone_warmup(set_of_threads)) {
             for (size_t t = 0; t < tables.size(); ++t) delete tables[t];
@@ -1509,46 +1366,8 @@ int main(int argc, char *argv[])
     }
 
     if (!options.thread_pool_set) {
-        fprintf(stderr, "Error: You must set --thread_pool parameter.\n");
-        fprintf(stderr,
-            "You may also set --mode, --idle_time, --loop_scale and --bench_limit.\n");
-        fprintf(stderr,
-            "Usage: %s --thread_pool=[xxx] --idle_time=yyy [--mode=all|cache|compute] [--loop_scale=zzz] [--bench_limit=nnn] [--include-isa=list] [--exclude-isa=list] [--include-test=list] [--exclude-test=list]\n",
-            argv[0]);
-        fprintf(stderr,
-            "       %s --thread_pool=[xxx] --sweep-instruction='Core Computation'\n",
-            argv[0]);
-        fprintf(stderr,
-            "       %s --thread_pool=[cores] --memory-bandwidth [--memory-size-mib=N; default=auto per stream] [--memory-repetitions=5]\n",
-            argv[0]);
-        fprintf(stderr, "       %s --list-categories | --list-instructions\n",
-            argv[0]);
-        fprintf(stderr,
-            "       add --save=path [--save-format=txt|csv] to write compact output.\n");
-        fprintf(stderr, "[xxx] indicates all cores to benchmark.\n");
-        fprintf(stderr, "Example: [0,3,5-8,13-15].\n");
-        fprintf(stderr,
-            "idle_time is the interval time(s) between every two benchmarks.\n");
-        fprintf(stderr,
-            "idle_time parameter can be ignored, the default value is 0s.\n");
-        fprintf(stderr,
-            "test list supports compute,load,cache,freq,multi_issue (cache=probe+L3/memory stream; load=L1/L2 instruction bandwidth).\n");
-        fprintf(stderr,
-            "mode selects cache hierarchy, compute benchmarks, or both; the default is all.\n");
-        fprintf(stderr,
-            "loop_scale divides benchmark loop counts for quick smoke runs; default is 1.\n");
-        fprintf(stderr,
-            "bench_limit limits the number of registered benchmarks to run; default is 0 for all.\n");
-        fprintf(stderr,
-            "isa list supports detected ISA names such as asimd,bf16,sve,SME2.\n");
-        fprintf(stderr,
-            "Use --list-categories to list available test and ISA categories.\n");
-        fprintf(stderr,
-            "Use --list-instructions to list valid sweep instruction names.\n");
-        fprintf(stderr,
-            "save format defaults to csv for .csv paths, otherwise txt.\n");
-        fprintf(stderr, "Notice: there must NOT be any spaces.\n");
-        exit(0);
+        print_usage(argv[0]);
+        return 1;
     }
 
     if (options.thread_pool.empty()) {

@@ -98,6 +98,9 @@ bool should_run_test(
 bool should_run_benchmark(const BenchmarkFilter &filter, const std::string &isa,
     const std::string &metric);
 bool benchmark_needs_freq(const BenchmarkFilter &filter);
+
+// The usage text printed when --thread_pool is missing.
+void print_usage(const char *program);
 bool should_run_standalone_warmup(const BenchmarkFilter &filter);
 bool is_latency_benchmark(const std::string &instruction);
 bool is_compute_instruction_candidate(const BenchmarkInfo &item);

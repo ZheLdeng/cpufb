@@ -1,5 +1,7 @@
 #include "cli.hpp"
 
+#include <cstdio>
+
 #include "sys/system_info.hpp"
 #include "sys/thread_pool.hpp"
 
@@ -524,6 +526,51 @@ bool should_run_benchmark(
             normalize_filter_value(isa));
     }
     return true;
+}
+
+void print_usage(const char *program)
+{
+    fprintf(stderr, "Error: You must set --thread_pool parameter.\n");
+    fprintf(stderr,
+        "You may also set --mode, --idle_time, --loop_scale and --bench_limit.\n");
+    fprintf(stderr,
+        "Usage: %s --thread_pool=[xxx] --idle_time=yyy [--mode=all|cache|compute] [--loop_scale=zzz] [--bench_limit=nnn] [--include-isa=list] [--exclude-isa=list] [--include-test=list] [--exclude-test=list]\n",
+        program);
+    fprintf(stderr,
+        "       %s --thread_pool=[xxx] --sweep-instruction='Core Computation'\n",
+        program);
+    fprintf(stderr,
+        "       %s --thread_pool=[cores] --memory-bandwidth [--memory-size-mib=N; default=auto per stream] [--memory-repetitions=5]\n",
+        program);
+    fprintf(stderr, "       %s --list-categories | --list-instructions\n",
+        program);
+    fprintf(stderr,
+        "       add --save=path [--save-format=txt|csv] to write compact output.\n");
+    fprintf(stderr, "[xxx] indicates all cores to benchmark.\n");
+    fprintf(stderr, "Example: [0,3,5-8,13-15].\n");
+    fprintf(stderr,
+        "idle_time is the interval time(s) between every two benchmarks.\n");
+    fprintf(stderr,
+        "idle_time parameter can be ignored, the default value is 0s.\n");
+    fprintf(stderr,
+        "test list supports compute,load,cache,freq,multi_issue (cache=probe+L3/memory stream; load=L1/L2 instruction bandwidth).\n");
+    fprintf(stderr,
+        "mode selects cache hierarchy, compute benchmarks, or both; the default is all.\n");
+    fprintf(stderr,
+        "loop_scale divides benchmark loop counts for quick smoke runs; default is 1.\n");
+    fprintf(stderr,
+        "bench_limit limits the number of registered benchmarks to run; default is 0 for all.\n");
+    fprintf(stderr,
+        "isa list supports detected ISA names such as asimd,bf16,sve,SME2,avx512f,rvv.\n");
+    fprintf(stderr,
+        "Use --list-categories to list available test and ISA categories.\n");
+    fprintf(stderr,
+        "Use --list-instructions to list valid sweep instruction names.\n");
+    fprintf(stderr,
+        "save format defaults to csv for .csv paths, otherwise txt.\n");
+    fprintf(stderr,
+        "riscv64 does not support --memory-bandwidth, --sweep-instruction, --loop_scale or --bench_limit.\n");
+    fprintf(stderr, "Notice: there must NOT be any spaces.\n");
 }
 
 bool benchmark_needs_freq(const BenchmarkFilter &filter)

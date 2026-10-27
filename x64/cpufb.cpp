@@ -3,6 +3,7 @@
 #include "cli.hpp"
 #include "compute.hpp"
 #include "load.hpp"
+#include "benchmark_tables.hpp"
 #include "cache/memory_bandwidth.hpp"
 #include "frequency.hpp"
 #include "sys/common.hpp"
@@ -189,21 +190,6 @@ static void reg_load_kernel(const std::string &label, const std::string &type,
     bm_list.back().bytes_per_load = bytes_per_load;
 }
 
-static void warn_estimated_cycles_once()
-{
-    static bool warned = false;
-    if (warned) return;
-    warned = true;
-    cerr << "Warning: per-kernel hardware cycle counts are unavailable; "
-         << "IPC and latency are estimated from elapsed time x "
-         << cpu_freq_counter_source() << " frequency.";
-#ifdef __linux__
-    cerr << " Lower /proc/sys/kernel/perf_event_paranoid or run with "
-            "CAP_PERFMON for counted cycles.";
-#endif
-    cerr << endl;
-}
-
 static void thread_func(void *params)
 {
     cpubm_t *bm = (cpubm_t *)params;
@@ -266,16 +252,9 @@ static ComputeResult cpubm_run_compute(tpool_t *tm, cpubm_t &item)
     if (!result.hardware_cycles && !freq.empty() && freq[0] > 0.0) {
         result.ipc = static_cast<double>(item.loop_time) * item.inst_pl /
             (time_used * freq[0] * 1e9);
-        warn_estimated_cycles_once();
+        cpufb::warn_estimated_cycles_once(cpu_freq_counter_source());
     }
     return result;
-}
-
-static string format_latency_cycles(double latency)
-{
-    stringstream ss;
-    ss << fixed << setprecision(2) << latency;
-    return ss.str();
 }
 
 static double cpubm_x64_latency(tpool_t *tm, cpubm_t &item)
@@ -294,71 +273,26 @@ static void cpubm_x64_one(
     cont[1] = item.type;
     cont[2] = format_perf_value(result.perf, item.dim);
     cont[3] = result.ipc > 0.0 ? to_string(result.ipc) : "-";
-    cont[4] = latency > 0.0 ? format_latency_cycles(latency) : "-";
+    cont[4] = latency > 0.0 ? cpufb::format_fixed(latency, 2, "") : "-";
     table.addOneItem(cont);
-}
-
-static string format_reported_value(int value, const char *unit)
-{
-    return value > 0 ? to_string(value) + unit : "-";
 }
 
 // Capacity used to size the L1/L2 load worksets: same policy as ARM64, the
 // OS topology when exposed and the empirical probe otherwise.
-static int load_capacity_kb(int reported, int measured)
-{
-    return reported > 0 ? reported : measured;
-}
-
 // Formats value with 5 significant digits and a unit, or "-" when unknown.
-static string format_or_dash(double value, const string &unit)
-{
-    if (value <= 0.0) return "-";
-    stringstream text;
-    text << setprecision(5) << value << unit;
-    return text.str();
-}
-
 // One row of the L1/L2 load table; the method is in cache_bandwidth.hpp.
+// One row of the L1/L2 load table; the method is in cache_bandwidth.hpp.
+// Every x86 load kernel reads 512 bytes per count and per loop body.
 static void cpubm_x64_load(tpool_t *tm, cpubm_t &item, Table &table)
 {
-    // Level capacities: the OS topology when exposed, the probe otherwise.
-    const size_t l1_bytes = 1024 *
-        static_cast<size_t>(
-            load_capacity_kb(cache_size.theory_L1, cache_size.test_L1));
-    const size_t l2_bytes = 1024 *
-        static_cast<size_t>(
-            load_capacity_kb(cache_size.theory_L2, cache_size.test_L2));
-    const bool is_l1 = item.cache_level == 1;
-    const size_t workset = is_l1
-        ? cpufb::cache_level_workset(0, l1_bytes)
-        : cpufb::cache_level_workset(l1_bytes, l2_bytes);
-
-    // Every x86 load kernel reads 512 bytes per count and per loop body.
     cpufb::LoadKernel kernel;
     kernel.name = item.type;
     kernel.function = item.cache_kernel;
     kernel.bytes_per_count = 512;
     kernel.block_bytes = 512;
     kernel.bytes_per_load = item.bytes_per_load;
-    const double clock_hz = freq.empty() ? 0.0 : freq[0] * 1e9;
-    const cpufb::CacheBandwidth bandwidth =
-        cpufb::measure_cache_bandwidth(kernel, workset, tm, clock_hz);
-    if (bandwidth.cycle_source == "time x clock") warn_estimated_cycles_once();
-
-    vector<string> cont(table.getCol());
-    cont[0] = item.isa;
-    cont[1] = item.type;
-    cont[2] = format_or_dash(bandwidth.bytes_per_cycle, " " + item.dim);
-    cont[3] = format_reported_value(
-        is_l1 ? cache_size.theory_L1 : cache_size.theory_L2, " KB");
-    cont[4] = format_reported_value(
-        is_l1 ? cache_size.test_L1 : cache_size.test_L2, " KB");
-    cont[5] = format_or_dash(bandwidth.gb_per_second, " GB/s");
-    cont[6] = to_string(bandwidth.workset_bytes / 1024) + " KB";
-    cont[7] = format_or_dash(bandwidth.load_ipc, "");
-    cont[8] = to_string(item.bytes_per_load) + " B";
-    table.addOneItem(cont);
+    cpufb::append_load_bandwidth_row(
+        table, item.isa, kernel, item.cache_level, cache_size, tm, freq);
 }
 
 static bool cpubm_x64_cache(
@@ -376,74 +310,10 @@ static bool cpubm_x64_cache(
         options, table, cpufb::cache_report_last_level_bytes(cache_size));
 }
 
-static void init_table(vector<Table *> &tables)
-{
-    tables.resize(5);
-    for (int i = 0; i < 5; i++) {
-        tables[i] = new Table();
-    }
-
-    vector<string> ti;
-
-    ti.resize(5);
-    ti[0] = "Instruction Set";
-    ti[1] = "Core Computation";
-    ti[2] = "Peak Performance";
-    ti[3] = "IPC";
-    ti[4] = "Latency (cycles)";
-    tables[0]->setColumnNum(ti.size());
-    tables[0]->addOneItem(ti);
-
-    ti.resize(9);
-    ti[0] = "Cache Level";
-    ti[1] = "Core Instruction";
-    ti[2] = "Bandwidth (per core)";
-    ti[3] = "Theory Size";
-    ti[4] = "Test Size";
-    ti[5] = "Bandwidth (GB/s)";
-    ti[6] = "Workset";
-    ti[7] = "Access IPC";
-    ti[8] = "Bytes/Access";
-    tables[1]->setColumnNum(ti.size());
-    tables[1]->addOneItem(ti);
-
-    ti.resize(6);
-    ti[0] = "Item";
-    ti[1] = "Topology / Core";
-    ti[2] = "Probe / Kernel";
-    ti[3] = "Median Bandwidth";
-    ti[4] = "Workset";
-    ti[5] = "Measurement";
-    tables[2]->setColumnNum(ti.size());
-    tables[2]->addOneItem(ti);
-
-    ti.resize(7);
-    ti[0] = "Core ID";
-    ti[1] = "Reported Max Freq";
-    ti[2] = "Test Freq";
-    ti[3] = "IPC(FSU32)";
-    ti[4] = "IPC(FSU64)";
-    ti[5] = "IPC(LSU ldr)";
-    ti[6] = "Counter Source";
-    tables[3]->setColumnNum(ti.size());
-    tables[3]->addOneItem(ti);
-
-    cpufb::issue_probe_table_header(*tables[4]);
-}
-
 static bool prepare_instruction_sweep(const vector<int> &threads, int, void *)
 {
     Table freq_table;
-    vector<string> freq_head(7);
-    freq_head[0] = "Core ID";
-    freq_head[1] = "Reported Max Freq";
-    freq_head[2] = "Test Freq";
-    freq_head[3] = "IPC(FSU32)";
-    freq_head[4] = "IPC(FSU64)";
-    freq_head[5] = "IPC(LSU ldr)";
-    freq_head[6] = "Counter Source";
-    freq_table.setColumnNum(freq_head.size());
-    freq_table.addOneItem(freq_head);
+    cpufb::init_frequency_table(freq_table, false);
     vector<int> mutable_threads = threads;
     get_cpu_freq(mutable_threads, freq_table);
     return true;
@@ -460,7 +330,7 @@ static bool measure_instruction_sweep(const vector<int> &active_threads,
     if (latency_index >= 0) {
         cpubm_t latency_item = bm_list[latency_index];
         double latency = cpubm_x64_latency(tm, latency_item);
-        if (latency > 0.0) sample.latency = format_latency_cycles(latency);
+        if (latency > 0.0) sample.latency = cpufb::format_fixed(latency, 2, "");
     }
     cpubm_t selected = bm_list[benchmark_index];
     ComputeResult result = cpubm_run_compute(tm, selected);
@@ -493,7 +363,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
     printf("\n");
 
     vector<Table *> tables;
-    init_table(tables);
+    cpufb::init_benchmark_tables(tables, false);
     if (benchmark_needs_freq(filter)) get_cpu_freq(set_of_threads, *tables[3]);
     if (should_run_test(filter, "cache") &&
         !cpubm_x64_cache(set_of_threads, *tables[2], options)) {
@@ -821,26 +691,7 @@ int main(int argc, char *argv[])
         return 0;
     }
     if (!options.thread_pool_set) {
-        fprintf(stderr, "Error: You must set --thread_pool parameter.\n");
-        fprintf(stderr, "You may also set --idle_time parameter.\n");
-        fprintf(stderr,
-            "Usage: %s --thread_pool=[xxx] [--idle_time=yyy] [--mode=all|cache|compute] [--loop_scale=zzz] [--bench_limit=nnn] [--include-test=list] [--exclude-test=list] [--include-isa=list] [--exclude-isa=list]\n",
-            argv[0]);
-        fprintf(stderr,
-            "       %s --thread_pool=[xxx] --sweep-instruction='Core Computation'\n",
-            argv[0]);
-        fprintf(stderr,
-            "       %s --thread_pool=[cores] --memory-bandwidth [--memory-size-mib=N; default=auto per stream] [--memory-repetitions=5]\n",
-            argv[0]);
-        fprintf(stderr, "       %s --list-categories | --list-instructions\n",
-            argv[0]);
-        fprintf(stderr, "[xxx] indicates all cores to benchmark.\n");
-        fprintf(stderr, "Example: [0,3,5-8,13-15].\n");
-        fprintf(stderr,
-            "idle_time is the interval time(s) between every two benchmarks.\n");
-        fprintf(stderr,
-            "idle_time parameter can be ignored, the default value is 0s.\n");
-        fprintf(stderr, "Notice: there must NOT be any spaces.\n");
+        print_usage(argv[0]);
         return 1;
     }
 

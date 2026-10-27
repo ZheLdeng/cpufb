@@ -99,6 +99,7 @@ add_library(cpufb_common OBJECT
     "${CPUFB_COMMON_DIR}/cache/cache_topology.cpp"
     "${CPUFB_COMMON_DIR}/cache/associativity_probe.cpp"
     "${CPUFB_COMMON_DIR}/cache/cacheline_probe.cpp"
+    "${CPUFB_COMMON_DIR}/benchmark_tables.cpp"
     "${CPUFB_COMMON_DIR}/cli.cpp"
     "${CPUFB_COMMON_DIR}/issue/issue_probe.cpp"
     "${CPUFB_COMMON_DIR}/cache/prefetch_probe.cpp"
@@ -303,70 +304,18 @@ include(AndroidDeploy)
 # ---------------------------------------------------------------------------
 include(CTest)
 if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
-    add_executable(cpufb_latency_pairing_test
-        "${CMAKE_SOURCE_DIR}/tests/test_latency_pairing.cpp"
-    )
-    target_link_libraries(cpufb_latency_pairing_test PRIVATE cpufb_common)
-    add_test(
-        NAME cpufb_latency_pairing
-        COMMAND cpufb_latency_pairing_test
-    )
-    set_tests_properties(cpufb_latency_pairing PROPERTIES
-        LABELS "unit"
-        TIMEOUT 30
-    )
-
-    add_executable(cpufb_cache_topology_test
-        "${CMAKE_SOURCE_DIR}/tests/test_cache_topology.cpp"
-    )
-    target_link_libraries(cpufb_cache_topology_test PRIVATE cpufb_common)
-    add_test(
-        NAME cpufb_cache_topology
-        COMMAND cpufb_cache_topology_test
-    )
-    set_tests_properties(cpufb_cache_topology PROPERTIES
-        LABELS "unit"
-        TIMEOUT 30
-    )
-
-    add_executable(cpufb_cache_curve_test
-        "${CMAKE_SOURCE_DIR}/tests/test_cache_curve.cpp"
-    )
-    target_link_libraries(cpufb_cache_curve_test PRIVATE cpufb_common)
-    add_test(
-        NAME cpufb_cache_curve
-        COMMAND cpufb_cache_curve_test
-    )
-    set_tests_properties(cpufb_cache_curve PROPERTIES
-        LABELS "unit"
-        TIMEOUT 30
-    )
-
-    add_executable(cpufb_prefetch_probe_test
-        "${CMAKE_SOURCE_DIR}/tests/test_prefetch_probe.cpp"
-    )
-    target_link_libraries(cpufb_prefetch_probe_test PRIVATE cpufb_common)
-    add_test(
-        NAME cpufb_prefetch_probe
-        COMMAND cpufb_prefetch_probe_test
-    )
-    set_tests_properties(cpufb_prefetch_probe PROPERTIES
-        LABELS "unit"
-        TIMEOUT 30
-    )
-
-    add_executable(cpufb_issue_probe_test
-        "${CMAKE_SOURCE_DIR}/tests/test_issue_probe.cpp"
-    )
-    target_link_libraries(cpufb_issue_probe_test PRIVATE cpufb_common)
-    add_test(
-        NAME cpufb_issue_probe
-        COMMAND cpufb_issue_probe_test
-    )
-    set_tests_properties(cpufb_issue_probe PROPERTIES
-        LABELS "unit"
-        TIMEOUT 30
-    )
+    # Unit tests of the common library: one executable per source file.
+    function(cpufb_add_unit_test name source)
+        add_executable(${name}_test "${CMAKE_SOURCE_DIR}/tests/${source}")
+        target_link_libraries(${name}_test PRIVATE cpufb_common)
+        add_test(NAME ${name} COMMAND ${name}_test)
+        set_tests_properties(${name} PROPERTIES LABELS "unit" TIMEOUT 30)
+    endfunction()
+    cpufb_add_unit_test(cpufb_latency_pairing test_latency_pairing.cpp)
+    cpufb_add_unit_test(cpufb_cache_topology test_cache_topology.cpp)
+    cpufb_add_unit_test(cpufb_cache_curve test_cache_curve.cpp)
+    cpufb_add_unit_test(cpufb_prefetch_probe test_prefetch_probe.cpp)
+    cpufb_add_unit_test(cpufb_issue_probe test_issue_probe.cpp)
 
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)

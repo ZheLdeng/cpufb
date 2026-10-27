@@ -33,3 +33,7 @@ bdma.tex
 
 # Local SSH private keys
 /aws_pem/
+
+# Scripts and reference documents are kept locally only, not in the repository
+/tools/
+/docs/

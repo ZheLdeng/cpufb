@@ -11,8 +11,9 @@ needs verified *now*; it is not a log, and nothing is appended to it.
   gains `Capacity Source` and `Cycle Source`, in KiB); the compute table's last
   column is `Latency (cycles)` everywhere. riscv64's load rows now come from
   the shared harness (same numbers expected within noise) and its
-  `RVV compute:load` row sits in the issue table. Files moved: docs/,
-  tools/, common/{cache,issue,sys}.
+  `RVV compute:load` row sits in the issue table. common/ is grouped into
+  cache/, issue/ and sys/; tools/ and docs/ are no longer in the repository
+  (local copies only), and ctest has 16 tests, all C++ or shell.
 - **Under test:** `fix/review-high-medium` @ the commit after `370b534`
   (this checklist's own commit); the branch now contains main's Windows and
   RISC-V commits.

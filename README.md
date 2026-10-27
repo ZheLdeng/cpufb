@@ -82,9 +82,12 @@ arm64/ x64/ riscv64/
   kernel/          per-arch pieces the common code is parameterised with (the
                    chase and flush kernels, stream kernels, issue class list)
   asm/             the timed kernels, GNU assembly
-tests/             unit tests (ctest label unit) and the CLI regression script
-tools/             analysis and run scripts;  docs/  reference documents
+tests/             C++ unit tests (ctest label unit) and the CLI regression script
 ```
+
+The repository is C, C++ and GNU assembly only; the analysis scripts and
+reference documents that used to live in tools/ and docs/ are kept locally
+and are not part of the build or the tests.
 
 ## How to build
 ---
@@ -179,53 +182,12 @@ You must ensure that the device can be reached via `adb shell` during build.
 
 The old `build_x64.sh`, `build_arm64.sh`, `build_android.sh`,
 `build_riscv64.sh` and `clean.sh` have been removed; they no longer listed the
-shared sources and could not link. `docs/QUICK_START.md` maps each one to its CMake
-preset.
+shared sources and could not link. `./build.sh` and the CMake presets above
+replace them.
 
 ## How to benchmark
 
 `./cpufb --thread_pool=[xxx] --mode=all --idle_time=yyy`
-
-### Independent statistical trials
-
-Use the repository runner for publishable summaries. It starts cpufb as ten
-independent processes, retains every raw log and CSV file, and writes
-`summary.csv` with the median, first and third quartiles, IQR, and the 95%
-Student-t confidence interval for the mean of every numeric benchmark metric:
-
-```sh
-python3 tools/run_statistical_trials.py run \
-  --trials=10 --output-dir=results/host-core0 \
-  -- build/native-release/cpufb '--thread_pool=[0]' --mode=all
-```
-
-Each raw CSV includes the timestamp, requested core selection, current
-OS-reported frequency when available, counter source, and temperature when an
-unprivileged Linux thermal-zone interface is available. Unsupported readings
-are recorded as `unavailable`; they are never synthesized. Linux and Android
-also sample `sched_getcpu()` before and after every worker invocation and record
-the observation count, endpoint migrations, and requested-core mismatches in
-the `Core Migration` row. macOS records this check as unavailable because it
-does not expose the same executing-CPU interface. Existing trial CSV files,
-including files copied back from a remote host, can be aggregated with:
-
-```sh
-python3 tools/run_statistical_trials.py aggregate \
-  --output=results/host-core0/summary.csv results/host-core0/trial-*.csv
-```
-
-Both commands require exactly ten distinct trials. They reject missing or
-duplicate metric observations, inconsistent metric sets, incomplete required
-run metadata, and absent counter/cycle-source provenance, preventing partial,
-legacy, and current protocols from being combined silently. Full-suite and
-standalone memory-bandwidth CSV metrics are supported; instruction sweeps lack
-the required counter-source provenance and are therefore rejected.
-
-Ten observations are a small sample. The confidence interval therefore uses
-Student's t distribution rather than a normal approximation; preserve the raw
-files when publishing results. Within one process, compute metrics select the
-fastest of five timed invocations and retain cycles from that same invocation;
-wall time and cycles are never minimized independently.
 
 ### Memory bandwidth
 
@@ -472,10 +434,6 @@ includes AVX2 integer add/multiply, AVX-512 IFMA, AVX-512 VBMI byte permute,
 and AVX-512 VPOPCNTDQ tests when supported. Latency variants are paired with
 their throughput rows and are omitted from `--list-instructions`.
 
-See [X86_BENCHMARK_ACCOUNTING.md](docs/X86_BENCHMARK_ACCOUNTING.md) for the audited
-operation counts and the exact meaning of the instruction rate and latency
-metrics. Remaining follow-up work is tracked in [TODO.md](docs/TODO.md).
-
 ### macOS counter backends
 
 On Apple Silicon, `cpufb` first attempts to read per-thread fixed counters
@@ -552,49 +510,6 @@ modes), an architecture attribute (SVE predicates on ARM64, register width
 on x86) and a runtime feature token; mixes whose class the machine lacks
 print "not available" with the missing feature, and classes the toolchain
 could not compile (an assembler without `+sme`) have no rows at all.
-
-## Experimental pair-issue test
-
-`tools/pair_issue_test.py` predates the built-in issue probe above, which
-answers the same questions on every supported platform without a local
-toolchain or `perf`; the script remains for research that needs generated
-kernels beyond the built-in class list. It measures isolated and joint IPC
-for two Linux AArch64 instruction classes without scanning a full ratio grid. It currently
-supports SVE FP32 FMLA, SVE `ld1h` as its single default load class, NEON FP32
-FMLA, integer scalar ADD, and scalar FP32 FADD. For example:
-
-```sh
-./tools/pair_issue_test.py sve-fmla sve-ld1h --core 96
-./tools/pair_issue_test.py sve-fmla scalar-add --core 96
-./tools/pair_issue_test.py sve-fmla neon-fmla --core 96
-./tools/pair_issue_test.py neon-fmla scalar-add --core 96
-```
-
-The test starts at normalized pressure points 25%, 50%, and 75%, compares
-interleaved and blocked schedules, and adds points only around nonlinear
-overlap or a 97%-of-peak knee. See
-[PAIR_ISSUE_TEST.md](docs/PAIR_ISSUE_TEST.md) for the measurement equations,
-requirements, caveats, JSON output, and dry-run planning mode.
-
-## Compute/load/store issue model
-
-Pass one logical kernel group to the standalone model. Neoverse V3 SVE128
-FMLA is the default. The intended BF16 model for the eight-core Neoverse V1
-SVE256 machine uses the BFMMLA profile:
-
-```sh
-./tools/issue_model.py 1F+2L
-./tools/issue_model.py 4F+5L
-./tools/issue_model.py 4F+3L+2S
-./tools/issue_model.py 4F+3L+2S \
-    --profile neoverse-v1-sve256-bfmmla
-```
-
-It reports compute/load/store IPC, resource utilization, compute and memory
-efficiency, and operations/bytes per cycle. See
-[ISSUE_MODEL.md](docs/ISSUE_MODEL.md) for the V3 FMLA, V1 FMLA, and V1 BFMMLA
-models, calibration points, measured error budgets, JSON output, and
-capacity overrides.
 
 ## Automated CLI regression tests
 

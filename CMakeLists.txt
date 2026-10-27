@@ -316,22 +316,6 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     cpufb_add_unit_test(cpufb_cache_curve test_cache_curve.cpp)
     cpufb_add_unit_test(cpufb_prefetch_probe test_prefetch_probe.cpp)
     cpufb_add_unit_test(cpufb_issue_probe test_issue_probe.cpp)
-
-    find_package(Python3 COMPONENTS Interpreter QUIET)
-    if(Python3_Interpreter_FOUND)
-        add_test(
-            NAME cpufb_pair_issue_unit
-            COMMAND "${Python3_EXECUTABLE}"
-                "${CMAKE_SOURCE_DIR}/tests/test_pair_issue.py"
-        )
-        set_tests_properties(cpufb_pair_issue_unit PROPERTIES
-            LABELS "unit"
-            TIMEOUT 30
-        )
-    else()
-        message(WARNING
-            "cpufb: Python3 not found; pair-issue unit tests disabled")
-    endif()
 endif()
 
 # The shell CLI harness relies on Linux /proc and POSIX paths; Windows has

@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "cache/cache_curve.hpp"
+#include "cache/cache_report.hpp"
 
 struct tpool;
 typedef struct tpool tpool_t;
@@ -44,44 +44,8 @@ extern "C"
     void sme_ld1w_kernel(float *, int, int);
 #endif
 }
-struct CacheData
-{
-    int theory_L1 = 0;
-    int theory_L2 = 0;
-    std::string theory_L1_source;
-    std::string theory_L2_source;
-    int test_L1 = 0;
-    int test_L2 = 0;
-    // Third level from the latency curve, 0 when there is none, and whether
-    // the curve reached memory latency (so the level list is complete).
-    int test_L3 = 0;
-    double memory_latency_ns = 0;
-    bool hierarchy_complete = false;
-    // Per level: empty for a clean step, the uncertainty range for a soft
-    // one, the reason the capacity is withheld for a gradual one.
-    std::string test_L1_note, test_L2_note, test_L3_note;
-    int theory_way = 0;
-    int test_way = 0;
-    // Bytes one L1 way spans, from set conflicts; test_way x this is an L1
-    // capacity that does not come from the latency curve.
-    size_t test_way_bytes = 0;
-    // L1 line size read from set indexing, immune to neighbour prefetch.
-    int test_line_from_sets = 0;
-    int theory_l2_way = 0;
-    int test_l2_way = 0;
-    int theory_l2_line = 0;
-    int test_l2_line = 0;
-    int theory_cacheline = 0;
-    int test_cacheline = 0;
-    // False when the curve fell or never reached memory; its capacities are
-    // then not used to size anything else.
-    bool curve_trusted = true;
-};
+using cpufb::CacheData;
 
-void get_reported_cache_info(struct CacheData *cache_size, int cpu_id);
-cpufb::CacheCurveResult measure_cache_hierarchy(
-    struct CacheData *cache_size, int cpu_id);
-void get_cache_capacities(struct CacheData *cache_size, int cpu_id);
-void get_multiway(struct CacheData *cache_size, int cpu_id);
-void get_cacheline(struct CacheData *cache_size, int cpu_id);
+// The chase kernel and line flush of this architecture (common/cache/cache_report).
+cpufb::CacheProbeKernels cache_probe_kernels();
 #endif

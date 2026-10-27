@@ -364,131 +364,16 @@ static void cpubm_x64_load(tpool_t *tm, cpubm_t &item, Table &table)
 static bool cpubm_x64_cache(
     std::vector<int> &set_of_threads, Table &table, const CliOptions &options)
 {
-    vector<string> cont;
-    cont.resize(table.getCol());
-    // The capacity curve runs first: the line probe sizes its eviction buffer
-    // from the last level the curve found.
-    const cpufb::CacheCurveResult curve =
-        get_cachesize(&cache_size, set_of_threads[0]);
-    get_cacheline(&cache_size, set_of_threads[0]);
-    get_multiway(&cache_size, set_of_threads[0]);
-    // The probe column always shows what was measured.  A result that
-    // disagrees with the OS topology is flagged, never replaced, so the
-    // report cannot agree with the reported value by construction.
-    cont[3].clear();
-    cont[4].clear();
-    cont[0] = "L1 ways of associativity";
-    cont[1] = format_reported_value(cache_size.theory_way, "");
-    cont[2] = format_reported_value(cache_size.test_way, "");
-    cont[5] = cpufb::describe_probe_agreement(
-        cache_size.theory_way, cache_size.test_way, 1.0);
-    table.addOneItem(cont);
-    cont[0] = "L2 ways of associativity";
-    cont[1] = format_reported_value(cache_size.theory_l2_way, "");
-    cont[2] = format_reported_value(cache_size.test_l2_way, "");
-    cont[5] = cache_size.test_l2_way > 0
-        ? cpufb::describe_probe_agreement(
-              cache_size.theory_l2_way, cache_size.test_l2_way, 1.0)
-        : cpufb::describe_l2_unmeasured(cache_size.test_l2_way);
-    table.addOneItem(cont);
-    cont[0] = "L1 cacheline size";
-    cont[1] = format_reported_value(cache_size.theory_cacheline, " B");
-    cont[2] = format_reported_value(cache_size.test_cacheline, " B");
-    cont[5] = cpufb::describe_probe_agreement(
-        cache_size.theory_cacheline, cache_size.test_cacheline, 1.0);
-    {
-        const std::string cross = cpufb::describe_line_cross_check(
-            cache_size.test_cacheline, cache_size.test_line_from_sets);
-        if (!cross.empty()) cont[5] += "; " + cross;
-    }
-    table.addOneItem(cont);
-    cont[0] = "L2 cacheline size";
-    cont[1] = format_reported_value(cache_size.theory_l2_line, " B");
-    cont[2] = format_reported_value(cache_size.test_l2_line, " B");
-    cont[5] = cache_size.test_l2_line > 0
-        ? cpufb::describe_probe_agreement(
-              cache_size.theory_l2_line, cache_size.test_l2_line, 1.0) +
-            "; from set indexing"
-        : cpufb::describe_l2_unmeasured(cache_size.test_l2_line);
-    {
-        const std::string deeper = cpufb::describe_deeper_line_sizes(
-            set_of_threads[0], cache_size.theory_l2_line);
-        if (!deeper.empty()) cont[5] += "; " + deeper;
-    }
-    table.addOneItem(cont);
-    cont[0] = "L1 cache size";
-    cont[1] = format_reported_value(cache_size.theory_L1, " KB");
-    cont[2] = format_reported_value(cache_size.test_L1, " KB");
-    cont[5] = cpufb::describe_probe_agreement(
-        cache_size.theory_L1, cache_size.test_L1, 1.3);
-    {
-        std::string note = cache_size.test_L1_note;
-        const std::string check = cpufb::describe_l1_curve_check(
-            cache_size.test_L1, cache_size.test_way, cache_size.test_way_bytes);
-        if (!check.empty()) note = note.empty() ? check : note + "; " + check;
-        if (!note.empty())
-            cont[5] = cache_size.test_L1 <= 0 ? note : cont[5] + "; " + note;
-    }
-    table.addOneItem(cont);
-    cont[0] = "L1 capacity from set conflicts";
-    cont[1] = format_reported_value(cache_size.theory_L1, " KB");
-    cont[2] = cache_size.test_way > 0 && cache_size.test_way_bytes > 0
-        ? cpufb::format_cache_capacity(
-              static_cast<uint64_t>(cache_size.test_way) *
-              cache_size.test_way_bytes)
-        : "-";
-    cont[5] = cpufb::describe_l1_geometry(
-        static_cast<uint64_t>(cache_size.theory_L1) * 1024, cache_size.test_way,
-        cache_size.test_way_bytes);
-    table.addOneItem(cont);
-    cont[0] = "L2 cache size";
-    cont[1] = format_reported_value(cache_size.theory_L2, " KB");
-    cont[2] = format_reported_value(cache_size.test_L2, " KB");
-    cont[5] = cpufb::describe_probe_agreement(
-        cache_size.theory_L2, cache_size.test_L2, 1.3);
-    if (!cache_size.test_L2_note.empty())
-        cont[5] = cache_size.test_L2 <= 0
-            ? cache_size.test_L2_note
-            : cont[5] + "; " + cache_size.test_L2_note;
-    table.addOneItem(cont);
-    const cpufb::CacheLevelInfo l3 =
-        cpufb::detect_data_cache_level(set_of_threads[0], 3);
-    // Always shown: "none" is a result too, and it is how a machine without
-    // an L3 is told apart from one whose L3 the OS merely does not report.
-    cont[0] = "L3/unified cache capacity";
-    cont[1] = l3.bytes > 0 ? cpufb::format_cache_capacity(l3.bytes) : "-";
-    cont[2] = cpufb::format_probed_l3(
-        cache_size.test_L3, cache_size.hierarchy_complete);
-    cont[3].clear();
-    cont[4].clear();
-    if (cache_size.test_L3 > 0) {
-        cont[5] = cpufb::describe_probe_agreement(
-            l3.bytes / 1024.0, cache_size.test_L3, 1.3);
-        std::string note = cache_size.test_L3_note;
-        const std::string shared =
-            cpufb::describe_shared_level(l3, cache_size.test_L3);
-        if (!shared.empty())
-            note = note.empty() ? shared : note + "; " + shared;
-        if (!note.empty()) cont[5] += "; " + note;
-    } else {
-        cont[5] = l3.source;
-    }
-    table.addOneItem(cont);
-    // The dependent-load sweep and the per-level estimates, in ns and in
-    // cycles (PMU, else the frequency table's clock when that table ran).
-    cpufb::print_cache_curve_tables(curve, freq.empty() ? 0.0 : freq[0]);
-    // Prefetcher reach, stream restart cost and software prefetch distance on
-    // the same core, sized from the curve's levels (common/prefetch_probe.hpp).
-    cpufb::append_prefetch_probe_rows(table, set_of_threads[0],
-        cpufb::effective_cacheline_size(
-            cache_size.theory_cacheline, cache_size.test_cacheline, 64),
-        curve, freq.empty() ? 0.0 : freq[0]);
-
-    const uint64_t measured_last_level =
-        cache_size.curve_trusted && cache_size.test_L3 > 0
-        ? static_cast<uint64_t>(cache_size.test_L3) * 1024
-        : 0;
-    return append_cache_memory_bandwidth(options, table, measured_last_level);
+    // Reported values, the latency curve, the line and set-conflict probes
+    // and the rows are shared (common/cache/cache_report.hpp); this file only
+    // supplies the kernels and the memory streams.
+    const int cpu_id = set_of_threads[0];
+    cpufb::read_reported_cache(cache_size, cpu_id);
+    cpufb::measure_cache_report(cache_size, cpu_id, cache_probe_kernels());
+    cpufb::append_cache_report_rows(
+        table, cache_size, cpu_id, freq.empty() ? 0.0 : freq[0]);
+    return append_cache_memory_bandwidth(
+        options, table, cpufb::cache_report_last_level_bytes(cache_size));
 }
 
 static void init_table(vector<Table *> &tables)
@@ -614,7 +499,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
         !cpubm_x64_cache(set_of_threads, *tables[2], options)) {
         return false;
     } else if (should_run_test(filter, "load"))
-        get_theory_cache(&cache_size, set_of_threads[0]);
+        cpufb::prepare_load_capacities(cache_size, set_of_threads[0]);
     // The issue probe runs on the first selected core before the pool
     // exists, so no worker competes with it; see common/issue_probe.hpp.
     if (should_run_test(filter, "multi_issue"))

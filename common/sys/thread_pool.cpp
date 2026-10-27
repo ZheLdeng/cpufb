@@ -22,6 +22,38 @@
 #endif
 using namespace std;
 
+namespace cpufb {
+
+bool pin_current_thread(int cpu)
+{
+#if defined(__linux__)
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    // CPU_SET silently ignores IDs beyond the fixed-size mask.
+    if (cpu >= 0 && cpu < CPU_SETSIZE) CPU_SET(cpu, &mask);
+    if (cpu < 0 || cpu >= CPU_SETSIZE ||
+        sched_setaffinity(syscall(SYS_gettid), sizeof(cpu_set_t), &mask) < 0) {
+        fprintf(stderr,
+            "Error: cannot bind to cpu %d "
+            "(offline, outside the cpuset, or nonexistent).\n",
+            cpu);
+        return false;
+    }
+    return true;
+#elif defined(_WIN32)
+    if (!cpufb::windows::pin_current_thread(cpu)) {
+        fprintf(stderr, "Error: cannot bind to cpu %d.\n", cpu);
+        return false;
+    }
+    return true;
+#else
+    (void)cpu;
+    return true;
+#endif
+}
+
+} // namespace cpufb
+
 static tpool_work_t *tpool_work_create(thread_func_t func, void *arg)
 {
     tpool_work_t *work;
@@ -113,27 +145,8 @@ static void *tpool_worker(void *arg)
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
 #endif
     free(targs);
-    bool affinity_failed = false;
-#if defined(__linux__)
-    pid_t pid = syscall(SYS_gettid);
-    cpu_set_t mask;
-    CPU_ZERO(&mask);
-    // CPU_SET silently ignores IDs beyond the fixed-size mask.
-    if (cpu_id < CPU_SETSIZE) CPU_SET(cpu_id, &mask);
-    if (cpu_id >= CPU_SETSIZE ||
-        sched_setaffinity(pid, sizeof(cpu_set_t), &mask) < 0) {
-        fprintf(stderr,
-            "Error: cannot bind a worker to cpu %zu "
-            "(offline, outside the cpuset, or nonexistent).\n",
-            cpu_id);
-        affinity_failed = true;
-    }
-#elif defined(_WIN32)
-    if (!cpufb::windows::pin_current_thread(static_cast<int>(cpu_id))) {
-        fprintf(stderr, "Error: cannot bind a worker to cpu %zu.\n", cpu_id);
-        affinity_failed = true;
-    }
-#endif
+    const bool affinity_failed =
+        !cpufb::pin_current_thread(static_cast<int>(cpu_id));
     tpool_work_t *work;
     uint64_t observed_parallel_generation = 0;
 

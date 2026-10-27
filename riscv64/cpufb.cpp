@@ -258,137 +258,18 @@ static void init_table(vector<Table *> &tables)
     tables[4]->addOneItem(ti);
 }
 
-static int read_cache_integer(int cpu, int index, const char *name)
-{
-    const string path = "/sys/devices/system/cpu/cpu" + to_string(cpu) +
-        "/cache/index" + to_string(index) + "/" + name;
-    ifstream input(path.c_str());
-    int value = 0;
-    return input >> value ? value : 0;
-}
+// Reported values, the latency curve, the line and set-conflict probes and
+// the rows are shared (common/cache/cache_report.hpp); this file supplies the
+// kernels.  riscv64 has no memory stream kernel, so no DRAM rows follow.
+static CacheData cache_size;
 
 static void cpubm_riscv64_cache(std::vector<int> &set_of_threads, Table &table)
 {
     const int cpu = set_of_threads[0];
-    const cpufb::CacheLevelInfo l1 = cpufb::detect_data_cache_level(cpu, 1);
-    const cpufb::CacheLevelInfo l2 = cpufb::detect_data_cache_level(cpu, 2);
-    int cache_index = 0;
-    while (
-        cache_index < 32 && read_cache_integer(cpu, cache_index, "level") != 1)
-        ++cache_index;
-    const int reported_line =
-        read_cache_integer(cpu, cache_index, "coherency_line_size");
-    const int reported_ways =
-        read_cache_integer(cpu, cache_index, "ways_of_associativity");
-    const cpufb::CacheCurveResult curve =
-        cpufb::measure_cache_curve(riscv_cache_chase32,
-            cpufb::effective_cacheline_size(reported_line, 0, 64),
-            64ULL * 1024 * 1024);
-    const auto measured_capacity = [&curve](const string &level) {
-        for (const cpufb::CacheLevelEstimate &estimate : curve.levels)
-            if (estimate.level == level) return estimate.capacity_bytes;
-        return uint64_t(0);
-    };
-    cpufb::debug_print_cache_curve(curve);
-    const uint64_t measured_l1 = measured_capacity("L1");
-    const uint64_t measured_l2 = measured_capacity("L2");
-    vector<string> cont(table.getCol());
-    // The line and way probes run before the rows so that the curve's L1 can
-    // be checked against the capacity set conflicts give.
-    const CacheGeometryProbe geometry = probe_cache_geometry(
-        reported_line, std::max(measured_l1, measured_l2) * 4);
-    cont[0] = "L1 data cache capacity";
-    cont[1] = l1.bytes > 0 ? cpufb::format_cache_capacity(l1.bytes) : "-";
-    cont[2] = measured_l1 > 0 ? cpufb::format_cache_capacity(measured_l1) : "-";
-    const string doubt = cpufb::describe_prefetch_doubt(curve);
-    cont[5] = cpufb::describe_probe_agreement(l1.bytes, measured_l1, 1.5);
-    if (!doubt.empty()) cont[5] += "; " + doubt;
-    {
-        const string check =
-            cpufb::describe_l1_curve_check(static_cast<int>(measured_l1 / 1024),
-                geometry.l1_ways, geometry.l1_way_bytes);
-        if (!check.empty()) cont[5] += "; " + check;
-    }
-    table.addOneItem(cont);
-
-    cont.assign(table.getCol(), "");
-    cont[0] = "L2/unified cache capacity";
-    cont[1] = l2.bytes > 0 ? cpufb::format_cache_capacity(l2.bytes) : "-";
-    cont[2] = measured_l2 > 0 ? cpufb::format_cache_capacity(measured_l2) : "-";
-    cont[5] = cpufb::describe_probe_agreement(l2.bytes, measured_l2, 1.5);
-    if (!doubt.empty()) cont[5] += "; " + doubt;
-    table.addOneItem(cont);
-
-    // Both probes run after the curve: the line probe sizes its eviction
-    // buffer from the largest level the curve measured, and the
-    // associativity ring steps by the line size the line probe found.  These
-    // two rows used to be verbatim copies of the OS column.
-    cont.assign(table.getCol(), "");
-    cont[0] = "L1 ways of associativity";
-    cont[1] = reported_ways > 0 ? to_string(reported_ways) : "-";
-    cont[2] = geometry.l1_ways > 0 ? to_string(geometry.l1_ways) : "-";
-    cont[5] =
-        cpufb::describe_probe_agreement(reported_ways, geometry.l1_ways, 1.0);
-    table.addOneItem(cont);
-
-    cont.assign(table.getCol(), "");
-    cont[0] = "L2 ways of associativity";
-    cont[1] = l2.ways > 0 ? to_string(l2.ways) : "-";
-    cont[2] = geometry.l2_ways > 0 ? to_string(geometry.l2_ways) : "-";
-    cont[5] = geometry.l2_ways > 0
-        ? cpufb::describe_probe_agreement(l2.ways, geometry.l2_ways, 1.0)
-        : cpufb::describe_l2_unmeasured(geometry.l2_ways);
-    table.addOneItem(cont);
-
-    cont.assign(table.getCol(), "");
-    cont[0] = "L1 capacity from set conflicts";
-    cont[1] = l1.bytes > 0 ? cpufb::format_cache_capacity(l1.bytes) : "-";
-    cont[2] = geometry.l1_ways > 0 && geometry.l1_way_bytes > 0
-        ? cpufb::format_cache_capacity(
-              static_cast<uint64_t>(geometry.l1_ways) * geometry.l1_way_bytes)
-        : "-";
-    cont[5] = cpufb::describe_l1_geometry(
-        l1.bytes, geometry.l1_ways, geometry.l1_way_bytes);
-    table.addOneItem(cont);
-
-    cont.assign(table.getCol(), "");
-    cont[0] = "L1 cacheline size";
-    cont[1] = reported_line > 0 ? to_string(reported_line) + " B" : "-";
-    cont[2] = geometry.cacheline_bytes > 0
-        ? to_string(geometry.cacheline_bytes) + " B"
-        : "-";
-    cont[5] = cpufb::describe_probe_agreement(
-        reported_line, geometry.cacheline_bytes, 1.0);
-    {
-        const string cross = cpufb::describe_line_cross_check(
-            geometry.cacheline_bytes, geometry.line_from_sets);
-        if (!cross.empty()) cont[5] += "; " + cross;
-    }
-    table.addOneItem(cont);
-
-    cont.assign(table.getCol(), "");
-    cont[0] = "L2 cacheline size";
-    cont[1] = l2.line_bytes > 0 ? to_string(l2.line_bytes) + " B" : "-";
-    cont[2] = geometry.l2_line > 0 ? to_string(geometry.l2_line) + " B" : "-";
-    cont[5] = geometry.l2_line > 0
-        ? cpufb::describe_probe_agreement(
-              l2.line_bytes, geometry.l2_line, 1.0) +
-            "; from set indexing"
-        : cpufb::describe_l2_unmeasured(geometry.l2_line);
-    {
-        const string deeper =
-            cpufb::describe_deeper_line_sizes(cpu, l2.line_bytes);
-        if (!deeper.empty()) cont[5] += "; " + deeper;
-    }
-    table.addOneItem(cont);
-
-    cpufb::print_cache_curve_tables(curve, freq.empty() ? 0.0 : freq[0]);
-    // Prefetcher reach, stream restart cost and software prefetch distance on
-    // the same core, sized from the curve's levels (common/prefetch_probe.hpp).
-    cpufb::append_prefetch_probe_rows(table, cpu,
-        cpufb::effective_cacheline_size(
-            reported_line, geometry.cacheline_bytes, 64),
-        curve, freq.empty() ? 0.0 : freq[0]);
+    cpufb::read_reported_cache(cache_size, cpu);
+    cpufb::measure_cache_report(cache_size, cpu, cache_probe_kernels());
+    cpufb::append_cache_report_rows(
+        table, cache_size, cpu, freq.empty() ? 0.0 : freq[0]);
 }
 
 #ifdef _VECTOR_

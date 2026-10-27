@@ -95,6 +95,7 @@ find_package(Threads REQUIRED)
 add_library(cpufb_common OBJECT
     "${CPUFB_COMMON_DIR}/cache/cache_bandwidth.cpp"
     "${CPUFB_COMMON_DIR}/cache/cache_curve.cpp"
+    "${CPUFB_COMMON_DIR}/cache/cache_report.cpp"
     "${CPUFB_COMMON_DIR}/cache/cache_topology.cpp"
     "${CPUFB_COMMON_DIR}/cache/associativity_probe.cpp"
     "${CPUFB_COMMON_DIR}/cache/cacheline_probe.cpp"

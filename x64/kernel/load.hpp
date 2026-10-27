@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "cache/cache_curve.hpp"
+#include "cache/cache_report.hpp"
 #include "sys/calling_convention.hpp"
 
 extern std::vector<double> freq;
@@ -26,41 +26,8 @@ extern "C"
     void CPUFB_SYSV_ABI store_vmovntps_zmm_kernel(float *, int, int64_t);
     void CPUFB_SYSV_ABI store_partial_line_kernel(float *, int, int64_t);
 }
-struct CacheData
-{
-    int theory_L1 = 0;
-    int theory_L2 = 0;
-    int test_L1 = 0;
-    int test_L2 = 0;
-    // Third level from the latency curve, 0 when there is none, and whether
-    // the curve reached memory latency (so the level list is complete).
-    int test_L3 = 0;
-    double memory_latency_ns = 0;
-    bool hierarchy_complete = false;
-    // Per level: empty for a clean step, the uncertainty range for a soft
-    // one, the reason the capacity is withheld for a gradual one.
-    std::string test_L1_note, test_L2_note, test_L3_note;
-    int theory_way = 0;
-    int test_way = 0;
-    // Bytes one L1 way spans, from set conflicts; test_way x this is an L1
-    // capacity that does not come from the latency curve.
-    size_t test_way_bytes = 0;
-    // L1 line size read from set indexing, immune to neighbour prefetch.
-    int test_line_from_sets = 0;
-    int theory_l2_way = 0;
-    int test_l2_way = 0;
-    int theory_l2_line = 0;
-    int test_l2_line = 0;
-    int theory_cacheline = 0;
-    int test_cacheline = 0;
-    // False when the curve fell or never reached memory.
-    bool curve_trusted = true;
-    // test_* hold raw probe results only; 0 means "not observed".
-};
+using cpufb::CacheData;
 
-// Fills the capacity fields and returns the latency curve they came from.
-cpufb::CacheCurveResult get_cachesize(struct CacheData *cache_size, int cpu_id);
-void get_multiway(struct CacheData *cache_size, int cpu_id);
-void get_cacheline(struct CacheData *cache_size, int cpu_id);
-void get_theory_cache(struct CacheData *cache_size, int cpu_id);
+// The chase kernel and line flush of this architecture (common/cache/cache_report).
+cpufb::CacheProbeKernels cache_probe_kernels();
 #endif

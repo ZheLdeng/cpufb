@@ -66,6 +66,12 @@ struct tpool_args
 
 bool parse_thread_pool(const char *sets, std::vector<int> &set_of_threads);
 
+namespace cpufb {
+// Binds the calling thread to one CPU; false (with the reason on stderr) when
+// the OS refuses.  macOS cannot pin and returns true.
+bool pin_current_thread(int cpu);
+} // namespace cpufb
+
 tpool_t *tpool_create(std::vector<int> thread_pool);
 void tpool_destroy(tpool_t *tm);
 

@@ -1,16 +1,10 @@
 #include "load.hpp"
 
-#include "cache/associativity_probe.hpp"
-#include "cache/cacheline_probe.hpp"
+#include "compute.hpp"
 
-#include <cstddef>
-
-// This file used to hold a second cache-size estimator (a slope rule over a
-// hand-rolled pointer walk) and an associativity walk, neither of which was
-// ever called: riscv64/cpufb.cpp has always used the shared latency curve.
-// The estimator also read /cache/index0 as the L1 data cache, which is the
-// instruction cache on a SpacemiT X60, and carried a copied __APPLE__ branch.
-// What the backend was missing instead were the two probes below.
+// The pointer-chase and line-flush kernels of this architecture.  The cache
+// geometry itself (reported values, the latency curve, the line and
+// set-conflict probes and the table rows) is common/cache/cache_report.cpp.
 
 namespace {
 
@@ -33,23 +27,15 @@ void finish_cache_line_flush()
 
 } // namespace
 
-CacheGeometryProbe probe_cache_geometry(
-    int reported_cacheline, uint64_t last_level_bytes)
+cpufb::CacheProbeKernels cache_probe_kernels()
 {
-    CacheGeometryProbe result;
-    result.cacheline_bytes =
-        cpufb::probe_cacheline_size(reported_cacheline, flush_cache_line,
-            finish_cache_line_flush, static_cast<size_t>(last_level_bytes));
-    // The associativity ring needs a line size to step by; the probe's own
-    // answer is preferred, and the OS value is only a fallback for a machine
-    // where the line probe found no boundary.
-    const int line = cpufb::effective_cacheline_size(
-        0, result.cacheline_bytes, reported_cacheline);
-    result.l1_ways = cpufb::probe_l1_associativity(line);
-    result.l1_way_bytes = cpufb::probe_l1_way_bytes(line, result.l1_ways);
-    result.line_from_sets =
-        cpufb::probe_l1_line_from_sets(result.l1_ways, result.l1_way_bytes);
-    result.l2_ways = cpufb::probe_l2_associativity(line, result.l1_ways);
-    result.l2_line = cpufb::probe_l2_line_from_sets(result.l2_ways);
-    return result;
+    cpufb::CacheProbeKernels kernels;
+#ifdef _VECTOR_
+    kernels.chase = riscv_cache_chase32;
+#endif
+    kernels.flush = flush_cache_line;
+    kernels.fence = finish_cache_line_flush;
+    // 64 MiB: the SpacemiT X60 has no L3 and its memory is slow.
+    kernels.curve_max_bytes = 64ULL << 20;
+    return kernels;
 }

@@ -106,33 +106,6 @@ string format_decimal(double value, int precision)
     return stream.str();
 }
 
-bool pin_current_thread(int cpu)
-{
-#ifdef __linux__
-    if (cpu < 0 || cpu >= CPU_SETSIZE) {
-        std::cerr << "Error: CPU " << cpu
-                  << " is outside the supported affinity mask." << std::endl;
-        return false;
-    }
-    cpu_set_t mask;
-    CPU_ZERO(&mask);
-    CPU_SET(cpu, &mask);
-    if (sched_setaffinity(0, sizeof(mask), &mask) != 0) {
-        std::cerr << "Error: sched_setaffinity(" << cpu
-                  << ") failed: " << std::strerror(errno) << std::endl;
-        return false;
-    }
-#elif defined(_WIN32)
-    if (!cpufb::windows::pin_current_thread(cpu)) {
-        std::cerr << "Error: SetThreadGroupAffinity(" << cpu
-                  << ") failed." << std::endl;
-        return false;
-    }
-#else
-    (void)cpu;
-#endif
-    return true;
-}
 
 double read_linux_cpu_frequency_hz(int cpu)
 {
@@ -544,7 +517,7 @@ bool measure_stream_bandwidth(int cpu, const KernelSpec &kernel,
     std::uint32_t repetitions, std::uint32_t idle_time,
     std::int64_t passes_per_sample, BandwidthReport &report)
 {
-    if (!pin_current_thread(cpu)) return false;
+    if (!cpufb::pin_current_thread(cpu)) return false;
     if (requested_bytes == 0 ||
         requested_bytes > static_cast<std::uint64_t>(
                               std::numeric_limits<std::size_t>::max())) {

@@ -1,16 +1,16 @@
 #include "table.hpp"
-#include "thread_pool.hpp"
+#include "sys/thread_pool.hpp"
 #include "cli.hpp"
-#include <compute.hpp>
-#include <load.hpp>
-#include <memory_bandwidth.hpp>
-#include <frequency.hpp>
-#include <common.hpp>
-#include <issue_kernels.hpp>
-#include <cache_bandwidth.hpp>
-#include <cache_topology.hpp>
-#include <prefetch_probe.hpp>
-#include <cacheline_probe.hpp>
+#include "compute.hpp"
+#include "load.hpp"
+#include "cache/memory_bandwidth.hpp"
+#include "frequency.hpp"
+#include "sys/common.hpp"
+#include "issue/issue_kernels.hpp"
+#include "cache/cache_bandwidth.hpp"
+#include "cache/cache_topology.hpp"
+#include "cache/prefetch_probe.hpp"
+#include "cache/cacheline_probe.hpp"
 #include "runtime_features.h"
 
 #ifndef _WIN32
@@ -23,7 +23,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
-#include "windows_platform.hpp"
+#include "sys/windows_platform.hpp"
 #endif
 #include <cstdint>
 #include <ctime>

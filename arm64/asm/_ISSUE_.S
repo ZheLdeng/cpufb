@@ -12,7 +12,7 @@
 // kernel prologue must set up SVE predicates and zero the Z registers.
 
 #include "common_arm64.h"
-#include "issue_layout.h"
+#include "issue/issue_layout.h"
 
     .text
 
@@ -199,4 +199,4 @@
     ret
 .endm
 
-#include "issue_asm.h"
+#include "issue/issue_asm.h"

@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-#include "calling_convention.hpp"
+#include "sys/calling_convention.hpp"
 #include "cli.hpp"
 
 namespace cpufb {

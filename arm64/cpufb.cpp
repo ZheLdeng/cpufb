@@ -21,18 +21,18 @@
 #include <sys/ioctl.h>
 
 #include "table.hpp"
-#include "thread_pool.hpp"
+#include "sys/thread_pool.hpp"
 #include "cli.hpp"
-#include <load.hpp>
-#include <memory_bandwidth.hpp>
-#include <compute.hpp>
-#include <frequency.hpp>
-#include <issue_kernels.hpp>
-#include <common.hpp>
-#include <cache_bandwidth.hpp>
-#include <cache_topology.hpp>
-#include <prefetch_probe.hpp>
-#include <cacheline_probe.hpp>
+#include "load.hpp"
+#include "cache/memory_bandwidth.hpp"
+#include "compute.hpp"
+#include "frequency.hpp"
+#include "issue/issue_kernels.hpp"
+#include "sys/common.hpp"
+#include "cache/cache_bandwidth.hpp"
+#include "cache/cache_topology.hpp"
+#include "cache/prefetch_probe.hpp"
+#include "cache/cacheline_probe.hpp"
 #include <cmath>
 
 #if defined(__linux__) && !defined(__APPLE__)
@@ -40,7 +40,7 @@
 #endif
 
 #ifdef __APPLE__
-#include <amx.hpp>
+#include "amx.hpp"
 #endif
 
 using namespace std;

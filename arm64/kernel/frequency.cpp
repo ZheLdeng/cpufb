@@ -15,7 +15,7 @@
 
 #include "compute.hpp"
 #include "frequency.hpp"
-#include "common.hpp"
+#include "sys/common.hpp"
 #include "load.hpp"
 #if defined(__linux__) && !defined(__APPLE__)
 #include "../runtime_features.hpp"
@@ -24,7 +24,7 @@
 #ifdef __APPLE__
 #include <sys/sysctl.h>
 #include "macos_counters.hpp"
-#include "system_info.hpp"
+#include "sys/system_info.hpp"
 #endif
 
 #ifdef __linux__

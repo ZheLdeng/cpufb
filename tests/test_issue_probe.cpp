@@ -3,7 +3,7 @@
 // No hardware is involved; the "measurements" are synthetic curves built from
 // the resource model the probe assumes.
 
-#include "issue_probe.hpp"
+#include "issue/issue_probe.hpp"
 
 #include <algorithm>
 #include <cmath>

@@ -1,5 +1,5 @@
-#include "cacheline_probe.hpp"
-#include "aligned_memory.hpp"
+#include "cache/cacheline_probe.hpp"
+#include "sys/aligned_memory.hpp"
 
 #include <algorithm>
 #include <cmath>

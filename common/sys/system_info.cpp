@@ -1,6 +1,6 @@
-#include "system_info.hpp"
+#include "sys/system_info.hpp"
 
-#include "cache_topology.hpp"
+#include "cache/cache_topology.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -20,7 +20,7 @@
 #include <sys/system_properties.h>
 #endif
 #ifdef _WIN32
-#include "windows_platform.hpp"
+#include "sys/windows_platform.hpp"
 #endif
 #ifdef __APPLE__
 #include <cstdio>

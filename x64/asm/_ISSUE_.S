@@ -15,7 +15,7 @@
  * x64/kernel/issue_classes.def.
  */
 
-#include "issue_layout.h"
+#include "issue/issue_layout.h"
 
     .text
 
@@ -187,7 +187,7 @@
     ret
 .endm
 
-#include "issue_asm.h"
+#include "issue/issue_asm.h"
 
 #ifndef _WIN32
 .section .note.GNU-stack,"",@progbits

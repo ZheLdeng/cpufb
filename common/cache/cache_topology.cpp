@@ -1,4 +1,4 @@
-#include "cache_topology.hpp"
+#include "cache/cache_topology.hpp"
 
 #include <cctype>
 #include <cerrno>
@@ -13,7 +13,7 @@
 #include <sys/sysctl.h>
 #endif
 #ifdef _WIN32
-#include "windows_platform.hpp"
+#include "sys/windows_platform.hpp"
 #endif
 
 namespace cpufb {

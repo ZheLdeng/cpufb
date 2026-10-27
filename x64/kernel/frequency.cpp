@@ -14,7 +14,7 @@
 #include <vector>
 #include <x86intrin.h>
 
-#include "common.hpp"
+#include "sys/common.hpp"
 #include "frequency.hpp"
 
 #ifdef __linux__
@@ -24,7 +24,7 @@
 #include <sys/sysctl.h>
 #endif
 #ifdef _WIN32
-#include "windows_platform.hpp"
+#include "sys/windows_platform.hpp"
 #endif
 
 using namespace std;

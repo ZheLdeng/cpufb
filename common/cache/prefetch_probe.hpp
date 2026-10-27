@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include "cache_curve.hpp"
+#include "cache/cache_curve.hpp"
 
 class Table;
 

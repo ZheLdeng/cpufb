@@ -14,8 +14,8 @@
 
 #include "compute.hpp"
 #include "frequency.hpp"
-#include "common.hpp"
-#include <compute.hpp>
+#include "sys/common.hpp"
+#include "compute.hpp"
 
 #ifdef __linux__
 #include <sys/syscall.h>

@@ -1,7 +1,7 @@
 #include "cli.hpp"
 
-#include "system_info.hpp"
-#include "thread_pool.hpp"
+#include "sys/system_info.hpp"
+#include "sys/thread_pool.hpp"
 
 #include <algorithm>
 #include <cerrno>

@@ -1,7 +1,7 @@
 // x86-64 issue-probe kernel tables: only the CPUID feature check is
 // architecture-specific; the tables come from common/issue_kernel_tables.inc.
 
-#include "issue_kernels.hpp"
+#include "issue/issue_kernels.hpp"
 
 #include <cstring>
 
@@ -22,4 +22,4 @@ bool issue_feature_available(const char *feature)
 
 } // namespace
 
-#include "issue_kernel_tables.inc"
+#include "issue/issue_kernel_tables.inc"

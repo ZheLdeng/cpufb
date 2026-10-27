@@ -2,8 +2,8 @@
 // write-allocate verdict: the rules that turn measured latencies into
 // verdicts, on synthetic results.
 
-#include "cache_topology.hpp"
-#include "prefetch_probe.hpp"
+#include "cache/cache_topology.hpp"
+#include "cache/prefetch_probe.hpp"
 
 #include <cmath>
 #include <iostream>

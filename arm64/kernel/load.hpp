@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "cache_curve.hpp"
+#include "cache/cache_curve.hpp"
 
 struct tpool;
 typedef struct tpool tpool_t;

@@ -1,11 +1,11 @@
 #include "cli.hpp"
-#include "cache_topology.hpp"
-#include "cache_curve.hpp"
-#include "prefetch_probe.hpp"
-#include "cacheline_probe.hpp"
+#include "cache/cache_topology.hpp"
+#include "cache/cache_curve.hpp"
+#include "cache/prefetch_probe.hpp"
+#include "cache/cacheline_probe.hpp"
 #include "table.hpp"
-#include "thread_pool.hpp"
-#include "common.hpp"
+#include "sys/thread_pool.hpp"
+#include "sys/common.hpp"
 
 #include <unistd.h>
 #include <cstdint>
@@ -16,9 +16,9 @@
 #include <sstream>
 #include <iomanip>
 #include <iostream>
-#include <frequency.hpp>
-#include <compute.hpp>
-#include <load.hpp>
+#include "frequency.hpp"
+#include "compute.hpp"
+#include "load.hpp"
 #include <cmath>
 #include <algorithm>
 #include <atomic>

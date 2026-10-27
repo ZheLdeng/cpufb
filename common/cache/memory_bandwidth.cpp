@@ -1,11 +1,11 @@
-#include "memory_bandwidth.hpp"
+#include "cache/memory_bandwidth.hpp"
 
-#include "perf_pmu.hpp"
+#include "sys/perf_pmu.hpp"
 
-#include "cache_topology.hpp"
-#include "aligned_memory.hpp"
+#include "cache/cache_topology.hpp"
+#include "sys/aligned_memory.hpp"
 #include "table.hpp"
-#include "thread_pool.hpp"
+#include "sys/thread_pool.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -46,7 +46,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
-#include "windows_platform.hpp"
+#include "sys/windows_platform.hpp"
 #endif
 
 using cpufb::cli::CliOptions;

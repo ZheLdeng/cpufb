@@ -1,5 +1,5 @@
-#include "cache_bandwidth.hpp"
-#include "cache_curve.hpp"
+#include "cache/cache_bandwidth.hpp"
+#include "cache/cache_curve.hpp"
 
 #include <cmath>
 #include <cstdint>

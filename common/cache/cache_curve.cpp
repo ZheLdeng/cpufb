@@ -1,4 +1,4 @@
-#include "cache_curve.hpp"
+#include "cache/cache_curve.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -11,7 +11,7 @@
 #include <numeric>
 #include <random>
 
-#include "aligned_memory.hpp"
+#include "sys/aligned_memory.hpp"
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -20,11 +20,11 @@
 #include <sys/mman.h>
 #endif
 #ifdef _WIN32
-#include "windows_platform.hpp"
+#include "sys/windows_platform.hpp"
 #endif
 
-#include "cache_topology.hpp"
-#include "common.hpp"
+#include "cache/cache_topology.hpp"
+#include "sys/common.hpp"
 #include "table.hpp"
 
 namespace cpufb {

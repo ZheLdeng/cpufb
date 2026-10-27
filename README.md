@@ -157,7 +157,7 @@ You must ensure that the device can be reached via `adb shell` during build.
 
 The old `build_x64.sh`, `build_arm64.sh`, `build_android.sh`,
 `build_riscv64.sh` and `clean.sh` have been removed; they no longer listed the
-shared sources and could not link. `QUICK_START.md` maps each one to its CMake
+shared sources and could not link. `docs/QUICK_START.md` maps each one to its CMake
 preset.
 
 ## How to benchmark
@@ -335,7 +335,7 @@ last column only labels the agreement (`probe (agrees with OS)`,
   line before writing it`), and one near twice as fast did not (`skip the
   line fill`); in between is `inconclusive`. The L1/L2 table (`load`
   category) has store rows for the same vector widths, marked `store`.
-- Prefetch probe (`common/prefetch_probe`): what a kernel needs to know about
+- Prefetch probe (`common/cache/prefetch_probe`): what a kernel needs to know about
   prefetching, measured with dependent loads so that only a prefetch can hide
   a miss, on an L2-resident working set (geometric middle of L1 and L2) and a
   memory one (`max(64 MiB, 4 x deepest level)`), printed as three tables and
@@ -363,7 +363,7 @@ last column only labels the agreement (`probe (agrees with OS)`,
      within 10% of the plain chase. On riscv64 the compiler emits a prefetch
      only with Zicbop, so that row normally reads `no measurable effect`.
 
-The `load` category is the L1/L2 read-bandwidth table (`common/cache_bandwidth`):
+The `load` category is the L1/L2 read-bandwidth table (`common/cache/cache_bandwidth`):
 
 1. the working set lives in the level under test but not in the one below:
    half of L1, and the geometric middle of (L1, L2] for L2, so every read is
@@ -450,9 +450,9 @@ includes AVX2 integer add/multiply, AVX-512 IFMA, AVX-512 VBMI byte permute,
 and AVX-512 VPOPCNTDQ tests when supported. Latency variants are paired with
 their throughput rows and are omitted from `--list-instructions`.
 
-See [X86_BENCHMARK_ACCOUNTING.md](X86_BENCHMARK_ACCOUNTING.md) for the audited
+See [X86_BENCHMARK_ACCOUNTING.md](docs/X86_BENCHMARK_ACCOUNTING.md) for the audited
 operation counts and the exact meaning of the instruction rate and latency
-metrics. Remaining follow-up work is tracked in [TODO.md](TODO.md).
+metrics. Remaining follow-up work is tracked in [TODO.md](docs/TODO.md).
 
 ### macOS counter backends
 
@@ -477,7 +477,7 @@ clocks directly with PMU-derived IPC from Linux.
 ## Issue probe
 
 The `multi_issue` category is measured by the issue probe
-(`common/issue_probe.cpp`) on the first selected core. It answers, per
+(`common/issue/issue_probe.cpp`) on the first selected core. It answers, per
 instruction class and per pair of classes, how the core issues them:
 
 ```sh
@@ -516,9 +516,9 @@ the near-optimal interval, or the chain check for a peak) and Verdict.
 
 Every kernel is generated at build time by assembler macros from a class list,
 `<arch>/kernel/issue_classes.def`, which the C++ tables include too, so the
-two cannot drift apart. The framework is shared: `common/issue_asm.h` holds
+two cannot drift apart. The framework is shared: `common/issue/issue_asm.h` holds
 the slot, partition, pattern and kernel-shape macros and expands the class
-list, `common/issue_kernel_tables.inc` builds the C++ tables, and
+list, `common/issue/issue_kernel_tables.inc` builds the C++ tables, and
 `run_issue_probe_category()` is the driver both backends call. An
 architecture file `<arch>/asm/_ISSUE_.S` supplies only the instruction of
 each class, its register banks and the function entry and exit. Adding a
@@ -551,7 +551,7 @@ FMLA, integer scalar ADD, and scalar FP32 FADD. For example:
 The test starts at normalized pressure points 25%, 50%, and 75%, compares
 interleaved and blocked schedules, and adds points only around nonlinear
 overlap or a 97%-of-peak knee. See
-[PAIR_ISSUE_TEST.md](PAIR_ISSUE_TEST.md) for the measurement equations,
+[PAIR_ISSUE_TEST.md](docs/PAIR_ISSUE_TEST.md) for the measurement equations,
 requirements, caveats, JSON output, and dry-run planning mode.
 
 ## Compute/load/store issue model
@@ -570,7 +570,7 @@ SVE256 machine uses the BFMMLA profile:
 
 It reports compute/load/store IPC, resource utilization, compute and memory
 efficiency, and operations/bytes per cycle. See
-[ISSUE_MODEL.md](ISSUE_MODEL.md) for the V3 FMLA, V1 FMLA, and V1 BFMMLA
+[ISSUE_MODEL.md](docs/ISSUE_MODEL.md) for the V3 FMLA, V1 FMLA, and V1 BFMMLA
 models, calibration points, measured error budgets, JSON output, and
 capacity overrides.
 

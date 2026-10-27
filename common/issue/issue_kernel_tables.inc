@@ -9,9 +9,9 @@
 //
 // and has the kernel directory on its include path for issue_classes.def.
 
-#include "issue_kernels.hpp"
-#include "issue_layout.h"
-#include "calling_convention.hpp"
+#include "issue/issue_kernels.hpp"
+#include "issue/issue_layout.h"
+#include "sys/calling_convention.hpp"
 
 // Declarations of every generated kernel.
 extern "C"

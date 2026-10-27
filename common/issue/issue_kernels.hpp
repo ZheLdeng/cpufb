@@ -1,7 +1,7 @@
 #ifndef CPUFB_ISSUE_KERNELS_HPP
 #define CPUFB_ISSUE_KERNELS_HPP
 
-#include "issue_probe.hpp"
+#include "issue/issue_probe.hpp"
 
 namespace cpufb {
 

@@ -1,7 +1,7 @@
 #ifndef CPUFB_X64_COMPUTE_HPP
 #define CPUFB_X64_COMPUTE_HPP
 
-#include "calling_convention.hpp"
+#include "sys/calling_convention.hpp"
 
 extern "C"
 {

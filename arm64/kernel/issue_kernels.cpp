@@ -1,7 +1,7 @@
 // ARM64 issue-probe kernel tables: only the runtime feature check is
 // architecture-specific; the tables come from common/issue_kernel_tables.inc.
 
-#include "issue_kernels.hpp"
+#include "issue/issue_kernels.hpp"
 
 #if defined(__linux__) && !defined(__APPLE__)
 #include "../runtime_features.hpp"
@@ -22,4 +22,4 @@ bool issue_feature_available(const char *feature)
 
 } // namespace
 
-#include "issue_kernel_tables.inc"
+#include "issue/issue_kernel_tables.inc"

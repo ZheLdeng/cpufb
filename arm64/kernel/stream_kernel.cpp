@@ -1,4 +1,4 @@
-#include "memory_bandwidth.hpp"
+#include "cache/memory_bandwidth.hpp"
 
 #include "load.hpp"
 #if defined(__linux__) && !defined(__APPLE__)

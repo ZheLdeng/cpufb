@@ -1,4 +1,4 @@
-#include "issue_probe.hpp"
+#include "issue/issue_probe.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -15,12 +15,12 @@
 #include <unistd.h>
 #endif
 #ifdef _WIN32
-#include "windows_platform.hpp"
+#include "sys/windows_platform.hpp"
 #endif
 
-#include "common.hpp"
-#include "aligned_memory.hpp"
-#include "issue_layout.h"
+#include "sys/common.hpp"
+#include "sys/aligned_memory.hpp"
+#include "issue/issue_layout.h"
 
 namespace cpufb {
 

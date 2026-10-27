@@ -1,7 +1,7 @@
 #include "load.hpp"
 
-#include "associativity_probe.hpp"
-#include "cacheline_probe.hpp"
+#include "cache/associativity_probe.hpp"
+#include "cache/cacheline_probe.hpp"
 
 #include <cstddef>
 

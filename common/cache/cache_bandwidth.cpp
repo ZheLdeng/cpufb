@@ -1,4 +1,4 @@
-#include "cache_bandwidth.hpp"
+#include "cache/cache_bandwidth.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -14,10 +14,10 @@
 #include <unistd.h>
 #endif
 
-#include "common.hpp"
-#include "aligned_memory.hpp"
+#include "sys/common.hpp"
+#include "sys/aligned_memory.hpp"
 #ifdef _WIN32
-#include "windows_platform.hpp"
+#include "sys/windows_platform.hpp"
 #endif
 
 namespace cpufb {

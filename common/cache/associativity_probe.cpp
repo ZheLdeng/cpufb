@@ -1,5 +1,5 @@
-#include "associativity_probe.hpp"
-#include "aligned_memory.hpp"
+#include "cache/associativity_probe.hpp"
+#include "sys/aligned_memory.hpp"
 
 #include <algorithm>
 #include <cstdint>

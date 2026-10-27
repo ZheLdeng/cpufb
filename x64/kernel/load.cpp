@@ -15,13 +15,13 @@
 #include <algorithm>
 #include <random>
 
-#include "associativity_probe.hpp"
-#include "cache_curve.hpp"
-#include "cache_topology.hpp"
-#include "cacheline_probe.hpp"
+#include "cache/associativity_probe.hpp"
+#include "cache/cache_curve.hpp"
+#include "cache/cache_topology.hpp"
+#include "cache/cacheline_probe.hpp"
 #include "compute.hpp"
 #include "frequency.hpp"
-#include "common.hpp"
+#include "sys/common.hpp"
 #include "load.hpp"
 
 #include <fstream>
@@ -30,7 +30,7 @@
 #include <sys/syscall.h>
 #endif
 #ifdef _WIN32
-#include "windows_platform.hpp"
+#include "sys/windows_platform.hpp"
 #endif
 // Assumed line size when neither the OS nor the probe provides one.
 static constexpr int kDefaultCacheLineBytes = 64;

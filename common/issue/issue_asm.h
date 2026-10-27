@@ -30,7 +30,7 @@
 #ifndef CPUFB_ISSUE_ASM_H
 #define CPUFB_ISSUE_ASM_H
 
-#include "issue_layout.h"
+#include "issue/issue_layout.h"
 
 /* Class attributes as assembler symbols. */
 .macro ISSUE_CLASS_ATTR name, bank, mode, attr

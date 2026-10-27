@@ -1,4 +1,4 @@
-#include "prefetch_probe.hpp"
+#include "cache/prefetch_probe.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -7,7 +7,7 @@
 #include <numeric>
 #include <random>
 
-#include "cache_topology.hpp"
+#include "cache/cache_topology.hpp"
 #include "table.hpp"
 
 namespace cpufb {

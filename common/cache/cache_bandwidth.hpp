@@ -5,8 +5,8 @@
 #include <cstdint>
 #include <string>
 
-#include "calling_convention.hpp"
-#include "thread_pool.hpp"
+#include "sys/calling_convention.hpp"
+#include "sys/thread_pool.hpp"
 
 // Sequential-read bandwidth of one cache level.
 //

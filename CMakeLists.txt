@@ -93,21 +93,21 @@ find_package(Threads REQUIRED)
 # common/ as an OBJECT library
 # ---------------------------------------------------------------------------
 add_library(cpufb_common OBJECT
-    "${CPUFB_COMMON_DIR}/cache_bandwidth.cpp"
-    "${CPUFB_COMMON_DIR}/cache_curve.cpp"
-    "${CPUFB_COMMON_DIR}/cache_topology.cpp"
-    "${CPUFB_COMMON_DIR}/associativity_probe.cpp"
-    "${CPUFB_COMMON_DIR}/cacheline_probe.cpp"
+    "${CPUFB_COMMON_DIR}/cache/cache_bandwidth.cpp"
+    "${CPUFB_COMMON_DIR}/cache/cache_curve.cpp"
+    "${CPUFB_COMMON_DIR}/cache/cache_topology.cpp"
+    "${CPUFB_COMMON_DIR}/cache/associativity_probe.cpp"
+    "${CPUFB_COMMON_DIR}/cache/cacheline_probe.cpp"
     "${CPUFB_COMMON_DIR}/cli.cpp"
-    "${CPUFB_COMMON_DIR}/issue_probe.cpp"
-    "${CPUFB_COMMON_DIR}/prefetch_probe.cpp"
-    "${CPUFB_COMMON_DIR}/system_info.cpp"
+    "${CPUFB_COMMON_DIR}/issue/issue_probe.cpp"
+    "${CPUFB_COMMON_DIR}/cache/prefetch_probe.cpp"
+    "${CPUFB_COMMON_DIR}/sys/system_info.cpp"
     "${CPUFB_COMMON_DIR}/table.cpp"
-    "${CPUFB_COMMON_DIR}/thread_pool.cpp"
+    "${CPUFB_COMMON_DIR}/sys/thread_pool.cpp"
 )
 if(WIN32)
     target_sources(cpufb_common PRIVATE
-        "${CPUFB_COMMON_DIR}/windows_platform.cpp")
+        "${CPUFB_COMMON_DIR}/sys/windows_platform.cpp")
 endif()
 target_include_directories(cpufb_common PUBLIC "${CPUFB_COMMON_DIR}")
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
@@ -211,7 +211,7 @@ if(CPUFB_ARCH STREQUAL "arm64" OR CPUFB_ARCH STREQUAL "x64")
     # The stream benchmark is shared; only the kernel selection is per arch.
     # issue_kernels.cpp holds the tables of the generated issue-probe kernels.
     list(APPEND _kernel_sources
-        "${CPUFB_COMMON_DIR}/memory_bandwidth.cpp"
+        "${CPUFB_COMMON_DIR}/cache/memory_bandwidth.cpp"
         "${CPUFB_KERNEL_DIR}/stream_kernel.cpp"
         "${CPUFB_KERNEL_DIR}/issue_kernels.cpp")
 endif()

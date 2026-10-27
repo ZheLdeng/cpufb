@@ -8,7 +8,7 @@
 #include <sched.h>
 #include <unistd.h>
 #endif
-#include "thread_pool.hpp"
+#include "sys/thread_pool.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -18,7 +18,7 @@
 #include <sys/syscall.h>
 #endif
 #ifdef _WIN32
-#include "windows_platform.hpp"
+#include "sys/windows_platform.hpp"
 #endif
 using namespace std;
 

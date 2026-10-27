@@ -6,8 +6,8 @@
 #include <string>
 #include <vector>
 
-#include "cache_curve.hpp"
-#include "calling_convention.hpp"
+#include "cache/cache_curve.hpp"
+#include "sys/calling_convention.hpp"
 
 extern std::vector<double> freq;
 extern "C"

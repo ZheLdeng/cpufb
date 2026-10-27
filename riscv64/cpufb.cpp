@@ -212,7 +212,7 @@ static void add_riscv64_load_rows(tpool_t *tm, Table &table)
     const cpufb::LoadKernel kernel =
         rvv_stream_kernel("rvv-vle8.v", vector_load_stream);
     for (int level = 1; level <= 2; ++level)
-        cpufb::append_load_bandwidth_row(table, cpufb::LOAD_TABLE_WITH_SOURCES,
+        cpufb::append_load_bandwidth_row(table,
             level == 1 ? "L1 Cache" : "L2 Cache", kernel, level, cache_size, tm,
             freq);
 }
@@ -259,8 +259,7 @@ static bool cpubm_do_bench(std::vector<int> &set_of_threads, uint32_t idle_time,
 
         // set table head
         vector<Table *> tables;
-        cpufb::init_benchmark_tables(
-            tables, false, cpufb::LOAD_TABLE_WITH_SOURCES);
+        cpufb::init_benchmark_tables(tables, false);
 
         // set thread pool
         tpool_t *tm;

@@ -291,9 +291,8 @@ static void cpubm_x64_load(tpool_t *tm, cpubm_t &item, Table &table)
     kernel.bytes_per_count = 512;
     kernel.block_bytes = 512;
     kernel.bytes_per_load = item.bytes_per_load;
-    cpufb::append_load_bandwidth_row(table,
-        cpufb::LOAD_TABLE_REPORTED_AND_MEASURED, item.isa, kernel,
-        item.cache_level, cache_size, tm, freq);
+    cpufb::append_load_bandwidth_row(
+        table, item.isa, kernel, item.cache_level, cache_size, tm, freq);
 }
 
 static bool cpubm_x64_cache(
@@ -364,8 +363,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
     printf("\n");
 
     vector<Table *> tables;
-    cpufb::init_benchmark_tables(
-        tables, false, cpufb::LOAD_TABLE_REPORTED_AND_MEASURED);
+    cpufb::init_benchmark_tables(tables, false);
     if (benchmark_needs_freq(filter)) get_cpu_freq(set_of_threads, *tables[3]);
     if (should_run_test(filter, "cache") &&
         !cpubm_x64_cache(set_of_threads, *tables[2], options)) {

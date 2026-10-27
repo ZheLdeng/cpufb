@@ -7,9 +7,8 @@ needs verified *now*; it is not a log, and nothing is appended to it.
   one):** no measurement changed, but the output did in three places that a
   re-test should not report as regressions: x86-64 cache rows now carry the
   ARM64 names and units (`L1 data cache capacity`, KiB, capacity source);
-  the load table keeps its per-architecture column set (x86-64 shows
-  `Reported Size` / `Measured Size`, ARM64 and riscv64 the capacity and
-  cycle sources, both in KiB); the compute table's last
+  the load table has the same ten columns on every architecture (x86-64
+  gains `Capacity Source` and `Cycle Source`, in KiB); the compute table's last
   column is `Latency (cycles)` everywhere. riscv64's load rows now come from
   the shared harness (same numbers expected within noise) and its
   `RVV compute:load` row sits in the issue table. Files moved: docs/,

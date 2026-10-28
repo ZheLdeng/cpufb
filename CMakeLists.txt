@@ -299,9 +299,10 @@ install(TARGETS cpufb RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 
 include(AndroidDeploy)
 
-# ---------------------------------------------------------------------------
-# CLI regression tests
-# ---------------------------------------------------------------------------
+# --- tests: begin ------------------------------------------------------------
+# Development-only: unit tests of common/ and the CLI regression script.  The
+# release branch (main) carries neither this block nor tests/; the local
+# release script strips everything between the two "tests:" markers.
 include(CTest)
 if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING)
     # Unit tests of the common library: one executable per source file.
@@ -399,3 +400,4 @@ if(BUILD_TESTING AND NOT CMAKE_CROSSCOMPILING AND WIN32)
         TIMEOUT 10
     )
 endif()
+# --- tests: end --------------------------------------------------------------

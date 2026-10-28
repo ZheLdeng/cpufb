@@ -82,7 +82,6 @@ arm64/ x64/ riscv64/
   kernel/          per-arch pieces the common code is parameterised with (the
                    chase and flush kernels, stream kernels, issue class list)
   asm/             the timed kernels, GNU assembly
-tests/             C++ unit tests (ctest label unit) and the CLI regression script
 ```
 
 The repository is C, C++ and GNU assembly only; the analysis scripts and
@@ -510,23 +509,6 @@ modes), an architecture attribute (SVE predicates on ARM64, register width
 on x86) and a runtime feature token; mixes whose class the machine lacks
 print "not available" with the missing feature, and classes the toolchain
 could not compile (an assembler without `+sme`) have no rows at all.
-
-## Automated CLI regression tests
-
-Native x86-64 and ARM64 builds register CTest coverage for category/ISA
-filters, invalid filters, exact/ambiguous instruction matching, TXT/CSV
-serialization, and single-core instruction-sweep output. The tests validate
-CLI behavior and file structure; they intentionally do not compare volatile
-performance values.
-
-```sh
-cmake --preset native-release
-cmake --build --preset native-release
-ctest --test-dir build/native-release --output-on-failure
-```
-
-Set `CPUFB_TEST_CORE` when the default first allowed CPU is not the desired
-test core.
 
 
 ## Some x86-64 CPU benchmark results

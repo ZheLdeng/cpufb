@@ -34,7 +34,9 @@ const char *prefetch_instruction_name(bool l2_target)
 
 namespace {
 
-const size_t kStrides[] = {1, 2, 4, 8, 16, 32, 64};
+// 3 and 6 tell a stride the prefetcher does not follow from one that aliases
+// the cache's set index (an Apple M4 hid nothing at stride 4 alone).
+const size_t kStrides[] = {1, 2, 3, 4, 6, 8, 16, 32, 64};
 const size_t kSegments[] = {4, 8, 16, 32, 64, 128, 256, 1024};
 const size_t kDistances[] = {0, 1, 2, 4, 8, 16, 32, 64};
 const size_t kMaxDistance = 64;
@@ -623,7 +625,8 @@ void append_prefetch_probe_rows(Table &table, int cpu, int line_bytes,
 
     const std::string worksets = worksets_text(result);
     append_row(table, "Hardware prefetch stride reach", cpu,
-        "dependent loads, strides of 1 to 64 lines", "-", worksets,
+        "dependent loads, strides of 1 to 64 lines (1,2,3,4,6,8,...)", "-",
+        worksets,
         describe_stride_reach(result, fallback_clock_ghz));
     append_row(table, "Stream restart cost", cpu,
         "sequential segments of 4 to 1024 lines", "-",

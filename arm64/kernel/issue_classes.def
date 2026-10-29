@@ -55,3 +55,13 @@ ISSUE_PAIR(sme_fmopa, ssve_st1w, "SME + streaming SVE store")
 #endif
 
 ISSUE_TRIPLE(alu, neon_fmla, neon_ldr, "Issue width")
+
+// FP64 is separate: SME support alone does not imply SME_F64F64.
+#ifdef _SMEf64_
+ISSUE_CLASS(sme_fmopa_f64, "fmopa za.d", "SME", ZA64, STREAMING, 1, "_SME_F64F64_")
+ISSUE_CLASS(ssve_fmla_f64, "fmla z.d (streaming)", "FSU", VEC, STREAMING, 1, "_SME_")
+ISSUE_CLASS(ssve_ld1d, "ld1d z.d (streaming)", "LSU", VEC, STREAMING, 1, "_SME_")
+ISSUE_PAIR(sme_fmopa_f64, ssve_fmla_f64, "FP64 SME + streaming SVE compute")
+ISSUE_PAIR(sme_fmopa_f64, ssve_ld1d, "FP64 SME + streaming SVE load")
+ISSUE_TRIPLE(sme_fmopa_f64, ssve_fmla_f64, ssve_ld1d, "FP64 streaming compute + load")
+#endif

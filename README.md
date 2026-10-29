@@ -53,6 +53,7 @@ issue peaks per instruction class and how classes share the core when mixed.
 |SIMD|sve2|Vector|int16|From Graviton3+/Armv9-A (representative: sqrdmlah)|
 |SIMD|sve_f32mm|Matrix|fp32|From Neoverse V1+/Graviton3+/Grace|
 |SIMD|sve_f64mm|Matrix|fp64|From Neoverse V1+/Graviton3+/Grace|
+|DSA|amx (Apple)|Matrix / Vector|fp16/fp32/fp64 fma, int8/int16 matint, ldx|Apple M1 to M3 (undocumented; rows appear only when the core executes AMX_SET)|
 |DSA|sme (i8)|Matrix|int8 + mixed-sign (umopa/usmopa/sumopa)|Apple M4, Armv9.0-A SME|
 |DSA|sme_f16f16|Matrix|fp16 ← fp16 (fp16 ZA acc)|Armv9.2+ SME-F16F16 (req. SME2)|
 |DSA|sme_b16b16|Matrix|bf16 ← bf16 (bf16 ZA acc, non-widening bfmopa)|Armv9.2+ SME-B16B16 (req. SME2)|
@@ -364,6 +365,12 @@ The `load` category is the L1/L2 read-bandwidth table (`common/cache/cache_bandw
    core (an SME unit accepting ~1 load per cycle moves 64 B per cycle with
    single-vector loads and 256 B with four-vector loads, from either level);
    a rate that drops is the bandwidth of the level.
+
+On SME-capable Arm systems, `ssve-ld1d(f64)` measures sequential loads into Z
+registers in streaming mode. It uses the streaming vector length (SVL) for
+byte accounting and is reported separately from ordinary `sve-ld1d(f64)`
+and direct-to-ZA loads such as `ldrZA(f32)`. These instruction-specific rates
+are not interchangeable cache-bandwidth ceilings.
 
 `CPUFB_DEBUG_LOAD_COVERAGE=1` runs each kernel once over never-touched memory
 and reports how many pages became resident, as a check that a kernel reads the

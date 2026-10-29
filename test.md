@@ -95,6 +95,32 @@ second run when the node is quiet.
 (`perf_event_paranoid=3` is not settable there, so an unprivileged account
 would be needed) to compare the clock-estimate cycles with the counted ones.
 
+## Apple M4 Pro — Apple AMX rows (new, untested: no Mac here)
+
+The AMX kernels are now `arm64/asm/_AMX_.S` (instruction encodings emitted
+as `.long`), registered like every other kernel and gated by
+`amx_available()`, which executes `AMX_SET`/`AMX_CLR` under a SIGILL guard.
+The old C++ kernels had uninitialised operand words and a `vector_mode()`
+whose result was discarded; that is the bug behind the commented-out rows.
+
+```bash
+cmake --preset macos-arm64 && cmake --build --preset macos-arm64 -j8
+cd build/macos-arm64 && ctest
+./cpufb '--thread_pool=[0]' --include-test=compute --include-isa=AMX
+./cpufb '--thread_pool=[0]' --include-test=load | grep amx
+```
+
+1. The configure log's `compiled ARM64 kernels` list contains `_AMX_` only
+   if the detector's child process survived `AMX_SET` on this machine.
+2. The run header prints `AMX : version N` and nine `AMX` compute rows plus
+   `amx-ldx x1/x2/x4` load rows, or `AMX : not available (SIGILL on
+   AMX_SET)` and no rows. The M4 line replaced AMX by SME, so "not
+   available" is the expected outcome there and is itself the finding; an
+   M1 to M3 machine is where the rows should appear (fma32.mat about
+   1 TFLOPS-class on an M1 P-core, ldx near 64 B/cycle).
+3. If rows appear, IPC should read 8 instructions per loop over the cycles
+   and `amx-ldx x1/x2/x4` should move 64/128/256 B per instruction.
+
 ## Apple M4 Pro, Android, Milk-V X60
 
 As in the last two rounds (M4 must build as committed; Android cache

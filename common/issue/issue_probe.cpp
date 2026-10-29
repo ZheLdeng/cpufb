@@ -43,6 +43,8 @@ const double kScheduleNote = 0.03;
 // Joint ceiling against the pure peaks (classify_joint_ceiling).
 const double kSharedSlack = 1.05;
 const double kIndependentSlack = 0.95;
+// A class peak below this share of its partner's is bounded off the issue ports.
+const double kMinorPeakShare = 0.2;
 // The peak-proportional mix and how many grid neighbours of it are run.
 const size_t kTripleCandidates = 3;
 // L1-resident buffer handed to every kernel: the widest load or store form
@@ -557,6 +559,15 @@ bool run_issue_probe(const IssueProbeInput &input, int cpu,
                         format_percent(schedule_gap[search.best])
                     : "; blocks beat interleaving by " +
                         format_percent(-schedule_gap[search.best]);
+            // A class whose own peak is a small fraction of its partner's is
+            // not issue-bound (an Apple M4 issues streaming-mode stores at
+            // 0.05 per cycle against 1.8 loads); the mix then only shows
+            // that path's limit, not how the ports are shared.
+            const double smaller = std::min(peak_a, peak_b);
+            if (smaller > 0.0 && smaller < kMinorPeakShare * std::max(peak_a, peak_b))
+                verdict += std::string("; ") + (peak_a < peak_b ? name_a : name_b) +
+                    " peaks at " + format_double(smaller, 2) +
+                    " alone, so its own path, not the issue ports, bounds this row";
             DeferredRow row = {mix.label, names,
                 format_double(search.value, 2), frontier, verdict,
                 search.value, true, sharing.sharing == ISSUE_SHARED,

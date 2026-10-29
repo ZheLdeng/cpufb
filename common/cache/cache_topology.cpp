@@ -416,6 +416,13 @@ std::string describe_write_allocate(
     text.precision(2);
     if (ratio >= 1.6)
         text << "full-line stores skip the line fill";
+    else if (ratio < 0.9)
+        // The full-line stream moves four times the data of the partial one
+        // and still falls behind per line: the store path itself is the
+        // limit (an Apple M4: 0.66x), and whether the fill is skipped cannot
+        // be read from it.
+        text << "store-bandwidth bound: the full-line stream is slower per "
+                "line than the partial-line one, so the fill cannot be judged";
     else if (ratio <= 1.25)
         text << "full-line stores fetch the line before writing it";
     else

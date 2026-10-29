@@ -142,6 +142,9 @@ int main()
     ok &= expect(cpufb::describe_write_allocate(14.0, 10.0, 0.0).find(
                      "inconclusive") != std::string::npos,
         "inconclusive between the thresholds");
+    ok &= expect(cpufb::describe_write_allocate(6.6, 10.0, 26.0).find(
+                     "store-bandwidth bound") != std::string::npos,
+        "slower full-line stream is store-bandwidth bound");
     ok &= expect(cpufb::describe_write_allocate(0.0, 10.0, 0.0).find(
                      "not measured") != std::string::npos,
         "a failed stream is not measured");

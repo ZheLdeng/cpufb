@@ -15,7 +15,7 @@ On ARM64 Linux/Android the executable still filters this list using runtime HWCA
 # ---------------------------------------------------------------------------
 # C++ standard
 # ---------------------------------------------------------------------------
-# x64 paths are written against C++11; arm64 amx_kernel uses C++20 features.
+# x64 paths are written against C++11; the rest of the tree uses C++20.
 # We pick the higher one as the project default and downgrade the x64 main TU
 # below per-target.
 set(CMAKE_CXX_STANDARD 20)
@@ -200,7 +200,7 @@ if(_simd_sources)
 endif()
 
 # ---------------------------------------------------------------------------
-# Kernel sources (frequency.cpp / load.cpp / optional amx_kernel.cpp)
+# Kernel sources (frequency.cpp / load.cpp / per-arch extras)
 # ---------------------------------------------------------------------------
 set(_kernel_sources
     "${CPUFB_KERNEL_DIR}/frequency.cpp"
@@ -226,15 +226,9 @@ if(CPUFB_ARCH STREQUAL "arm64" AND NOT CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     list(APPEND _kernel_sources "${CPUFB_ARCH_DIR}/runtime_features.cpp")
 endif()
 
-# Apple Silicon has an extra AMX kernel
-set(_amx_target "")
-if(CPUFB_ARCH STREQUAL "arm64" AND CMAKE_SYSTEM_NAME STREQUAL "Darwin"
-        AND EXISTS "${CPUFB_KERNEL_DIR}/amx_kernel.cpp")
-    add_library(cpufb_amx OBJECT "${CPUFB_KERNEL_DIR}/amx_kernel.cpp")
-    target_include_directories(cpufb_amx PRIVATE
-        "${CPUFB_COMMON_DIR}" "${CPUFB_KERNEL_DIR}")
-    target_compile_options(cpufb_amx PRIVATE -O3 -g -w)
-    set(_amx_target cpufb_amx)
+# Apple AMX: the detection helper goes with the _AMX_ kernels.
+if(CPUFB_ARCH STREQUAL "arm64" AND "_AMX_" IN_LIST CPUFB_SIMD_FEATURES)
+    list(APPEND _kernel_sources "${CPUFB_KERNEL_DIR}/amx.cpp")
 endif()
 
 # No per-source -O0 overrides: every timed region is either an assembly kernel
@@ -283,9 +277,6 @@ target_link_libraries(cpufb PRIVATE
 )
 if(TARGET cpufb_simd)
     target_link_libraries(cpufb PRIVATE cpufb_simd)
-endif()
-if(_amx_target)
-    target_link_libraries(cpufb PRIVATE ${_amx_target})
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_link_libraries(cpufb PRIVATE "-ldl")

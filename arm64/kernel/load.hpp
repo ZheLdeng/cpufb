@@ -35,6 +35,7 @@ extern "C"
 #endif
 #ifdef _SME_
     uint64_t load_sme_vector_bytes(void);
+    void load_ssve_ld1d_kernel(float *, int, int64_t);
     void sme_ldr_kernel(float *, int, int);
     void sme_ldr2_kernel(float *, int, int);
     void sme_ld1wV_kernel(float *, int, int);

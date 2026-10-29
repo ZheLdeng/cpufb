@@ -150,6 +150,14 @@ void test_sme(void)
             :);
 }
 
+// Apple AMX: AMX_SET then AMX_CLR (0x00201000 | 17 << 5 | imm), each behind
+// the three NOPs the unit requires.  Undocumented, Apple Silicon only.
+void test_amx(void)
+{
+    __asm__ volatile("nop\nnop\nnop\n.inst 0x00201220\n"
+                     "nop\nnop\nnop\n.inst 0x00201221\n" ::: "memory");
+}
+
 void test_sme2(void)
 {
     __asm__ volatile(".inst 0xd503477f\n"
@@ -295,6 +303,10 @@ int get_cpuid(void)
         test_instruction_in_child(test_sve_f64mm, "SVE_F64MM");
         test_instruction_in_child(test_sve_fp16_fmla, "SVE_FP16_FMLA");
     }
+
+#ifdef __APPLE__
+    test_instruction_in_child(test_amx, "AMX");
+#endif
 
     // SME family
     bool sme_supported = test_instruction_in_child(test_sme, "SME");

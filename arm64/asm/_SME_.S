@@ -508,3 +508,42 @@
     smstop
     restore_caller_vec
     ret
+
+// Sequential streaming-SVE loads into Z (not ZA). Count is 16-SVL blocks.
+// SM transitions clear vector state, so preserve base-PCS callee-saved state.
+#void load_ssve_ld1d_kernel(float*, int, int64_t);
+    PROLOGUE load_ssve_ld1d_kernel
+    preserve_caller_vec
+    smstart sm
+    mov x4, x2
+    ptrue p0.d
+    2:
+    mov x3, x1
+    mov x5, x0
+    1:
+    mov x6, x5
+    addvl x6, x6, #8
+    ld1d z0.d, p0/z, [x5]
+    ld1d z1.d, p0/z, [x5, #1, MUL VL]
+    ld1d z2.d, p0/z, [x5, #2, MUL VL]
+    ld1d z3.d, p0/z, [x5, #3, MUL VL]
+    ld1d z4.d, p0/z, [x5, #4, MUL VL]
+    ld1d z5.d, p0/z, [x5, #5, MUL VL]
+    ld1d z6.d, p0/z, [x5, #6, MUL VL]
+    ld1d z7.d, p0/z, [x5, #7, MUL VL]
+    ld1d z16.d, p0/z, [x6]
+    ld1d z17.d, p0/z, [x6, #1, MUL VL]
+    ld1d z18.d, p0/z, [x6, #2, MUL VL]
+    ld1d z19.d, p0/z, [x6, #3, MUL VL]
+    ld1d z20.d, p0/z, [x6, #4, MUL VL]
+    ld1d z21.d, p0/z, [x6, #5, MUL VL]
+    ld1d z22.d, p0/z, [x6, #6, MUL VL]
+    ld1d z23.d, p0/z, [x6, #7, MUL VL]
+    addvl x5, x5, #16
+    subs x3, x3, #1
+    bne 1b
+    subs x4, x4, #1
+    bne 2b
+    smstop sm
+    restore_caller_vec
+    ret

@@ -72,6 +72,18 @@
 .endm
 #endif
 
+#ifdef _SMEf64_
+.macro ISSUE_INS_sme_fmopa_f64 r
+    fmopa za\r\().d, p0/m, p1/m, z0.d, z1.d
+.endm
+.macro ISSUE_INS_ssve_fmla_f64 r
+    fmla z\r\().d, p0/m, z0.d, z1.d
+.endm
+.macro ISSUE_INS_ssve_ld1d r
+    ld1d z\r\().d, p0/z, [x0, #((\r - 8) & 7), mul vl]
+.endm
+#endif
+
 // ---------------------------------------------------------------------------
 // Register banks.  Chain indices are positions in a bank's register list:
 // vectors v8-v31 (24), general registers x9-x15 and x19-x27 (16), ZA tiles
@@ -92,6 +104,12 @@
                 ISSUE_INS_\cls \r
             .endif
             .set issue_position, issue_position + 1
+        .endr
+    .elseif \bank == ISSUE_BANK_ZA64
+        .irp r, 0,1,2,3,4,5,6,7
+            .if (\idx) == \r
+                ISSUE_INS_\cls \r
+            .endif
         .endr
     .else
         .irp r, 0,1,2,3
@@ -124,6 +142,8 @@
         ISSUE_SET_SLOT \slot, 8, 16
     .elseif ISSUE_BANK_\cls == ISSUE_BANK_GPR
         ISSUE_SET_SLOT \slot, 0, 16
+    .elseif ISSUE_BANK_\cls == ISSUE_BANK_ZA64
+        ISSUE_SET_SLOT \slot, 0, 8
     .else
         ISSUE_SET_SLOT \slot, 0, 4
     .endif

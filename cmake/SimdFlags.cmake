@@ -71,7 +71,9 @@ function(cpufb_simd_asm_flags arch feature out_var)
             # build enables; its SVE and SME classes are guarded by the
             # feature macros, and the assembler must accept whichever the
             # build turned on.  CPUFB_SIMD_FEATURES is the caller's list.
-            if("_SME_" IN_LIST CPUFB_SIMD_FEATURES)
+            if("_SMEf64_" IN_LIST CPUFB_SIMD_FEATURES)
+                set(flag "-march=armv9-a+sme+sme-f64f64")
+            elseif("_SME_" IN_LIST CPUFB_SIMD_FEATURES)
                 set(flag "-march=armv9-a+sme")
             else()
                 set(flag "-march=armv8-a+sve")

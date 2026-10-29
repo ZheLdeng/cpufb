@@ -40,7 +40,7 @@
 #include "runtime_features.hpp"
 #endif
 
-#ifdef __APPLE__
+#ifdef _AMX_
 #include "amx.hpp"
 #endif
 
@@ -57,8 +57,12 @@ enum LoadForm {
     LOAD_NEON_4_REGISTERS,
     LOAD_NEON_16_BYTES,
     LOAD_SVE,
+    LOAD_STREAMING_SVE,
     LOAD_SME_1_VECTOR,
-    LOAD_SME_4_VECTORS
+    LOAD_SME_4_VECTORS,
+    LOAD_AMX_LDX_1, // Apple AMX ldx: 512-byte blocks of 1, 2 or 4 registers
+    LOAD_AMX_LDX_2,
+    LOAD_AMX_LDX_4
 };
 
 // How a row's registered operation count scales with the streaming vector
@@ -417,6 +421,11 @@ static cpufb::LoadKernel resolve_load_kernel(const cpubm_t &item)
         break;
 #endif
 #ifdef _SME_
+    case LOAD_STREAMING_SVE:
+        kernel.bytes_per_load = load_sme_vector_bytes();
+        kernel.bytes_per_count = kernel.block_bytes =
+            16 * kernel.bytes_per_load;
+        break;
     case LOAD_SME_1_VECTOR:
     case LOAD_SME_4_VECTORS:
         kernel.bytes_per_count = sizeof(float);
@@ -425,6 +434,14 @@ static cpufb::LoadKernel resolve_load_kernel(const cpubm_t &item)
             (item.load_form == LOAD_SME_4_VECTORS ? 4 : 1);
         break;
 #endif
+    case LOAD_AMX_LDX_1:
+    case LOAD_AMX_LDX_2:
+    case LOAD_AMX_LDX_4:
+        kernel.bytes_per_count = kernel.block_bytes = 512;
+        kernel.bytes_per_load = item.load_form == LOAD_AMX_LDX_1 ? 64
+            : item.load_form == LOAD_AMX_LDX_2            ? 128
+                                                           : 256;
+        break;
     default: break;
     }
     return kernel;
@@ -459,6 +476,19 @@ static bool cpubm_arm_cache(
 
 // compute: instruction throughput/IPC; load: cache-resident load bandwidth;
 // cache: capacity, associativity, and cache-line probes; freq: core frequency.
+// "AMX : version N" when the core executes Apple AMX, "AMX : not available"
+// when the kernels were compiled but the core refuses them (the M4 line
+// replaced the unit by SME); nothing on builds without the kernels.
+static void print_amx_status()
+{
+#ifdef _AMX_
+    if (amx_available())
+        cout << "AMX : version " << amx_version() << endl;
+    else
+        cout << "AMX : not available (SIGILL on AMX_SET)" << endl;
+#endif
+}
+
 #ifdef _SVE_
 static const bool kFrequencyTableSve = true;
 #else
@@ -482,6 +512,7 @@ static bool prepare_instruction_sweep(const vector<int> &threads, int, void *)
     if (arm64_runtime_features().sme) cout << "SME : " << rdsvl() * 8 << endl;
 #endif
 #endif
+    print_amx_status();
 
     Table freq_table;
     cpufb::init_frequency_table(freq_table, kFrequencyTableSve);
@@ -558,6 +589,7 @@ static bool cpubm_do_bench(vector<int> &set_of_threads, uint32_t idle_time,
             cout << "SME : " << rdsvl() * 8 << endl;
 #endif
 #endif
+        print_amx_status();
         // set table head
         vector<Table *> tables;
         cpufb::init_benchmark_tables(tables, kFrequencyTableSve);
@@ -1275,6 +1307,8 @@ static void cpufb_register_isa()
 #endif
 #ifdef _SME_
         require_feature("_SME_");
+        reg_load_kernel("--------", "ssve-ld1d(f64)", level, kLoadLoopTime,
+            (void *)load_ssve_ld1d_kernel, LOAD_STREAMING_SVE);
         reg_load_kernel("--------", "ldrZA(f32)", level, kLoadLoopTime,
             (void *)sme_ldr_kernel, LOAD_SME_1_VECTOR);
         reg_load_kernel("--------", "ld1wZAV(f32)", level, kLoadLoopTime,
@@ -1287,39 +1321,45 @@ static void cpufb_register_isa()
         reg_load_kernel("--------", "ld1w(f32)", level, kLoadLoopTime,
             (void *)sme_ld1w_kernel, LOAD_SME_4_VECTORS);
 #endif
+#ifdef _AMX_
+        if (amx_available()) {
+            require_feature("_AMX_");
+            reg_load_kernel("--------", "amx-ldx x1(64 B)", level,
+                kLoadLoopTime, (void *)amx_ldx_1_kernel, LOAD_AMX_LDX_1);
+            reg_load_kernel("--------", "amx-ldx x2(128 B)", level,
+                kLoadLoopTime, (void *)amx_ldx_2_kernel, LOAD_AMX_LDX_2);
+            reg_load_kernel("--------", "amx-ldx x4(256 B)", level,
+                kLoadLoopTime, (void *)amx_ldx_4_kernel, LOAD_AMX_LDX_4);
+        }
+#endif
     }
-#ifdef __APPLE__
-    // Apple AMX rows (kernels in kernel/amx_kernel.cpp) are kept here but
-    // disabled: AMX is undocumented and there is no runtime detection for it
-    // yet, so an unconditional row would fault on parts without it.
-    // reg_new_isa("Apple amx", "fmla.mat(f16,f16,f16)", "FLOPS",
-    //     kComputeLoopTime, 16384LL, (void*)fmla16_benchmark_mat);
-    // reg_new_isa("Apple amx", "fmla.mat(f32,f32,f32)", "FLOPS",
-    //     kComputeLoopTime, 4096LL, (void*)fmla32_benchmark_mat);
-    // reg_new_isa("Apple amx", "fmla.mat(f64,f64,f64)", "FLOPS",
-    //     kComputeLoopTime, 1024LL, (void*)fmla64_benchmark_mat);
-
-    // reg_new_isa("Apple amx", "fmla.vec(f16,f16,f16)", "FLOPS",
-    //     kComputeLoopTime, 512LL, (void*)fmla16_benchmark_vec);
-    // reg_new_isa("Apple amx", "fmla.vec(f32,f32,f32)", "FLOPS",
-    //     kComputeLoopTime, 256LL, (void*)fmla32_benchmark_vec);
-    // reg_new_isa("Apple amx", "fmla.vec(f64,f64,f64)", "FLOPS",
-    //     kComputeLoopTime, 128LL, (void*)fmla64_benchmark_vec);
-
-    // reg_new_isa("Apple amx", "mat.mat(i8,i8,i8)", "OPS",
-    //     kComputeLoopTime, 65536LL, (void*)matint_i8i8_benchmark);
-    // reg_new_isa("Apple amx", "fmla.mat(i8,i16,i16)", "OPS",
-    //     kComputeLoopTime, 32768LL, (void*)matint_i8i16_benchmark);
-    // reg_new_isa("Apple amx", "fmla.mat(i16,i16,i16)", "OPS",
-    //     kComputeLoopTime, 16384LL, (void*)matint_i16i16_benchmark);
-
-    // reg_new_isa("Apple amx", "ldx 1 reg", "Byte/Cycle",
-    //     kLoadLoopTime, 32LL, (void*)load_benchmark_1);
-    // reg_new_isa("Apple amx", "ldx 2 reg", "Byte/Cycle",
-    //     kLoadLoopTime, 32LL, (void*)load_benchmark_2);
-    // reg_new_isa("Apple amx", "ldx 4 reg", "Byte/Cycle",
-    //     kLoadLoopTime, 32LL, (void*)load_benchmark_4);
-
+#ifdef _AMX_
+    // Apple AMX (asm/_AMX_.S): eight instructions per loop on eight Z row
+    // groups.  Operations per instruction: fma16 32x32 MACs, fma32 16x16,
+    // fma64 8x8 (x2 for FLOPs); vector mode one lane per element; matint
+    // i8 64x64, i8 x i16 32x32... as 64x32, i16 32x32.  Gated at run time:
+    // the core must execute AMX_SET (amx_available()).
+    if (amx_available()) {
+        require_feature("_AMX_");
+        reg_new_isa("AMX", "amx-fma16.mat(f16,f16,f16)", "FLOPS",
+            kComputeLoopTime, 16384LL, (void *)amx_fma16_mat, 8LL);
+        reg_new_isa("AMX", "amx-fma32.mat(f32,f32,f32)", "FLOPS",
+            kComputeLoopTime, 4096LL, (void *)amx_fma32_mat, 8LL);
+        reg_new_isa("AMX", "amx-fma64.mat(f64,f64,f64)", "FLOPS",
+            kComputeLoopTime, 1024LL, (void *)amx_fma64_mat, 8LL);
+        reg_new_isa("AMX", "amx-fma16.vec(f16,f16,f16)", "FLOPS",
+            kComputeLoopTime, 512LL, (void *)amx_fma16_vec, 8LL);
+        reg_new_isa("AMX", "amx-fma32.vec(f32,f32,f32)", "FLOPS",
+            kComputeLoopTime, 256LL, (void *)amx_fma32_vec, 8LL);
+        reg_new_isa("AMX", "amx-fma64.vec(f64,f64,f64)", "FLOPS",
+            kComputeLoopTime, 128LL, (void *)amx_fma64_vec, 8LL);
+        reg_new_isa("AMX", "amx-matint.mat(i8,i8,i32)", "OPS",
+            kComputeLoopTime, 65536LL, (void *)amx_matint_i8i8, 8LL);
+        reg_new_isa("AMX", "amx-matint.mat(i8,i16,i32)", "OPS",
+            kComputeLoopTime, 32768LL, (void *)amx_matint_i8i16, 8LL);
+        reg_new_isa("AMX", "amx-matint.mat(i16,i16,i32)", "OPS",
+            kComputeLoopTime, 16384LL, (void *)amx_matint_i16i16, 8LL);
+    }
 #endif
     // Multi-issue rows are produced by the issue probe (run_issue_probe_category), not
     // registered here; its classes live in kernel/issue_classes.def.

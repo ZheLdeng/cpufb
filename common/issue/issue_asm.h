@@ -155,6 +155,9 @@
     .elseif ISSUE_BANK_\cls == ISSUE_BANK_GPR
         ISSUE_PURE_KERNEL \cls, h, ISSUE_HALF_GPR
         ISSUE_PURE_KERNEL \cls, f, ISSUE_FULL_GPR
+    .elseif ISSUE_BANK_\cls == ISSUE_BANK_ZA64
+        ISSUE_PURE_KERNEL \cls, h, 4
+        ISSUE_PURE_KERNEL \cls, f, 8
     .else
         ISSUE_PURE_KERNEL \cls, h, ISSUE_HALF_ZA
         ISSUE_PURE_KERNEL \cls, f, ISSUE_FULL_ZA

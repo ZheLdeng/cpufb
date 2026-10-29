@@ -16,6 +16,7 @@
 #define ISSUE_BANK_GPR 0
 #define ISSUE_BANK_VEC 1
 #define ISSUE_BANK_ZA 2
+#define ISSUE_BANK_ZA64 3 // Eight FP64 tiles, versus four FP32 tiles.
 
 /* Processor mode a class needs; classes of different modes never mix. */
 #define ISSUE_MODE_NORMAL 0

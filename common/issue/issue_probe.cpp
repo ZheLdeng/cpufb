@@ -562,6 +562,35 @@ bool run_issue_probe(const IssueProbeInput &input, int cpu,
                 search.value, true, sharing.sharing == ISSUE_SHARED,
                 blocking};
             rows.push_back(row);
+            // Preserve the SME anchor's measured pure rate; maximizing total
+            // IPC alone can select a mix that slows the main computation.
+            // Scan every interleaved ratio: anchor retention need not be unimodal.
+            if (state[0]->info->bank == ISSUE_BANK_ZA ||
+                state[0]->info->bank == ISSUE_BANK_ZA64) {
+                double best_ratio = 0.0, anchor_ipc = 0.0, companion_ipc = 0.0;
+                int best_a = 0, best_b = 0;
+                for (size_t k = 0; k < mix.kernel_count; ++k) {
+                    const IssueMixKernel &kernel = mix.kernels[k];
+                    const int a = kernel.counts[0], b = kernel.counts[1];
+                    const double cycles = timer.cycles_per_loop(kernel.interleaved, buffer);
+                    if (cycles <= 0.0) continue;
+                    const double repeats = ISSUE_MIX_REPEATS(a + b);
+                    const double rate_a = a * repeats / cycles;
+                    if (rate_a >= (1.0 - kNearOptimal) * peak_a &&
+                        static_cast<double>(b) / a > best_ratio) {
+                        best_ratio = static_cast<double>(b) / a;
+                        best_a = a; best_b = b;
+                        anchor_ipc = rate_a; companion_ipc = b * repeats / cycles;
+                    }
+                }
+                add_row(table, std::string(mix.label) + " anchored", names,
+                    best_a ? format_double(anchor_ipc + companion_ipc, 4) : "-",
+                    best_a ? std::to_string(best_a) + ":" + std::to_string(best_b) +
+                        "; anchor=" + format_double(anchor_ipc, 4) +
+                        "; companion=" + format_double(companion_ipc, 4) : "none",
+                    "largest companion/anchor ratio retaining >=97% of pure anchor IPC; "
+                    "full interleaved grid, L1-hot operands");
+            }
         } else {
             std::vector<std::vector<int>> counts;
             for (size_t k = 0; k < mix.kernel_count; ++k)

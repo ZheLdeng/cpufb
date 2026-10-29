@@ -1,5 +1,6 @@
-// Apple AMX kernels.  AMX is Apple's undocumented matrix coprocessor on the
-// M1 to M3 generations; its instructions have no mnemonics, so each one is
+// Apple AMX kernels.  AMX is Apple's undocumented matrix coprocessor (M1 to
+// M4: an M4 Pro executes it next to SME); its instructions have no
+// mnemonics, so each one is
 // emitted as its 32-bit encoding: 0x00201000 | (op << 5) | Xn, where Xn holds
 // the operand word (fields documented by the community reverse engineering,
 // e.g. the z row group in bits 20-25, vector mode in bit 63).  AMX_SET and

@@ -131,7 +131,7 @@ int main()
     // Write allocate: equal lines per second means the full-line stream
     // paid the same fill; twice as many lines per second means it did not.
     ok &= expect(cpufb::describe_write_allocate(10.0, 9.5, 0.0).find(
-                     "fetch the line before writing") != std::string::npos,
+                     "gain nothing over partial-line") != std::string::npos,
         "write allocate at 1.05x");
     ok &= expect(cpufb::describe_write_allocate(19.0, 10.0, 25.0).find(
                      "skip the line fill") != std::string::npos,
@@ -143,8 +143,8 @@ int main()
                      "inconclusive") != std::string::npos,
         "inconclusive between the thresholds");
     ok &= expect(cpufb::describe_write_allocate(6.6, 10.0, 26.0).find(
-                     "store-bandwidth bound") != std::string::npos,
-        "slower full-line stream is store-bandwidth bound");
+                     "gain nothing over partial-line") != std::string::npos,
+        "a slower full-line stream gets the same verdict");
     ok &= expect(cpufb::describe_write_allocate(0.0, 10.0, 0.0).find(
                      "not measured") != std::string::npos,
         "a failed stream is not measured");

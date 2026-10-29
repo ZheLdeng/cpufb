@@ -53,7 +53,7 @@ issue peaks per instruction class and how classes share the core when mixed.
 |SIMD|sve2|Vector|int16|From Graviton3+/Armv9-A (representative: sqrdmlah)|
 |SIMD|sve_f32mm|Matrix|fp32|From Neoverse V1+/Graviton3+/Grace|
 |SIMD|sve_f64mm|Matrix|fp64|From Neoverse V1+/Graviton3+/Grace|
-|DSA|amx (Apple)|Matrix / Vector|fp16/fp32/fp64 fma, int8/int16 matint, ldx|Apple M1 to M3 (undocumented; rows appear only when the core executes AMX_SET)|
+|DSA|amx (Apple)|Matrix / Vector|fp16/fp32/fp64 fma, int8/int16 matint, ldx|Apple M1 to M4 (undocumented; rows appear only when the core executes AMX_SET; an M4 Pro does, 1.9 TFLOPS fma32)|
 |DSA|sme (i8)|Matrix|int8 + mixed-sign (umopa/usmopa/sumopa)|Apple M4, Armv9.0-A SME|
 |DSA|sme_f16f16|Matrix|fp16 ← fp16 (fp16 ZA acc)|Armv9.2+ SME-F16F16 (req. SME2)|
 |DSA|sme_b16b16|Matrix|bf16 ← bf16 (bf16 ZA acc, non-widening bfmopa)|Armv9.2+ SME-B16B16 (req. SME2)|

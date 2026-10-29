@@ -96,9 +96,9 @@ std::string describe_l2_unmeasured(int status);
 // partial-line stream (16 B per 64 B line) cannot avoid the fetch, so its
 // DRAM traffic is a fill plus a write-back per line; a full-line stream that
 // runs at about the same lines per second pays the same fill, one that runs
-// near twice as fast does not; one slower per line than the partial stream
-// is bound by the store path and gets no fill verdict.  The non-temporal
-// figure is only reported.
+// near twice as fast does not; at or below the partial rate the two cannot
+// be told apart from the store path's own limit and the verdict says so.
+// The non-temporal figure is only reported.
 // All three in GB/s of lines touched; 0 for a stream that was not measured.
 std::string describe_write_allocate(
     double full_line_gbps, double partial_line_gbps, double nontemporal_gbps);

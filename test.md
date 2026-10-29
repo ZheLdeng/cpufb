@@ -3,123 +3,73 @@
 Rewritten in full at the end of every round. It describes what the branch
 needs verified *now*; it is not a log, and nothing is appended to it.
 
-- **Under test:** `develop` @ the commit after `bbf26c1` (this checklist's
-  own commit). Test `develop`: it carries `tests/` and the `ctest`
-  registration. `main` is the delivery branch and has neither; building it
-  only checks that `cpufb` compiles and runs.
-- **Previous report:** `CPUFB_TEST_REPORT.md` of 2026-10-28 against
-  `f56b9a8` (M4 Pro, X60, MT6993, Graviton3). Every item it raised is
-  answered below, either by a change in this commit or by a request for one
-  more measurement. Nothing in it is dismissed.
-- **Since `f56b9a8`:** Apple AMX rewritten as assembly kernels with run-time
-  gating (M4 only); one load-table layout on every architecture; the
-  write-allocate verdict gets a "store-bandwidth bound" outcome; a pair row
-  says when one class is bounded off the issue ports; strides 3 and 6 in
-  the prefetch table; the CLI test accepts an `L2 ways` reading within a
-  quarter of the OS value; `tools/` and `docs/` are no longer tracked.
+- **Under test:** `develop` @ the commit after `6ec50c3` (this checklist's
+  own commit). Test `develop`; `main` has no tests.
+- **Previous report:** `CPUFB_TEST_REPORT.md` of 2026-10-29 against
+  `6ec50c3`. One red light (M4 `ctest` 15/16) and six observations; all
+  answered below.
+- **Since `6ec50c3`:** the empty `... anchored` row reads `not available`
+  with its reason, so the CLI test accepts it; the write-allocate verdict
+  below 1.25x is one text (fetch or store path, no longer two that a 3%
+  drift could flip between); README and the AMX comments record that an M4
+  Pro executes AMX. No kernel changed.
 
 ## Answers to the previous report
 
 | Report item | Answer |
 |---|---|
-| 1.7-a / 3.5: M4 `ssve_st1w` peak 0.05, MT6993 prime `st1w` 1.30, so `SME + streaming SVE store` says nothing | Real: streaming-mode stores are slow on those cores. The pair row now ends with `<class> peaks at 0.05 alone, so its own path, not the issue ports, bounds this row` whenever one peak is under a fifth of the other. Please confirm the text appears on the M4. |
-| 1.7-b: M4 L2 workset, stride 4 hides 0% while 2 and 8 hide 69% and 83% | Unexplained from here; strides 3 and 6 were added to tell "the prefetcher stops at 4" from "stride 4 aliases the set index". Report the whole first table. |
-| 1.6: test.md said the M4 L2 workset is 16 MiB | Wrong, the workset is the geometric middle of L1 and L2 (1352 KiB on the M4), 2.4 s is the expected time. Fixed here. |
-| 1.7-d: M4 `Write allocate` read `fetch` with the full-line stream at 0.66x of the partial one | A new outcome: `store-bandwidth bound: the full-line stream is slower per line than the partial-line one, so the fill cannot be judged`. The non-temporal row (2.6x) stays the M4 finding. |
-| 1.7-e: M4 run-to-run 3-4% | Expected without a PMU (ADD-chain clock); compare within one run. Added to the known gaps. |
-| 2.1 / 2.2: X60 `L2 ways` 13 or 14 against 16, `cpufb_cli_cache_probes` fails 2 in 5 | The test now fails only on a gross disagreement (outside 0.75x to 1.25x); the row keeps printing the measured 13 or 14 with `DISAGREES with OS`. Whether 13/14 is the probe or the cache (two ways reserved, or a hashed index on part of the set bits) stays open and is listed as a gap. |
-| 2.3: riscv64 has no memory rows at all | Correct: the memory stream kernels exist for ARM64 and x86-64 only. Listed as a gap, not fixed this round. |
-| 3.2: MT6993 cpu7 `L1 capacity from set conflicts` 128 KiB (4 x 32 KiB), twice | Treated as a reading, not an error: the set-conflict probe is the one a prefetcher cannot stretch, and it repeated. The old expectation (64 KiB) is withdrawn. One more datum requested below (mid cores). |
-| 3.5: MT6993 little cores `NEON compute:load` 4.96 -> 3.21 and `Issue width` 4.97 -> 4.24 with every peak unchanged | Nothing in the pair's kernels or search changed between the two versions; please run `multi_issue` twice on cpu0 and send both `NEON compute:load` rows with their Frontier text, so the ratio the search picked can be compared. |
-| 3.5: cpu7 clock estimate 1.104 GHz against 4.21 GHz nominal | Known: the ADD chain is not one add per cycle on every core, and this one has no PMU. All cpu7 IPCs are estimates; listed as a gap. |
-| 5: cpu7 FSU 5.08 (earlier report) | Closed by the report itself (4.01). |
+| 1.1: `cpufb_cli_issue_probe` fails on the M4 because `SME + streaming SVE store anchored` prints `-` / `none` | The row now carries `not available: no ratio keeps the anchor within 97% of its pure rate (the companion's own path is the limit)` in its verdict, which is what the test accepts for a row without an IPC. Please confirm 16/16. |
+| 1.2: 482 issue kernels, not 372 | Correct: the FP64 SME classes (`sme_fmopa_f64`, `ssve_fmla_f64`, `ssve_ld1d`, two pairs, one triple) came in with `bbf26c1`; 482 is the current count on an SME machine without SVE. |
+| 1.3: AMX executes on the M4 Pro (`AMX : version 0`, fma32.mat 1.94 TFLOPS, fma16.mat 3.96 TFLOPS, ldx 64/128/256 B per instruction) | Accepted as the finding: the M4 still executes the AMX encodings next to SME. README and the kernel comments now say M1 to M4. The IPC of 0.85 for eight instructions per loop means about 9.4 cycles per loop. Nothing further to run; the fma16 at twice fma32 and matint i8 at twice fma16 are the expected shapes. |
+| 1.4: strides 3, 4 and 6 hide almost nothing on the M4, 1, 2, 8, 16, 32 do | Both hypotheses in the last checklist are ruled out; the table is the result. The M4's stride detector follows 1 and 2 lines and strides from 8 lines up, not 3 to 6. Recorded as a core property; no probe change. |
+| 1.5: `Write allocate` read 0.95x and fell back to `fetch`; the ratio drifts 0.66 / 0.83 / 0.95 | The two low-ratio verdicts are merged: anything up to 1.25x reads `full-line stores gain nothing over partial-line ones: the line is fetched before writing or the store path is the limit`. Stable on the M4 whichever of its three ratios comes up; `skip the line fill` still needs 1.6x. |
+| 2.x: X60 3/3, `L2 ways` 14/13/14, rvv rows, `RVV compute:load` 0.398 | As expected. The load rows are the X60's first baseline; nothing to compare yet. |
+| 3.1: MT6993 cpu0 `NEON compute:load` 3.23 / 3.13 with `max at` 1:4 and 5:3 | The 97% band spans 1:6 to 5:3 on that core, so the frontier is flat and the point the search names is arbitrary inside it; the band, not the point, is the result. Not a regression; listed under known gaps. |
+| 3.2: cpu4 L1 64 KiB, cpu7 128 KiB (second time) | Three clusters on record; the prime core's 128 KiB set-conflict reading stands. |
+| 3.2 / 3.3: cpu7 curve and write streams not comparable across rounds (L2 24576 -> 1536 KiB, memory reference 250 -> 119 ns, `Write allocate` flipped) | No PMU on cpu7 and a prefetcher that bends its curve; cross-round comparison on that core is out. Known gap. |
 
 ## Apple M4 Pro (macOS)
 
 ```bash
 cmake --preset macos-arm64 && cmake --build --preset macos-arm64 -j8
 cd build/macos-arm64 && ctest
-./cpufb '--thread_pool=[0]' --mode=cache | tee cache.txt
-./cpufb '--thread_pool=[0]' --include-test=multi_issue --save=issue.csv | tee issue.txt
-./cpufb '--thread_pool=[0]' --include-test=compute --include-isa=AMX | tee amx.txt
-./cpufb '--thread_pool=[0]' --include-test=load | grep -E 'Cache Level|amx' | tee amx-load.txt
+./cpufb '--thread_pool=[0]' --include-test=multi_issue --save=issue.csv | grep anchored
+./cpufb '--thread_pool=[0]' --mode=cache | grep 'Write allocate'
 ```
 
-1. **Build as committed and `ctest` 16/16.** `nm` on `_ISSUE_.S.o` still 372
-   kernels (no SVE on the M4).
-2. **Apple AMX** (new, never run on hardware). The configure log's
-   `compiled ARM64 kernels` either lists `_AMX_` (the detector's child
-   process survived `AMX_SET`) or not. The run header then prints
-   `AMX : version N` with nine `AMX` compute rows and three `amx-ldx` load
-   rows, or `AMX : not available (SIGILL on AMX_SET)` and no rows. The M4
-   generation replaced AMX by SME, so **"not available" is the expected
-   result and is itself the finding**; rows appearing would mean AMX still
-   executes on the M4. If rows appear: IPC should read about 8 per loop over
-   the cycles, `amx-fma32.mat` in the hundreds of GFLOPS, `amx-ldx x1/x2/x4`
-   at 64/128/256 B per instruction. Send `amx.txt` and `amx-load.txt`
-   either way, and the configure log line.
-3. **Prefetch table one**, all nine stride rows: whether strides 3 and 6
-   hide latency when 4 does not.
-4. **`Write allocate`** should now read `store-bandwidth bound` (full-line
-   0.66x to 0.83x of partial-line); the non-temporal row stays about 2.5x.
-5. **`SME + streaming SVE store`** should carry the new `peaks at 0.0x
-   alone ... bounds this row` text.
+1. **`ctest` 16/16.** The only change that matters here.
+2. The `SME + streaming SVE store anchored` row: IPC `-`, Frontier `none`,
+   Verdict starting `not available:`.
+3. `Write allocate` reads `full-line stores gain nothing over partial-line
+   ones ...` with whatever ratio the run gives (0.66x to 0.95x so far).
 
-## Milk-V X60 (RISC-V)
+Nothing else on the M4 this round; AMX, strides and the streaming-store
+note are recorded.
 
-```bash
-cmake --preset native-release && cmake --build build/native-release -j8
-cd build/native-release
-for i in 1 2 3; do ctest -R cpufb_cli_cache_probes; done
-for i in 1 2 3; do ./cpufb '--thread_pool=[0]' --include-test=cache --save=c$i.csv >/dev/null; grep 'L2 ways' c$i.csv; done
-```
+## Milk-V X60, Android MT6993, Graviton3: nothing to run
 
-1. `cpufb_cli_cache_probes` passes three times (the criterion changed, not
-   the probe).
-2. The three `L2 ways` values, as printed: expected 13 or 14 with
-   `DISAGREES with OS, 0.8x`, or `not measured: ... did not repeat`. A 16
-   would be news.
-3. `--include-test=load` now goes through the shared harness: send the L1
-   and L2 `rvv-vle8.v` rows and the `RVV compute:load` row of the issue
-   table; they should match the last round's numbers within noise.
-
-## Android MT6993 (cpu0, cpu4, cpu7)
-
-```bash
-/data/local/tmp/cpufb "--thread_pool=[0]" --include-test=multi_issue --save=issue0a.csv
-/data/local/tmp/cpufb "--thread_pool=[0]" --include-test=multi_issue --save=issue0b.csv
-/data/local/tmp/cpufb "--thread_pool=[4]" --mode=cache --save=cache4.csv
-/data/local/tmp/cpufb "--thread_pool=[7]" --mode=cache --save=cache7.csv
-```
-
-1. cpu0 twice: the `NEON compute:load` and `Issue width` rows of both runs
-   with their Frontier text (the question is whether 3.21 repeats and at
-   which ratio the maximum sits).
-2. cpu4 (mid core, never measured): its `L1 capacity from set conflicts`
-   and `L1 data cache capacity` rows, next to cpu7's `128 KiB, 4 ways x
-   32 KiB`, so the three clusters' L1 sizes are on record together.
-3. cpu7: `Write allocate` and the prefetch rows as before; nothing changed
-   there.
-
-## Graviton3, Neoverse V3, Kunpeng 920, Kunpeng 920F, Xeon VM: nothing to run
-
-No measurement changed on these; a `ctest` on `develop` is welcome.
+Their items are closed or recorded as gaps. A `ctest` on `develop` is
+welcome on Graviton3 and the X60.
 
 ## Known gaps, please do not re-report these
 
 | Gap | Status |
 |---|---|
-| X60 `L2 ways` 13 or 14 against 16 | Reproducible, cause unknown (ways reserved, or a hash on part of the set bits). The row prints it; the CLI test tolerates it. |
-| riscv64 has no memory read/write rows and no issue probe | No stream kernels for RVV yet; deliberate subset. |
-| Cycle column and IPCs move with the clock estimate on hosts without a PMU (M4, MT6993 cpu7: 1.1 GHz estimate) | Expected; the header names the clock. Compare within one run. |
-| Prefetch-distance ranking differs per core (M4 L1 target wins, V3 / Graviton3 L2 target wins, MT6993 mixed) | Core property, confirmed on four designs. |
+| M4 strides 3, 4, 6 hide little latency while 1, 2, 8+ do | Core property of the M4's stride detector; the table shows it. |
+| M4 `Write allocate` ratio drifts 0.66x to 0.95x between runs | One verdict covers the whole range below 1.25x. |
+| M4 `ssve_st1w` 0.05 to 0.12 across runs; MT6993 prime `st1w` 1.30 | Streaming-mode stores are bounded off the issue ports; the pair row says so and its anchored row is `not available`. |
+| MT6993 cpu0 `NEON compute:load` names 1:4 one run and 5:3 the next | The 97% band is flat from 1:6 to 5:3; the band is the result. |
+| MT6993 cpu7: no PMU, prefetcher-bent curve, cross-round numbers not comparable | Compare within one run only. |
+| X60 `L2 ways` 13 or 14 against 16 | Reproducible, cause unknown; the row prints it, the CLI test tolerates it. |
+| riscv64 has no memory read/write rows and no issue probe | No RVV stream kernels yet; deliberate subset. |
+| Cycle column and IPCs move with the clock estimate on hosts without a PMU | Expected; the header names the clock. |
+| Prefetch-distance ranking differs per core | Core property, confirmed on four designs. |
 | Stream restart cost fit `C` while the points are not exactly `T + C/S` | The fit is a summary; the 10% line is read off the measured segments. |
-| Streaming-mode SVE stores far below loads (M4 0.05, MT6993 prime 1.30) | Core property; the pair row now says so. |
 | One-point 97% band when two independent classes have equal peaks | Correct: T(x) = min(P/x, P/(1-x)) is a sharp peak. |
 | Graviton3 L3 capacity reads 8 to 16 MiB or `none` across runs | Sliced last level seen from one core. |
-| L3 ways and line; L2 ways on hashed L2 or without huge pages; Android `L2 ways` (no huge pages) | Not measured, never guessed. |
+| L3 ways and line; L2 ways on hashed L2 or without huge pages | Not measured, never guessed. |
 
 ## Reporting
 
-State the commit tested and the branch (`develop`). Send the files named
-above; for anything not matching the expected value, the row verbatim.
+State the commit tested and the branch (`develop`). For the M4, the
+`ctest` summary line and the two grep outputs above.

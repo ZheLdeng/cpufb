@@ -476,9 +476,9 @@ static bool cpubm_arm_cache(
 
 // compute: instruction throughput/IPC; load: cache-resident load bandwidth;
 // cache: capacity, associativity, and cache-line probes; freq: core frequency.
-// "AMX : version N" when the core executes Apple AMX, "AMX : not available"
-// when the kernels were compiled but the core refuses them (the M4 line
-// replaced the unit by SME); nothing on builds without the kernels.
+// "AMX : version N" when the core executes Apple AMX (an M4 Pro does, as
+// version 0), "AMX : not available" when the kernels were compiled but the
+// core refuses them; nothing on builds without the kernels.
 static void print_amx_status()
 {
 #ifdef _AMX_

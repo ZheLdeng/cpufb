@@ -599,8 +599,11 @@ bool run_issue_probe(const IssueProbeInput &input, int cpu,
                     best_a ? std::to_string(best_a) + ":" + std::to_string(best_b) +
                         "; anchor=" + format_double(anchor_ipc, 4) +
                         "; companion=" + format_double(companion_ipc, 4) : "none",
-                    "largest companion/anchor ratio retaining >=97% of pure anchor IPC; "
-                    "full interleaved grid, L1-hot operands");
+                    best_a ? "largest companion/anchor ratio retaining >=97% of pure "
+                             "anchor IPC; full interleaved grid, L1-hot operands"
+                           : "not available: no ratio keeps the anchor within 97% "
+                             "of its pure rate (the companion's own path is the "
+                             "limit)");
             }
         } else {
             std::vector<std::vector<int>> counts;

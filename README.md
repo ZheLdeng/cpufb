@@ -471,16 +471,17 @@ instruction class and per pair of classes, how the core issues them:
 ```
 
 1. **Peaks.** Every class (`add x`, NEON `fmla`, `ldr q` and `str q`, SVE
-   `fmla`, `ld1w` and `st1w`, SME `fmopa` and the streaming-mode SVE forms on
-   ARM64; scalar `add`, SSE/AVX/AVX-512 FMA, loads and AVX/AVX-512 stores on
-   x86-64) runs as a stream of
+   `fmla`, `ld1w` and `st1w`, SME `fmopa` in FP32 and, with SME-F64F64,
+   `fmopa za.d`, and the streaming-mode SVE forms on ARM64; scalar `add`,
+   SSE/AVX/AVX-512 FMA, loads and AVX/AVX-512 stores on x86-64) runs as a
+   stream of
    independent instructions rotating over its own registers. The peak is the
    IPC over all chains; a half-chain run must agree within 2%, otherwise the
    row says the accumulator latency, not the issue width, bounded it.
 2. **Mixes.** The pairs are the compute:load, compute:store and load:store
    mixes of each vector form, the FSU and LSU classes against the ALU, SVE
-   against NEON, and SME `fmopa` against the streaming-mode SVE compute, load
-   and store. For a pair (A, B) the probe measures the total IPC of a stream
+   against NEON, and SME `fmopa` (FP32 and FP64) against the streaming-mode
+   SVE compute, load and store. For a pair (A, B) the probe measures the total IPC of a stream
    with a fraction x of class-A instructions on the Farey grid of small-integer
    ratios (a + b <= 8, 21 ratios) plus the two pure endpoints. Total IPC is
    unimodal in x, so the maximum is found by golden-section search in about
@@ -492,6 +493,13 @@ instruction class and per pair of classes, how the core issues them:
    means one shared set of issue ports (mixing adds nothing); T* near
    P_A + P_B means independent ports; anything between is a shared budget of
    P_A + P_B - T* instructions per cycle.
+3b. **Anchored rows.** For every pair whose first class is an SME outer
+   product, a second row `<label> anchored` scans all ratios and reports the
+   largest companion:anchor ratio at which the `fmopa` stream still runs
+   within 97% of its own peak, with both rates: how much streaming-mode SVE
+   work rides along without slowing the matrix unit, which is what a kernel
+   interleaving loads or epilogue work with `fmopa` needs. `not available`
+   when no ratio keeps the anchor there (an M4 Pro's streaming stores).
 4. **Issue width.** The three-class mix (ALU, FSU, LSU) nearest to the
    peak-proportional shares, and its grid neighbours, give the total IPC the
    front end sustains; when it reaches the sum of the class peaks the front
